@@ -249,6 +249,21 @@ def comment(store: Store, t: Ticket, text: str, actor: str | None = None) -> Com
     return CommentResult(t, True)
 
 
+def comment_lines(t: Ticket) -> list[str]:
+    """The lines of the Comments section, one per comment, in file order."""
+    return [ln for ln in t.section("Comments").splitlines() if ln.strip()]
+
+
+def locate_comment(t: Ticket, actor: str, text: str) -> int | None:
+    """Index in `comment_lines` of the newest comment by `actor` with this text (whitespace and case normalized), or None."""
+    want = (_norm(actor), _norm(text))
+    for i in range(len(lines := comment_lines(t)) - 1, -1, -1):
+        m = _COMMENT_LINE.match(lines[i])
+        if m and (_norm(m.group(3)), _norm(m.group(4))) == want:
+            return i
+    return None
+
+
 def _private(path: Path) -> bool:
     if path.name.lower() in PRIVATE_NAMES:
         return True

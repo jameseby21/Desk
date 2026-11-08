@@ -76,7 +76,7 @@ def test_progress_handler_and_confirmation_survive_redirects(store):
     t = ops.new(store, "Talk", "jre")
     c = _client(store)
     page = c.get(f"/ticket/{t.id}").text
-    assert page.count('class="post-once"') >= 2 and "Sending..." in page and "data-sending" in page
+    assert len(re.findall(r'class="post-once[ "]', page)) >= 2 and "Sending..." in page and "data-sending" in page
     assert "post-once" in c.get("/settings").text
     r = c.post(f"/ticket/{t.id}/comment", data={"token": c.app.state.tokens.issue(), "text": "Hi"}, follow_redirects=True)
     assert 'role="status"' in r.text and "Comment added" in r.text

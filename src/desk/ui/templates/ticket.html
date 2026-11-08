@@ -77,12 +77,12 @@
       {% if t.section('Decision') %}<div class="md">{{ render(t.section('Decision'))|safe }}</div>{% else %}<p class="muted">Nothing decided yet.</p>{% endif %}</div>
 
     <div class="card section"><span class="label">Talk (Comments)</span>
-      {% if t.section('Comments') %}<div class="md">{{ render(t.section('Comments'))|safe }}</div>{% else %}<p class="muted">No comments.</p>{% endif %}
-      <form class="post-once" method="post" action="/ticket/{{ t.id }}/comment" style="margin-top:10px;display:flex;flex-direction:column;gap:8px">
+      <div class="md" data-comments>{% if t.section('Comments') %}{{ render(t.section('Comments'))|safe }}{% else %}<p class="muted">No comments.</p>{% endif %}</div>
+      <form class="post-once composer" id="composer" method="post" action="/ticket/{{ t.id }}/comment" data-timeout-ms="10000" data-posting="Posting…">
         <input type="hidden" name="token" value="{{ token() }}">
-        <label>Comment<textarea name="text" rows="2" id="comment-text" data-attach="/ticket/{{ t.id }}/attach" data-token="{{ token() }}" placeholder="Paste or drop a screenshot here to attach it"></textarea></label>
+        <label>Comment<textarea name="text" rows="3" id="comment-text" data-attach="/ticket/{{ t.id }}/attach" data-token="{{ token() }}" placeholder="Paste or drop a screenshot here to attach it"></textarea></label>
         <div class="attach-note" id="attach-note" role="status"></div>
-        <div class="row"><input type="text" name="who" placeholder="who (default {{ owner }})" style="max-width:200px"><button class="btn" type="submit">Add comment</button></div>
+        <div class="composer-foot"><input type="text" name="who" placeholder="who (default {{ owner }})" aria-label="Who is posting"><span id="post-status" class="post-status" role="status" aria-live="polite"></span><button class="btn ball post-btn" type="submit">Post</button></div>
       </form>
       <form class="post-once attach-form" method="post" action="/ticket/{{ t.id }}/attach" enctype="multipart/form-data">
         <input type="hidden" name="token" value="{{ token() }}">
@@ -169,6 +169,7 @@
 </div>
 <noscript><style>.nr-panel[hidden]{display:block}</style></noscript>
 <script src="/static/checks.js" defer></script>
+<script src="/static/composer.js" defer></script>
 {% if mermaid %}
 <script src="{{ mermaid_src }}"></script>
 <script>if (window.mermaid) { mermaid.initialize({ startOnLoad: true, securityLevel: "strict" }); }</script>

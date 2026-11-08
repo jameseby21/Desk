@@ -180,3 +180,10 @@ li.task-list-item:focus-visible{outline:3px solid var(--focus);outline-offset:2p
 .b-done{background:var(--ball)}.b-no{background:var(--red)}
 .chk-status{font-size:13px;font-weight:600;color:#8E1218;margin:4px 0}.chk-status:empty{display:none}
 [aria-busy=true] .hit{cursor:progress;opacity:.7}
+/* DESK-0122: the comment composer */
+.composer{margin-top:10px;display:flex;flex-direction:column;gap:8px}
+.composer-foot{display:flex;align-items:center;gap:10px;flex-wrap:wrap}.composer-foot input[type=text]{max-width:200px}
+.post-status{margin-left:auto;font-size:13.5px;font-weight:600;color:#4A4A45}.post-status.bad{color:#8E1218}
+.post-btn{min-width:116px;gap:8px}.post-btn:disabled{opacity:1;background:#EEEBE2;cursor:progress}
+.spin{display:inline-block;width:14px;height:14px;border-radius:50%;border:2.5px solid #141414;border-right-color:transparent;animation:spin .7s linear infinite}
+.composer textarea[readonly]{color:var(--muted);background:#FBFAF6}

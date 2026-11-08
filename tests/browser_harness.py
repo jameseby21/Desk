@@ -96,8 +96,8 @@ def run_in_browser(html: str, width: int, timeout: float = 30) -> dict:
 
 class Inject:
     """ASGI wrapper for a test: adds `script` before </body> on every HTML page, takes the page's POST /m (its result) into `sink`,
-    and lets a test stand in for the server on chosen requests with `intercept(scope) -> coroutine | None` (a coroutine taking
-    (receive, send) answers the request itself, for example with a 500 or a slow 200)."""
+    and lets a test stand in for the server on chosen requests with `intercept(scope) -> coroutine | None` (a number delays the real
+    answer by that many seconds; a coroutine function taking (receive, send) answers the request itself, for example with a 500)."""
 
     def __init__(self, app, script: str, sink: dict, ev, intercept=None):
         self.app, self.script, self.sink, self.ev, self.intercept = app, script, sink, ev, intercept
@@ -115,7 +115,12 @@ class Inject:
             await send({"type": "http.response.start", "status": 204, "headers": []})
             return await send({"type": "http.response.body", "body": b""})
         if self.intercept and (handler := self.intercept(scope)):
-            return await handler(receive, send)
+            if isinstance(handler, (int, float)):  # a delay: wait, then let the real app answer
+                import asyncio
+
+                await asyncio.sleep(handler)
+            else:
+                return await handler(receive, send)
         start, chunks = {}, []
 
         async def wrapped(msg):

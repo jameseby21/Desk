@@ -8,6 +8,7 @@ import os
 import re
 import secrets
 import tempfile
+import threading
 import traceback
 from collections import OrderedDict
 from pathlib import Path
@@ -102,6 +103,10 @@ class Tokens:
         while len(self._live) > self._cap:
             self._live.popitem(last=False)
         return tok
+
+    def valid(self, tok: str) -> bool:
+        """True while the token is unspent. Looking does not spend it (a post that failed leaves its key good for Try again)."""
+        return (tok or "") in self._live
 
     def use(self, tok: str) -> bool:
         return self._live.pop(tok or "", 0) is None
@@ -516,20 +521,64 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
                                  "summary_html": summary_html(t.section("Acceptance")), "stamp": str(ev.ticket_stamp(s, t.id))})
         return _back(ticket_id, ok="check")
 
+    posted: OrderedDict[str, tuple[str, int]] = OrderedDict()  # a post's key -> (ticket id, index of the comment it made)
+    post_lock = threading.Lock()
+
     @app.post("/ticket/{ticket_id}/comment")
-    def post_comment(ticket_id: str, text: str = Form(""), who: str = Form(""), token: str = Form("")):
-        if not tokens.use(token):
-            return _spent(ticket_id)
-        s = store()
-        try:
-            t = s.get(ticket_id)
-            s.sync_before()
-            res = ops.comment(s, t, text, actor=who or s.owner)
-            if res.added:
-                s.sync_after(f"desk: comment {t.id}")
-        except (KeyError, RuleError, ValueError) as e:
-            return _back(ticket_id, str(e))
-        return _back(ticket_id, ok="comment", dup=not res.added)
+    def post_comment(request: Request, ticket_id: str, text: str = Form(""), who: str = Form(""), token: str = Form("")):
+        """Add a comment. A form post works once per token and redirects. With `Accept: application/json` the token is the post's
+        KEY: the server stores at most one comment per key, a key that already made a comment returns that comment (`repeat`), and
+        a failed post leaves the key good so Try again works. The reply carries the Comments again and a fresh key."""
+        if "application/json" not in request.headers.get("accept", ""):
+            if not tokens.use(token):
+                return _spent(ticket_id)
+            s = store()
+            try:
+                t = s.get(ticket_id)
+                s.sync_before()
+                res = ops.comment(s, t, text, actor=who or s.owner)
+                if res.added:
+                    s.sync_after(f"desk: comment {t.id}")
+            except (KeyError, RuleError, ValueError) as e:
+                return _back(ticket_id, str(e))
+            return _back(ticket_id, ok="comment", dup=not res.added)
+
+        def refuse(msg: str, code: int):
+            return JSONResponse({"error": msg}, status_code=code)
+
+        with post_lock:  # one post at a time, so three requests with one key can not all pass the check
+            s = store()
+            try:
+                t = s.get(ticket_id)
+            except KeyError:
+                return refuse(f"No ticket {ticket_id}", 404)
+            prior = posted.get(token)
+            if prior is not None and prior[0] != t.id:
+                return refuse("That was posted on another ticket. Reload this page and try again.", 409)
+            repeat, duplicate = prior is not None, False
+            try:
+                if prior is None:
+                    if not tokens.valid(token):
+                        return refuse("This page is out of date, so nothing was posted. Reload it, then post again.", 409)
+                    s.sync_before()
+                    who_ = who or s.owner
+                    res = ops.comment(s, t, text, actor=who_)
+                    duplicate = not res.added
+                    if res.added:
+                        s.sync_after(f"desk: comment {t.id}")
+                    idx = ops.locate_comment(res.ticket, who_, text)
+                    tokens.use(token)
+                    posted[token] = (t.id, -1 if idx is None else idx)
+                    while len(posted) > MAX_TOKENS:
+                        posted.popitem(last=False)
+                t = s.get(ticket_id)
+                idx = posted[token][1]
+                lines = ops.comment_lines(t)
+                render = ctx(request, s, t=t)["render"]
+                return JSONResponse({"ok": True, "repeat": repeat, "duplicate": duplicate, "index": idx, "line": lines[idx] if 0 <= idx < len(lines) else "",
+                                     "html": render(t.section("Comments")), "stamp": str(ev.ticket_stamp(s, t.id)), "token": tokens.issue()})
+            except (RuleError, ValueError) as e:
+                return refuse(str(e), 422)
 
     def sniff_image(head: bytes) -> str | None:
         """The extension for a real image by its first bytes (png, jpg, gif, webp); anything else is not accepted."""
