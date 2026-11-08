@@ -277,3 +277,7 @@ body.pal-open{overflow:hidden}
 .dot{width:9px;height:9px;border-radius:50%;margin-left:auto;border:1.5px solid var(--muted);display:inline-block}
 .dot.ran{background:var(--ball);border-color:var(--ink)}.dot.notrun{background:var(--red);border-color:var(--red)}
 details.more>summary{cursor:pointer;color:var(--muted);padding:6px;font-size:13px}
+
+/* people (DESK-0044): an owner or assignee is a colour dot and a display name */
+.who{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
+.wdot{width:9px;height:9px;border-radius:50%;display:inline-block;border:1px solid rgba(0,0,0,.35)}

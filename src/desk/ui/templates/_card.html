@@ -12,7 +12,7 @@
   </div>
   <div class="title">{{ t.meta.get('title') }}</div>
   <div class="muted" style="font-size:13.5px">
-    {{ t.meta.get('priority') }} · {{ t.meta.get('size') }} · {{ t.meta.get('owner') }}
+    {{ t.meta.get('priority') }} · {{ t.meta.get('size') }} · {{ who(t.meta.get('owner')) }}
     {% if t.meta.get('review_by') %} · review by {{ t.meta.get('review_by') }}{% endif %}
     {% if t.status == 'blocked' %} · on {{ t.meta.get('blocked_on') }}{% endif %}
     {% if t.tags %} · {% for tag in t.tags %}<span class="tag">#{{ tag }}</span> {% endfor %}{% endif %}

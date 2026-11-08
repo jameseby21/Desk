@@ -24,7 +24,7 @@
   {% for tag in t.tags %}<span class="tag">#{{ tag }}</span>{% endfor %}
 </div>
 <h1 style="margin-top:10px">{{ t.meta.get('title') }}</h1>
-<p class="muted" style="margin-top:0">{{ t.meta.get('priority') }} · size {{ t.meta.get('size') }} · owner {{ t.meta.get('owner') }} · created {{ t.meta.get('created') }} · updated {{ t.meta.get('updated') }}{% if t.meta.get('done_at') %} · done {{ t.meta.get('done_at') }}{% endif %}{% if t.meta.get('branch') %} · <code>{{ t.meta.get('branch') }}</code>{% endif %}</p>
+<p class="muted" style="margin-top:0">{{ t.meta.get('priority') }} · size {{ t.meta.get('size') }} · owner {{ who(t.meta.get('owner')) }} · created {{ t.meta.get('created') }} · updated {{ t.meta.get('updated') }}{% if t.meta.get('done_at') %} · done {{ t.meta.get('done_at') }}{% endif %}{% if t.meta.get('branch') %} · <code>{{ t.meta.get('branch') }}</code>{% endif %}</p>
 
 <div class="cols">
   <div>
@@ -159,7 +159,17 @@
 
     <div class="card section" style="font-size:14px;display:flex;flex-direction:column;gap:10px">
       {% if t.meta.get('effort_hours') %}<div><span class="label">Effort</span><div>{{ t.meta.get('effort_hours')[0] }} to {{ t.meta.get('effort_hours')[1] }} hours{% if t.meta.get('confidence') %}, {{ (t.meta.get('confidence')*100)|int }}% sure{% endif %}</div></div>{% endif %}
-      {% if t.meta.get('assignee') %}<div><span class="label">Assignee</span><div>{{ t.meta.get('assignee') }}{% if t.meta.get('assigned_at') %} <span class="muted">since {{ t.meta.get('assigned_at') }}</span>{% endif %}<br>{% if t.meta.get('handoff') %}Hand-off: {% if t.meta.get('handoff').startswith('http') %}<a href="{{ t.meta.get('handoff') }}" rel="noopener">{{ t.meta.get('handoff') }}</a>{% else %}<code>{{ t.meta.get('handoff') }}</code> (Drive doc id){% endif %}{% else %}<span class="chip red">no hand-off record linked</span>{% endif %}<br><span class="muted" style="font-size:12.5px">Done means: {{ assign_dod }}</span></div></div>{% endif %}
+      <div id="assignee"><span class="label">Assignee</span>
+        <form class="post-once assign-form autosubmit" method="post" action="/ticket/{{ t.id }}/assign" data-inplace="refresh" data-progress="Sending,Saving,Done">
+          <input type="hidden" name="token" value="{{ token() }}">
+          <select name="to" aria-label="Assignee"><option value=""{% if not cur_assignee %} selected{% endif %}>(not assigned yet)</option>
+            {% for label, ps in assign_groups %}<optgroup label="{{ label }}">{% for p in ps %}<option value="{{ p.key }}"{% if p.key == cur_assignee %} selected{% endif %}>{{ p.name }}{% if p.role and p.kind != 'code' %} · {{ p.role }}{% endif %}</option>{% endfor %}</optgroup>{% endfor %}
+            {% if cur_assignee and not cur_known %}<option value="{{ cur_assignee }}" selected>{{ cur_assignee }} (not in people.yaml)</option>{% endif %}</select>
+          <noscript><button class="btn small" type="submit">Save</button></noscript><span class="dp-slot"></span>
+        </form>
+        {% if t.meta.get('assignee') %}<div class="muted" style="font-size:12.5px">{% if (t.meta.get('assigned_by') or '').startswith('rule:') %}assigned by rule <b>{{ t.meta.get('assigned_by')[5:] }}</b> until a person changes it{% elif t.meta.get('assigned_by') %}assigned by {{ who(t.meta.get('assigned_by')) }}{% endif %}{% if t.meta.get('assigned_at') %} · since {{ t.meta.get('assigned_at') }}{% endif %}</div>
+        {% if t.meta.get('handoff') %}Hand-off: {% if t.meta.get('handoff').startswith('http') %}<a href="{{ t.meta.get('handoff') }}" rel="noopener">{{ t.meta.get('handoff') }}</a>{% else %}<code>{{ t.meta.get('handoff') }}</code> (Drive doc id){% endif %}{% else %}<span class="chip red">no hand-off record linked</span>{% endif %}<br><span class="muted" style="font-size:12.5px">Done means: {{ assign_dod }}</span>{% else %}<div class="muted" style="font-size:12.5px">Blank means James has not scanned this ticket yet.</div>{% endif %}
+      </div>
       {% if t.meta.get('cloned_from') %}<div><span class="label">Cloned from</span><div><a href="/ticket/{{ t.meta.get('cloned_from') }}"><code>{{ t.meta.get('cloned_from') }}</code></a></div></div>{% endif %}
       {% if t.meta.get('blocks') %}<div><span class="label">Blocks</span><div>{% for d in t.meta.get('blocks') %}<a href="/ticket/{{ d }}"><code>{{ d }}</code></a> {% endfor %}</div></div>{% endif %}
       {% if t.meta.get('related') %}<div><span class="label">Related</span><div>{% for d in t.meta.get('related') %}<a href="/ticket/{{ d }}"><code>{{ d }}</code></a> {% endfor %}</div></div>{% endif %}

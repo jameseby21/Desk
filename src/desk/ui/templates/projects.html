@@ -35,7 +35,7 @@
           <code>{{ t.id }}</code> <span class="ttl">{{ t.meta.get('title') }}</span>
           <span class="chip {% if t.status == 'review' %}ball{% elif t.status == 'blocked' %}red{% endif %}">{{ screen(t.status) }}</span>
           <span class="chip ty ty-{{ t.meta.get('type') }}">{{ t.meta.get('type') }}</span> <span class="chip">{{ row.ask }}</span>
-          <span class="muted">{{ t.meta.get('owner') }}</span>
+          <span class="muted">{{ who(t.meta.get('owner')) }}</span>
         </summary>
         <div class="panel">{% if sel_k == t.id %}{{ peek_html|safe }}{% else %}<span class="muted">Loading...</span> <a href="/ticket/{{ t.id }}">Open the full ticket</a>{% endif %}</div>
       </details></li>

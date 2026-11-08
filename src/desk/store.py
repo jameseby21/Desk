@@ -112,6 +112,14 @@ class Store:
         return int(self.config["stale"]["days"])
 
     @property
+    def assignee_required_from(self) -> dt.date | None:
+        """The date from which a blank assignee on an open ticket is an error instead of a warning ([rules] assignee_required_from)."""
+        try:
+            return dt.date.fromisoformat(str(self.config.get("rules", {}).get("assignee_required_from") or "")[:10])
+        except ValueError:
+            return None
+
+    @property
     def combos(self) -> bool:
         return bool(self.config.get("life", {}).get("combos", False))
 

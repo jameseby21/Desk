@@ -25,3 +25,9 @@ def _tickets_get_validate_steps(monkeypatch):
         return t
 
     monkeypatch.setattr(store_mod, "new_ticket", with_steps)
+
+
+@pytest.fixture(autouse=True)
+def _no_private_people(tmp_path_factory, monkeypatch):
+    """No test reads the real ~/.claude/jeby-private/people.yaml (private, DESK-0044); a test that wants one points the variable at its own file."""
+    monkeypatch.setenv("DESK_PRIVATE_PEOPLE", str(tmp_path_factory.mktemp("noprivate") / "people.yaml"))

@@ -2,7 +2,7 @@
 {% if achips %}
 <div class="row trackchips"><span class="label">Assignee</span>
   <a class="chip{% if not current %} ball{% endif %}" href="{{ base }}{% if extra %}?{{ extra }}{% endif %}">Anyone</a>
-  {% for name, n in achips %}<a class="chip{% if name|lower == current|lower %} ball{% endif %}" href="{{ base }}?{% if extra %}{{ extra }}&amp;{% endif %}assignee={{ name|urlencode }}">{{ name }} {{ n }}</a>{% endfor %}
+  {% for name, n in achips %}<a class="chip{% if name|lower == current|lower %} ball{% endif %}" href="{{ base }}?{% if extra %}{{ extra }}&amp;{% endif %}assignee={{ name|urlencode }}">{{ who(name) }} {{ n }}</a>{% endfor %}
 </div>
 {% endif %}
 {%- endmacro %}

@@ -89,7 +89,7 @@ def validate_ticket(t: Ticket, store: "Store", known_ids: set[str] | None = None
             errors.append(f"{where}: tags must be a list of strings")
     if "track" in m and (not isinstance(m["track"], str) or not m["track"].strip()):
         errors.append(f"{where}: track must be a non-empty string when present")
-    for field_ in ("assignee", "handoff", "cloned_from", "evidence"):
+    for field_ in ("assignee", "assigned_by", "handoff", "cloned_from", "evidence"):
         if field_ in m and m[field_] not in (None, "") and not isinstance(m[field_], str):
             errors.append(f"{where}: {field_} must be a string")
     if "assigned_at" in m and m["assigned_at"] not in (None, "") and not _datetime_ok(m["assigned_at"]):
@@ -176,10 +176,13 @@ def validate_store(store: "Store") -> tuple[list[str], list[str]]:
     for key in store.projects():
         if store.brand_for(key) is None:
             warnings.append(f"projects/{key}.md: no brand block (mark, accent, family); run `drew brand-check`")
+    req = store.assignee_required_from
     for t in tickets:
         e, w = validate_ticket(t, store, known)
         errors += e
         warnings += w
+        if t.is_open and not " ".join(str(t.meta.get("assignee") or "").split()):  # blank is James's "not yet scanned" marker (DESK-0167)
+            (errors if req and dt.date.today() >= req else warnings).append(f"{t.id}: no assignee (James has not scanned this)")
         from .docs import dead_links  # local import: docs depends on ticket only, keep rules import-light
 
         for link, tried in dead_links(store, t):

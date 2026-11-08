@@ -161,12 +161,27 @@ def assign(store: Store, t: Ticket, to: str, note: str = "", handoff: str = "", 
     to = " ".join((to or "").split())
     if not to:
         raise RuleError("assign needs a name: --to <name>")
+    from . import people  # a display name (Patch, Big D) is stored as its key (main, bigd)
+
+    to = people.load(store.home).resolve(to)
     t.meta["assignee"] = to
     t.meta["assigned_at"] = dt.datetime.now().replace(microsecond=0).isoformat()
+    t.meta["assigned_by"] = actor or "desk"  # a person's name here ends "assigned by rule <name>" (DESK-0168)
     if handoff.strip():
         t.meta["handoff"] = handoff.strip()
     note = " ".join((note or "").split())
     t.append_line("Comments", _stamp(actor or "desk", f"assigned to {to}" + (f": {note}" if note else "")))
+    store.save(t)
+    return t
+
+
+def unassign(store: Store, t: Ticket, actor: str | None = None) -> Ticket:
+    """Back to blank: the ticket is "not yet scanned" again. Clears assignee, assigned_at and assigned_by and notes it in Comments."""
+    old = assignee_of(t)
+    for k in ("assignee", "assigned_at", "assigned_by"):
+        t.meta.pop(k, None)
+    if old:
+        t.append_line("Comments", _stamp(actor or "desk", f"unassigned (was {old})"))
     store.save(t)
     return t
 

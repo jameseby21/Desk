@@ -19,7 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from .. import timing
-from .. import asks, boardview as bv, search as srch, nav as navmod, buildstamp as bs, comments as cm, docs as docsmod, ops, profanity, review as rv, style as styles, tracks as trk, version as ver
+from .. import asks, boardview as bv, people as peoplemod, search as srch, nav as navmod, buildstamp as bs, comments as cm, docs as docsmod, ops, profanity, review as rv, style as styles, tracks as trk, version as ver
 from ..config import find_home
 from ..rules import RuleError
 from ..store import Store, id_parts, split_profile
@@ -88,7 +88,7 @@ def combos_for(tickets, on: dt.date | None = None) -> list[tuple]:
 
 
 MAX_TOKENS = 5000
-_OK_TEXT = {"comment": "Comment added", "decide": "Decision recorded", "check": "Checkbox saved", "move": "Ticket moved", "attach": "Image attached"}
+_OK_TEXT = {"comment": "Comment added", "decide": "Decision recorded", "check": "Checkbox saved", "move": "Ticket moved", "attach": "Image attached", "assign": "Assignee saved"}
 _AT = re.compile(r"\d{2}:\d{2}")
 
 
@@ -125,6 +125,15 @@ def why_text(home: Path) -> str:
 
 
 def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastAPI:
+    def who_html(key) -> Markup:
+        """An owner or assignee as a colour dot and the display name from people.yaml; a value nobody listed renders as written."""
+        key = " ".join(str(key or "").split())
+        if not key:
+            return Markup("")
+        pe = peoplemod.load(home or find_home())
+        shown = key if pe.get(key) is None else pe.display(key)
+        return Markup(f'<span class="who" title="{html.escape(key)}"><i class="wdot" style="background:{html.escape(pe.colour(key))}"></i>{html.escape(shown)}</span>')
+
     app = FastAPI(title="Desk")
     app.add_middleware(timing.TimingMiddleware)
     tokens = Tokens()
@@ -134,7 +143,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
     mermaid_src = "/static/mermaid.min.js" if (STATIC / "mermaid.min.js").exists() else MERMAID_CDN
     templates.env.globals.update(screen=screen, md=md_html, has_mermaid=has_mermaid, statuses=STATUSES,
                                  sections=SECTIONS, mermaid_src=mermaid_src, by_project=by_project, token=tokens.issue, check_summary=lambda text: Markup(summary_html(text)), track_slug=trk.track_slug, track_of=trk.track_of,
-                                 build=ver.describe(), who=lambda key: str(key or ""), ask_badge=lambda t: ((asks.ask_of(t) or {}).get("kind") or "").capitalize(),
+                                 build=ver.describe(), who=who_html, ask_badge=lambda t: ((asks.ask_of(t) or {}).get("kind") or "").capitalize(),
                                  card_extra=lambda t, st: [x for x in [str(t.meta.get("type") or "")] + ([screen("stale")] if st.is_stale(t) else []) + [f"#{x}" for x in t.tags] if x],
                                  card_age=bv.age_days, card_review=bv.review_by_text, card_proof=bv.proof_dot, columns_of=bv.by_status)
     shown = {"censor": None}  # the profanity filter for the request being rendered; None when the person switched it off
@@ -482,7 +491,14 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         mermaid = any(has_mermaid(t.section(name)) for name in t.sections)
         return templates.TemplateResponse(request, "ticket.html", ctx(request, s, t=t, deps=deps, stale=s.is_stale(t), error=error, s=s,
                                                              formerly=s.formerly(t), mermaid=mermaid, mentions=docsmod.mentioned_in(list(by_id.values()), ticket_id=t.id),
-                                                             owning=docsmod.owning_docs(s, t), source_doc=source_doc(s, t), acc_lines=[(i + 1, c.text) for i, c in enumerate(parse_checks(t.section("Acceptance")))], dod=dod_view(s, t), reply_ask=reply_ask(s, t), doc_links=doc_links(s, t), **nav_view(s, t), events_url=f"/events/{t.id}", events_since=ev.ticket_stamp(s, t.id)))
+                                                             owning=docsmod.owning_docs(s, t), source_doc=source_doc(s, t), acc_lines=[(i + 1, c.text) for i, c in enumerate(parse_checks(t.section("Acceptance")))], dod=dod_view(s, t), reply_ask=reply_ask(s, t), doc_links=doc_links(s, t), **assign_view(s, t), **nav_view(s, t), events_url=f"/events/{t.id}", events_since=ev.ticket_stamp(s, t.id)))
+
+    def assign_view(s: Store, t) -> dict:
+        """The assignee dropdown: people in their groups, and the stored value as a key (an old spelling such as `jre` selects `code:jre`)."""
+        pe = peoplemod.load(s.home)
+        cur = ops.assignee_of(t)
+        found = pe.get(cur) if cur else None
+        return {"assign_groups": pe.groups(), "cur_assignee": found.key if found else cur, "cur_known": bool(found) or not cur}
 
     def nav_view(s: Store, t) -> dict:
         """Previous and Next for this ticket in the walk this person chose (scope and order, kept in .desk/settings.toml)."""
@@ -698,6 +714,32 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
             return JSONResponse({"ok": True, "state": check_states(t.sections.get(section) or "")[index][1], "html": fresh,
                                  "summary_html": summary_html(t.section("Acceptance")), "stamp": str(ev.ticket_stamp(s, t.id))})
         return _back(ticket_id, ok="check", anchor=_SECTION_ANCHOR.get(section, ""))
+
+    @app.post("/ticket/{ticket_id}/assign")
+    def post_assign(request: Request, ticket_id: str, to: str = Form(""), token: str = Form("")):
+        """The assignee dropdown on the ticket page: saves in place and records who assigned it and when (assigned_by, assigned_at)."""
+        js = wants_json(request)
+        if not tokens.use(token):
+            return refused("That form was already sent; reload the page.", 409) if js else _spent(ticket_id)
+        s = store()
+        try:
+            t = s.get(ticket_id)
+            pe = peoplemod.load(s.home)
+            if to.strip() and pe.get(to) is None and to.strip() != ops.assignee_of(t):
+                raise ValueError(f"{to.strip()} is not in people.yaml. Pick someone from the list, or add them with `drew people init` and an edit.")
+            s.sync_before()
+            if to.strip():
+                ops.assign(s, t, to, actor=s.owner)
+            else:
+                ops.unassign(s, t, actor=s.owner)
+            s.sync_after(f"desk: assign {t.id}")
+            t = s.get(ticket_id)
+        except (KeyError, RuleError, ValueError) as e:
+            return refused(e) if js else _back(ticket_id, str(e), anchor="assignee")
+        who_now = pe.display(ops.assignee_of(t)) if ops.assignee_of(t) else ""
+        if js:
+            return JSONResponse({"ok": True, "message": f"Assigned to {who_now}." if who_now else "Back to not assigned.", "stamp": str(ev.ticket_stamp(s, t.id))})
+        return _back(ticket_id, ok="assign", anchor="assignee")
 
     posted: OrderedDict[str, tuple[str, int, "int | None"]] = OrderedDict()  # a post's key -> (ticket id, comment index, Acceptance line it put evidence on)
     post_lock = threading.Lock()

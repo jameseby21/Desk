@@ -10,7 +10,7 @@
   {% for project, n, hits in res.groups %}
   <h2>{{ titles.get(project, project) }} <small>{{ project }} · {{ n }}</small></h2>
   <div class="grid" style="grid-template-columns:1fr">{% for h in hits %}
-    <a href="/ticket/{{ h.id }}" style="text-decoration:none"><div class="card"><span class="chip">{{ h.id }}</span> <span class="chip">{{ screen(h.status) }}</span> <span class="chip">{{ h.priority }}</span>{% if h.assignee %} <span class="muted">{{ h.assignee }}</span>{% endif %}{% if h.fuzzy %} <span class="muted">close match</span>{% endif %}
+    <a href="/ticket/{{ h.id }}" style="text-decoration:none"><div class="card"><span class="chip">{{ h.id }}</span> <span class="chip">{{ screen(h.status) }}</span> <span class="chip">{{ h.priority }}</span>{% if h.assignee %} <span class="muted">{{ who(h.assignee) }}</span>{% endif %}{% if h.fuzzy %} <span class="muted">close match</span>{% endif %}
       <div class="title" style="font-weight:600;margin-top:4px">{{ h.title }}</div>{% if h.snippet %}<div class="muted" style="font-size:13.5px">{{ snippet_html(h.snippet) }}</div>{% endif %}</div></a>
   {% endfor %}</div>
   {% if n > hits|length %}<p class="muted">{{ n - hits|length }} more in {{ project }}: add <code>project:{{ project }}</code> to narrow.</p>{% endif %}

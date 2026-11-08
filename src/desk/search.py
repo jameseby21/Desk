@@ -364,5 +364,14 @@ def snippet_html(snip: str) -> str:
     return out.replace("[", "<mark>").replace("]", "</mark>")
 
 
+def people_resolver(store):
+    """Lets `assignee:Patch` and `owner:"Big D"` find the keys the tickets hold (main, bigd)."""
+    from . import people
+
+    pe = people.load(store.home)
+    return lambda field, value: pe.resolve(value) if field in ("assignee", "owner") else value
+
+
 def open_index(store, resolve=None) -> Index:
+    resolve = resolve or people_resolver(store)
     return Index(store.index_path.with_name("search.sqlite"), stale_days=store.stale_days, resolve=resolve)

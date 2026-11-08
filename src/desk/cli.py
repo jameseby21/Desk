@@ -75,7 +75,10 @@ def cmd_new(args):
 
 
 def cmd_list(args):
+    from . import people
+
     s = _store(args)
+    who = people.load(s.home)
     rows = []
     for t in _by_project(s.tickets()):
         stale = s.is_stale(t)
@@ -85,14 +88,14 @@ def cmd_list(args):
             continue
         if args.owner and str(t.meta.get("owner")) != args.owner:
             continue
-        if args.assignee and ops.assignee_of(t).lower() != args.assignee.lower():
+        if args.assignee and ops.assignee_of(t).lower() != who.resolve(args.assignee).lower():
             continue
         if args.stale and not stale:
             continue
         if not args.all and not t.is_open and not args.status:
             continue
         rows.append([_id_label(s, t), t.project, t.meta.get("type", ""), t.status + (" (stale)" if stale else ""), t.meta.get("priority", ""),
-                     t.meta.get("size", ""), str(t.meta.get("owner", "")), ops.assignee_of(t), str(t.meta.get("title", ""))[:60]])
+                     t.meta.get("size", ""), str(t.meta.get("owner", "")), who.display(ops.assignee_of(t)), str(t.meta.get("title", ""))[:60]])
     if not rows:
         print("No tickets match.")
         return
@@ -315,6 +318,26 @@ def cmd_search(args):
                 print(f"      {h.snippet[:110]}")
         if n > len(hits):
             print(f"  ... {n - len(hits)} more in {project}: add project:{project} and --limit {n}")
+
+
+def cmd_people(args):
+    from . import people
+
+    s = _store(args)
+    if args.action == "init":
+        try:
+            print(people.write_seed(s.home, force=args.force))
+        except FileExistsError as e:
+            _die(str(e))
+        return
+    pe = people.load(s.home)
+    src = s.home / "people.yaml"
+    print(f"people from {src if src.is_file() else 'the built-in team (run `drew people init` to write people.yaml)'}"
+          + (f" plus {people.private_path()}" if people.private_path().is_file() else ""))
+    for label, ps in pe.groups():
+        print(f"{chr(10)}{label}")
+        for p in ps:
+            print(f"  {p.key:<16} {p.name:<18} {p.kind:<9} {p.colour or '-':<8} {p.role}")
 
 
 def cmd_index(args):
@@ -838,6 +861,11 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--json", action="store_true")
     sp.add_argument("--limit", type=int, default=12, help="most tickets shown per project (default 12)")
     sp.set_defaults(fn=cmd_search)
+
+    sp = sub.add_parser("people", help="list the people owners and assignees can be (people.yaml, the built-in team when there is none, plus the private file); `people init` writes people.yaml")
+    sp.add_argument("action", nargs="?", choices=["list", "init"], default="list")
+    sp.add_argument("--force", action="store_true", help="init: replace an existing people.yaml")
+    sp.set_defaults(fn=cmd_people)
 
     sp = sub.add_parser("index", help="rebuild .desk/index.sqlite from the files")
     sp.set_defaults(fn=cmd_index)

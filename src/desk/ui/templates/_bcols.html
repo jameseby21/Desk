@@ -6,7 +6,7 @@
   <div class="cc-top"><code class="cc-id">{{ t.id }}</code>{% if s.formerly(t) %}<span class="muted formerly">(formerly {{ s.formerly(t) }})</span>{% endif %}
     {% if ask %}<span class="chip ball">{{ ask }}</span>{% endif %}<span class="chip">{{ t.meta.get('priority') }}</span>{% if extra %}<span class="chip" title="{{ extra|join(', ') }}">+{{ extra|length }}</span>{% endif %}</div>
   <div class="cc-title" title="{{ t.meta.get('title') }}">{{ t.meta.get('title') }}</div>
-  <div class="cc-foot muted"><span class="cc-owner">{{ who(t.meta.get('owner')) }}</span>{% set a = card_age(t) %}{% if a is not none %}<span>{{ a }} d</span>{% endif %}{% set rb = card_review(t) %}{% if rb %}<span>review {{ rb }}</span>{% endif %}<span class="dot {{ card_proof(t) }}" title="{{ {'none': 'No report yet', 'notrun': 'A check failed: not run', 'ran': 'A report is written'}[card_proof(t)] }}"></span></div>
+  <div class="cc-foot muted"><span class="cc-owner">{{ who(t.meta.get('owner')) }}</span>{% if t.meta.get('assignee') and t.meta.get('assignee') != t.meta.get('owner') %}<span class="cc-owner" title="Assignee">&rarr; {{ who(t.meta.get('assignee')) }}</span>{% endif %}{% set a = card_age(t) %}{% if a is not none %}<span>{{ a }} d</span>{% endif %}{% set rb = card_review(t) %}{% if rb %}<span>review {{ rb }}</span>{% endif %}<span class="dot {{ card_proof(t) }}" title="{{ {'none': 'No report yet', 'notrun': 'A check failed: not run', 'ran': 'A report is written'}[card_proof(t)] }}"></span></div>
 </div></a>
 {%- endmacro %}
 {% macro columns(tickets, s) -%}
