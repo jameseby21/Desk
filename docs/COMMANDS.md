@@ -35,7 +35,7 @@ Every command a person or an agent runs day to day, with what it does and when. 
 | `uv build --wheel` | builds the wheel; the build hook writes the commit into `desk/_build.py` | the footer and `drew --version` read it |
 | `drew --version` | prints `Desk <version> · <commit or "no git">` | same text as the UI footer |
 | `drew doctor [--repo PATH]` | installed version and commit, repo path and HEAD, the active YAML loader (libyaml or pure Python), tool path, store path, anything listening on the UI port; exit 1 when the installed code is older than the repo | run it when the UI looks out of date |
-| `drew upgrade [--repo PATH]` | refuses while a process listens on the UI port (names the PID), then runs `uv tool install --force <repo>` and prints the new version | stop the UI first |
+| `drew upgrade [--repo PATH]` | refuses while a process listens on the UI port (names the PID), then runs `uv tool install --force <repo>` and prints the new version. On Windows, when drew runs from uv's tools folder, it instead writes `desk-upgrade.cmd` to the temp folder and starts it detached (it waits 2 s, installs, logs to `desk-upgrade.log`, and on failure logs the restore command) and exits at once | stop the UI first; on Windows wait about 30 s, then `drew doctor` |
 | `drew review new` / `drew review sync` | creates, then refreshes, this week's ticket review | weekly |
 
 ## Desk
@@ -67,4 +67,5 @@ Every command a person or an agent runs day to day, with what it does and when. 
 | --- | --- |
 | port in use | `drew doctor` shows the PID; then `taskkill /PID <pid> /T /F` (Windows) or `kill <pid>` (never a broad name match) |
 | stale install | `drew doctor`, then stop the UI and `drew upgrade` |
+| `No module named 'desk'` after an upgrade | `uv tool install --force --reinstall <repo>` (also printed by `drew doctor`) |
 | "no git" in the footer | the wheel was built outside a git checkout; rebuild from the repo |

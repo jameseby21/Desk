@@ -452,12 +452,31 @@ def cmd_upgrade(args):
     uv = shutil.which("uv")
     if not uv:
         _die("uv is not on PATH; install uv first (https://docs.astral.sh/uv/).")
+    if ver.on_windows() and ver.in_uv_tools_dir():
+        return _upgrade_detached(uv, repo)
     r = subprocess.run([uv, "tool", "install", "--force", str(repo)])
     if r.returncode != 0:
-        _die(f"uv tool install failed (exit {r.returncode}). On Windows, if drew.exe is in use, run `uv tool install --force \"{repo}\"` from a plain terminal.", r.returncode)
+        _die(f"uv tool install failed (exit {r.returncode}). If Desk no longer starts, restore it with `{ver.restore_command(repo)}`.", r.returncode)
     exe = shutil.which("drew")
     out = subprocess.run([exe, "--version"], capture_output=True, text=True).stdout.strip() if exe else ""
     print(f"Upgraded: {out or 'installed (run `drew --version` to confirm)'}")
+
+
+def _upgrade_detached(uv: str, repo: Path):
+    """Windows cannot delete drew.exe while it runs, and `uv tool install --force` deletes it. So hand the install to a .cmd that
+    starts after this process has exited, outside the tools directory (DESK-0132)."""
+    import subprocess
+    import tempfile
+
+    tmp = Path(tempfile.gettempdir())
+    script, log = tmp / "desk-upgrade.cmd", tmp / "desk-upgrade.log"
+    script.write_bytes(ver.upgrade_script(uv, repo, str(log)).encode("utf-8"))
+    flags = getattr(subprocess, "DETACHED_PROCESS", 0x8) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x200)
+    subprocess.Popen(["cmd.exe", "/c", str(script)], creationflags=flags, close_fds=True,
+                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    print("Upgrade handed off to a separate process; it starts in 2 seconds, after this command exits (Windows cannot replace drew.exe while it runs).")
+    print(f"In about 30 seconds run `drew doctor` (the installed commit should equal the repo HEAD) or read {log}.")
+    print(f"If Desk stops starting (No module named 'desk'), restore it with: {ver.restore_command(repo)}")
 
 
 def cmd_migrate(args):

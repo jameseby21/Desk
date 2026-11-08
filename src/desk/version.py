@@ -132,6 +132,45 @@ def listeners(port: int | None = None) -> list[int]:
     return []
 
 
+def on_windows() -> bool:
+    return sys.platform == "win32"
+
+
+def in_uv_tools_dir() -> bool:
+    """True when this Python lives in uv's tool directory (<...>/uv/tools/<name>/...): the exe that is running is then one that
+    `uv tool install --force` deletes, and Windows will not delete a running exe."""
+    tools = os.environ.get("UV_TOOL_DIR")
+    me = Path(sys.executable).resolve()
+    if tools and me.is_relative_to(Path(tools).resolve()):
+        return True
+    parts = [p.lower() for p in me.parts]
+    return any(a == "uv" and b == "tools" for a, b in zip(parts, parts[1:]))
+
+
+def restore_command(repo: Path) -> str:
+    return f'uv tool install --force --reinstall "{repo}"'
+
+
+def upgrade_script(uv: str, repo: Path, log: str) -> str:
+    """The .cmd a detached process runs after drew.exe has exited: wait, reinstall, report the version, and on failure write the
+    one command that restores Desk. Everything it prints goes to `log`."""
+    q = lambda v: str(v).replace("%", "%%")
+    return "\r\n".join([
+        "@echo off",
+        "%SystemRoot%\\System32\\ping.exe -n 3 127.0.0.1 >nul",  # about 2 s; timeout.exe refuses to run without a console
+        f'echo Desk upgrade started %date% %time% > "{q(log)}"',
+        f'"{q(uv)}" tool install --force "{q(repo)}" >> "{q(log)}" 2>&1',
+        "if errorlevel 1 goto failed",
+        f'drew --version >> "{q(log)}" 2>&1',
+        f'echo Upgrade finished. >> "{q(log)}"',
+        "exit /b 0",
+        ":failed",
+        f'echo Upgrade failed. To restore Desk run: {q(restore_command(repo))} >> "{q(log)}"',
+        "exit /b 1",
+        "",
+    ])
+
+
 def stop_hint(pid: int) -> str:
     return f"taskkill /PID {pid} /T /F" if sys.platform == "win32" else f"kill {pid}"
 
@@ -154,6 +193,8 @@ def doctor_report(home: Path | None, repo_arg: str | None = None, *, pids: list[
                                               "unknown": "unknown (repo has no git HEAD)"}[state])
     else:
         lines.append("repo path:         not found (set DESK_REPO, or keep the repo at <store>/desk)")
+    if repo:
+        lines.append(f"if drew-ui says No module named 'desk': {restore_command(repo)}")
     lines.append(f"YAML loader:       {yamlio.LOADER}")
     lines.append(f"tool path:         {shutil.which('drew') or sys.argv[0]}")
     lines.append(f"store path:        {home if home else 'not found'}")
