@@ -219,26 +219,38 @@ def render(text: str, *, known: dict | None = None, check: dict | None = None, a
     actions: optional fn(id, status) -> html appended to a checkbox line that links to a known ticket (review weeks).
     """
     text = text or ""
+    from ..ticket import NEXT_STATE, check_states
+
+    states = check_states(text)
+    if any(st == "!" for _, st in states):  # `[!]` is ours, not the task-list plugin's: render it as done, then restyle it below
+        lines = text.split("\n")
+        for n, st in states:
+            if st == "!":
+                lines[n] = lines[n].replace("[!]", "[x]", 1)
+        text = "\n".join(lines)
     out = _md.render(_COMMENT_LINE.sub("", text), {"known": known or {}, "docs": docs, "resolve": resolve, "glossary": glossary or {},
                                                   "seen": seen if seen is not None else set(), "ids": ids})
-    if not check:
+    failed = any(st == "!" for _, st in states)
+    if not check and not failed:
         return out
-    from ..ticket import check_lines
-
-    n = len(check_lines(text))
+    n = len(states)
     if len(_CHECKBOX.findall(out)) != n:  # cannot map boxes to lines safely: leave them read-only
         return out
     counter = iter(range(n))
 
     def box(m):
         i = next(counter)
-        on = "checked" in m.group(0)
+        st = states[i][1]
+        bad = '<span class="chip red nr">Not run</span>' if st == "!" else ""
+        if not check:
+            return f'<span class="chk-failed" role="img" aria-label="failed">&#10007;</span>{bad}' if st == "!" else m.group(0)
+        name, act, glyph = _STATE_UI[st]
         return (f'<form class="chk post-once" method="post" action="/ticket/{check["id"]}/check">'
                 f'<input type="hidden" name="token" value="{check["token"]() if check.get("token") else ""}">'
                 f'<input type="hidden" name="section" value="{html.escape(check["section"])}">'
                 f'<input type="hidden" name="index" value="{i}">'
-                f'<input type="hidden" name="checked" value="{0 if on else 1}">'
-                f'<input class="task-list-item-checkbox" type="checkbox"{" checked" if on else ""} onchange="this.form.submit()"></form>')
+                f'<input type="hidden" name="state" value="{NEXT_STATE[st]}">'
+                f'<button type="submit" class="chk-btn st-{name}" aria-label="{name}. {act}" title="{name}: click to {act}">{glyph}</button></form>{bad}')
 
     out = _CHECKBOX.sub(box, out)
     if actions and known:
@@ -248,6 +260,9 @@ def render(text: str, *, known: dict | None = None, check: dict | None = None, a
             return m.group(0)[:-5] + extra + "</li>"
         out = re.sub(r'<li class="task-list-item">.*?</li>', li, out, flags=re.S)
     return out
+
+
+_STATE_UI = {" ": ("open", "mark done", ""), "x": ("done", "mark failed", "&#10003;"), "!": ("failed", "reopen", "&#10007;")}
 
 
 def has_mermaid(text: str) -> bool:

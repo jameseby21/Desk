@@ -107,7 +107,9 @@ def _rest(t: Ticket) -> str:
     by = f" · by {_md(t.meta['review_by'])}" if t.meta.get("review_by") else ""
     steps = t.validate_steps()
     check = f" · validate: {steps.splitlines()[0].strip()[:120]}" if steps else ""
-    return f"{t.meta.get('title')}{by}{check}"
+    failed = len(t.failed_checks())
+    bad = f" · {failed} failed" if failed else ""
+    return f"{t.meta.get('title')}{by}{bad}{check}"
 
 
 def _days(t: Ticket, today: dt.date) -> int:

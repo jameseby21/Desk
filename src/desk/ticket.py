@@ -109,11 +109,13 @@ def _plain(v):
     return v
 
 
-_CHECK = re.compile(r"^(\s*(?:[-*+]|\d+[.)])\s+\[)( |x|X)(\]\s)")
+_CHECK = re.compile(r"^(\s*(?:[-*+]|\d+[.)])\s+\[)( |x|X|!)(\]\s)")
+# Three states in the file: `[ ]` open, `[x]` done, `[!]` tried and failed. The UI cycles open -> done -> failed -> open.
+NEXT_STATE = {" ": "x", "x": "!", "!": " "}
 
 
-def check_lines(text: str) -> list[tuple[int, bool]]:
-    """(line number, checked) for every checkbox line in a section's text, fenced code skipped."""
+def check_states(text: str) -> list[tuple[int, str]]:
+    """(line number, state char: ' ', 'x' or '!') for every checkbox line in a section's text, fenced code skipped."""
     out, fence = [], False
     for n, line in enumerate((text or "").split("\n")):
         if line.lstrip().startswith(("```", "~~~")):
@@ -121,8 +123,13 @@ def check_lines(text: str) -> list[tuple[int, bool]]:
         elif not fence:
             m = _CHECK.match(line)
             if m:
-                out.append((n, m.group(2) != " "))
+                out.append((n, "x" if m.group(2) in "xX" else m.group(2)))
     return out
+
+
+def check_lines(text: str) -> list[tuple[int, bool]]:
+    """(line number, checked) for every checkbox line in a section's text, fenced code skipped. Failed counts as not checked."""
+    return [(n, st == "x") for n, st in check_states(text)]
 
 
 def slugify(text: str, limit: int = 48) -> str:
@@ -174,9 +181,17 @@ class Ticket:
     def acceptance(self) -> list[tuple[bool, str]]:
         out = []
         for line in self.section("Acceptance").splitlines():
-            m = re.match(r"^\s*[-*]\s*\[( |x|X)\]\s*(.*)$", line)
+            m = re.match(r"^\s*[-*]\s*\[( |x|X|!)\]\s*(.*)$", line)
             if m:
                 out.append((m.group(1).lower() == "x", m.group(2)))
+        return out
+
+    def failed_checks(self, sections: tuple = ("Acceptance", "Evidence")) -> list[tuple[str, str]]:
+        """(section, text) of every `- [!]` line: checked off as tried, and it did not work."""
+        out = []
+        for name in sections:
+            lines = (self.sections.get(name) or "").split("\n")
+            out += [(name, re.sub(_CHECK, "", lines[n]).strip()) for n, st in check_states(self.sections.get(name) or "") if st == "!"]
         return out
 
     # -- (de)serialisation ------------------------------------------------

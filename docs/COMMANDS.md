@@ -37,7 +37,7 @@ Every command a person or an agent runs day to day, with what it does and when. 
 | --- | --- |
 | `drew next --project <key>` | the next ready ticket for this project |
 | `drew claim <ID>` / `drew start <ID>` | take a ticket; begin work |
-| `drew report <ID> --file report.md` | hand it back with proof (moves to review); refused with "Write How to validate first" when that section is empty |
+| `drew report <ID> --file report.md` | hand it back with proof (moves to review); refused with "Write How to validate first" when that section is empty; warns on stderr for every `- [!]` (tried and failed) line it hands over |
 | `drew decide <ID> --approve "why"` / `--changes "why"` | the owner's decision, in words |
 | `drew done <ID>` | approved to done, after the merge |
 | `drew snap <ID>` / `drew attach <ID> file` | attach a screenshot or file as evidence |

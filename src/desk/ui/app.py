@@ -358,13 +358,14 @@ def create_app(home: Path | None = None) -> FastAPI:
         return _back(ticket_id, None, next, ok="decide")
 
     @app.post("/ticket/{ticket_id}/check")
-    def post_check(ticket_id: str, section: str = Form(...), index: int = Form(...), checked: int = Form(...), token: str = Form("")):
+    def post_check(ticket_id: str, section: str = Form(...), index: int = Form(...), checked: str = Form(""), state: str = Form(""), token: str = Form("")):
         if not tokens.use(token):
             return _spent(ticket_id)
         s = store()
         try:
             s.sync_before()
-            t = ops.toggle_check(s, ticket_id, section, index, bool(checked), actor=s.owner)
+            want = state if state in (" ", "x", "!") else (None if checked == "" and state == "" else (checked not in ("0", "")))
+            t = ops.toggle_check(s, ticket_id, section, index, want, actor=s.owner)
             s.sync_after(f"desk: check {t.id}")
         except (KeyError, RuleError, ValueError) as e:
             return _back(ticket_id, str(e))

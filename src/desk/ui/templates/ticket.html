@@ -38,6 +38,7 @@
       <div class="row" style="justify-content:space-between"><span class="label">Proof (Report)</span>
         {% if not t.section('Report') %}<span class="chip red">Not run</span>{% endif %}</div>
       {% if t.section('Report') %}<div class="md">{{ render(t.section('Report'))|safe }}</div>{% else %}<p class="muted">No report yet. A claim with no run behind it gets a red tag, not a pass.</p>{% endif %}
+      {% set bad = t.failed_checks() %}{% if bad %}<div class="failed-checks"><span class="label">Failed checks ({{ bad|length }})</span><ul>{% for sec, txt in bad %}<li><span class="chip red">Not run</span> {{ sec }}: {{ txt }}</li>{% endfor %}</ul></div>{% endif %}
     </div>
 
     {% if t.section('Evidence') or t.meta.get('evidence') %}

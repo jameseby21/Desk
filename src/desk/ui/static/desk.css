@@ -123,4 +123,11 @@ a.vsc{font:11px var(--font-mono);color:var(--muted);margin-left:4px;text-decorat
 .ty-docs{background:#A9C7F2}.ty-decision{background:#D9B3F2}.ty-research{background:#BFE3F0}.ty-intake{background:#E2DFD5}
 .ty-release{background:#F5B27A}.ty-slice,.ty-chore{background:var(--card);color:var(--muted);border:1px dashed var(--muted)}
 form.sending button:disabled::after{content:"";display:inline-block;width:.9em;height:.9em;margin-left:.5em;vertical-align:-.12em;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:spin .7s linear infinite}
+.chk-btn{all:unset;box-sizing:border-box;width:20px;height:20px;border:2px solid var(--ink);border-radius:5px;display:inline-flex;align-items:center;justify-content:center;font:700 14px/1 var(--font-body);cursor:pointer;vertical-align:middle;margin-right:6px}
+.chk-btn:focus-visible{outline:3px solid var(--ball);outline-offset:2px}
+.chk-btn.st-done{background:var(--ink);color:var(--on-ink)}
+.chk-btn.st-failed,.chk-failed{background:#C0262D;border-color:#C0262D;color:#fff}
+.chk-failed{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:5px;font:700 14px/1 var(--font-body);vertical-align:middle;margin-right:6px}
+.chip.nr{margin-left:6px;font-size:11px}
+li.task-list-item:has(.st-failed),li.task-list-item:has(.chk-failed){color:#C0262D}
 @keyframes spin{to{transform:rotate(360deg)}}

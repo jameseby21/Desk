@@ -145,7 +145,16 @@ def cmd_report(args):
     if not args.file and not args.text:
         _die("Give --file report.md or --text \"...\"")
     text = ops.load_report_file(Path(args.file)) if args.file else args.text
-    _write_cmd(args, lambda s, t: ops.report(s, t, text), "report")
+    failed = []
+
+    def run(s, t):
+        t = ops.report(s, t, text)
+        failed.extend(t.failed_checks())
+        return t
+
+    _write_cmd(args, run, "report")
+    for section, line in failed:  # handed over with a line marked `- [!]`: say so, once per line
+        print(f"warning: handed over with a failed check ({section}): {line}", file=sys.stderr)
 
 
 def cmd_decide(args):

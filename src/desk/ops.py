@@ -14,7 +14,7 @@ from pathlib import Path
 from . import review
 from .rules import RuleError, check_transition
 from .store import Store, join_profile, split_profile
-from .ticket import CLONED_SECTIONS, Ticket, check_lines, slugify, today
+from .ticket import CLONED_SECTIONS, NEXT_STATE, Ticket, check_states, slugify, today
 
 PRIVATE_NAMES = {"private_context.md"}
 PRIVATE_PARTS = {"jeby-private"}
@@ -91,20 +91,28 @@ def decide(store: Store, t: Ticket, approve: bool, reason: str, actor: str | Non
 CHECK_SECTIONS = ("Acceptance", "Prompt", "Evidence")
 
 
-def toggle_check(store: Store, ticket_id: str, section: str, index: int, checked: bool, actor: str | None = None) -> Ticket:
-    """Set the `index`-th checkbox line of `section` to `checked`; only that line's box character changes."""
+def toggle_check(store: Store, ticket_id: str, section: str, index: int, checked: "bool | str | None" = None, actor: str | None = None) -> Ticket:
+    """Set the `index`-th checkbox line of `section`; only that line's box character changes.
+    `checked` is True/False (done/open), a state char (' ', 'x', '!'), or None to cycle open -> done -> failed -> open."""
     if section not in CHECK_SECTIONS:
         raise ValueError(f"Checkboxes can only be changed in {', '.join(CHECK_SECTIONS)}.")
     t = store.get(ticket_id)
     raw = t.sections.get(section) or ""
-    lines = check_lines(raw)
+    lines = check_states(raw)
     if not 0 <= index < len(lines):
         raise ValueError(f"{t.id} {section} has no checkbox line {index}; reload the page.")
-    n = lines[index][0]
+    n, cur = lines[index]
+    if checked is None:
+        new = NEXT_STATE[cur]
+    elif isinstance(checked, bool):
+        new = "x" if checked else " "
+    elif checked in (" ", "x", "!"):
+        new = checked
+    else:
+        raise ValueError("A checkbox is open, done (x) or failed (!).")
     parts = raw.split("\n")
-    line = parts[n]
-    m = re.match(r"^(\s*(?:[-*+]|\d+[.)])\s+\[)[ xX](\].*)$", line, re.S)
-    parts[n] = m.group(1) + ("x" if checked else " ") + m.group(2)
+    m = re.match(r"^(\s*(?:[-*+]|\d+[.)])\s+\[)[ xX!](\].*)$", parts[n], re.S)
+    parts[n] = m.group(1) + new + m.group(2)
     t.sections[section] = "\n".join(parts)
     store.save(t)
     return t
