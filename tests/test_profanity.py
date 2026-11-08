@@ -1,5 +1,7 @@
 """DESK-0092: display-time profanity filter; files stay raw."""
 
+import re
+
 from fastapi.testclient import TestClient
 
 from desk import ops, profanity, style as styles
@@ -33,7 +35,8 @@ def test_ui_default_on_raw_file_unchanged_and_switch_off(store):
     ops.comment(store, store.get(t.id), "this is fucking broken", actor="james")
     c = TestClient(create_app(store.home))
     page = c.get(f"/ticket/{t.id}").text
-    assert "f*****g broken" in page and "That f*****g bug" in page and "fucking" not in page
+    # DESK-0155: a masked word in a comment is a mask span (stars as the no-script fallback), not bare stars
+    assert re.search(r">f\*{5}g</span> broken", page) and "That f*****g bug" in page and "fucking" not in page
     assert "fucking broken" in store.get(t.id).path.read_text(encoding="utf-8")
     assert "fucking" not in c.get("/").text
     r = c.post("/settings", data={"name": "plain", "dog": "drew", "profanity": "off"}, follow_redirects=False)

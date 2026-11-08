@@ -24,7 +24,7 @@ from ..config import find_home
 from ..rules import RuleError
 from ..store import Store, id_parts, split_profile
 from ..ticket import SECTIONS, STATUSES, check_states, parse_checks
-from ..words import screen
+from ..words import flag_empty, screen
 from urllib.parse import quote
 
 from markupsafe import Markup
@@ -175,7 +175,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
             project = getattr(owner_t, "project", "") or ""
             return md_html(text, known=known, check=check, actions=actions, docs=exists, ids=doc,
                            resolve=lambda p: docsmod.resolve_for(st, project, p)[0],
-                           glossary={} if doc == 'glossary' else gloss, seen=seen, censor=censor)
+                           glossary={} if doc == 'glossary' else gloss, seen=seen, censor=censor, mask=censor is not None)
 
         def comments_html(text):
             """The Comments section: markdown plus the kind label on each comment."""
@@ -445,9 +445,27 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
             dep = by_id.get(str(d))
             deps.append((str(d), dep.status if dep else "missing"))
         mermaid = any(has_mermaid(t.section(name)) for name in t.sections)
-        return templates.TemplateResponse(request, "ticket.html", ctx(request, s, t=t, deps=deps, stale=s.is_stale(t), error=error, s=s,
+        rejected, flagged = rejected_note(t), False
+        if rejected or t.failed_checks():
+            flagged = True
+        else:
+            rx = getattr(censor_for(s), "rx", None)
+            flagged = bool(rx and rx.search(re.sub(r"`[^`]*`", "", t.section("Comments"))))
+        empty_head, empty_body = flag_empty(styles.load(s.home)["name"])
+        return templates.TemplateResponse(request, "ticket.html", ctx(request, s, t=t, deps=deps, rejected=rejected, flag_empty=None if flagged else (empty_head, empty_body), stale=s.is_stale(t), error=error, s=s,
                                                              formerly=s.formerly(t), mermaid=mermaid, mentions=docsmod.mentioned_in(list(by_id.values()), ticket_id=t.id),
                                                              owning=docsmod.owning_docs(s, t), source_doc=source_doc(s, t), acc_lines=[(i + 1, c.text) for i, c in enumerate(parse_checks(t.section("Acceptance")))], dod=dod_view(s, t), reply_ask=reply_ask(s, t), doc_links=doc_links(s, t), **nav_view(s, t), events_url=f"/events/{t.id}", events_since=ev.ticket_stamp(s, t.id)))
+
+    def rejected_note(t) -> dict | None:
+        """Who let this ticket go, when and why, from the last `rejected` line of Decision (DESK-0154, Chaz F3)."""
+        if t.status != "rejected":
+            return None
+        for line in reversed(t.section("Decision").splitlines()):
+            m = re.match(r"^- (\d{4}-\d{2}-\d{2}) · (.+?) · rejected(?: · \"(.*)\")?\s*$", line)
+            if m:
+                d = dt.date.fromisoformat(m.group(1))
+                return {"who": nmod.display(m.group(2)), "when": f"{d.strftime('%b')} {d.day}", "reason": m.group(3) or "No reason was written."}
+        return {"who": "Someone", "when": "", "reason": "No reason was written."}
 
     def nav_view(s: Store, t) -> dict:
         """Previous and Next for this ticket in the walk this person chose (scope and order, kept in .desk/settings.toml)."""

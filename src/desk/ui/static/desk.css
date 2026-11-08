@@ -157,10 +157,7 @@ li.task-list-item:focus-visible{outline:3px solid var(--focus);outline-offset:2p
 .reload-bar{background:var(--ball);color:#141414;text-align:center;padding:6px 12px;font-weight:600;position:sticky;top:0;z-index:20}.reload-bar[hidden]{display:none}
 .stale-bar{background:#F2D98B;color:#141414;text-align:center;padding:8px 12px;font-weight:700;position:sticky;top:0;z-index:30}
 /* DESK-0119: the reason a line was not accepted stays under the line */
-.nr-reason{margin:6px 0 0;padding:8px 12px;border-left:3px solid var(--red);background:#FBF6F6;border-radius:0 8px 8px 0;display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;font-size:14px;color:#141414}
-.nr-reason .sev{font:600 11px/1 var(--font-mono);letter-spacing:.08em;text-transform:uppercase;color:#8E1218}
-.nr-reason .why{flex:1 1 200px}
-.nr-meta{flex-basis:100%;order:3;font-size:12.5px;color:#4A4A45}
+.nr-meta{font-size:12.5px;color:var(--muted)}
 .linkbtn{border:0;background:transparent;color:inherit;font:600 13px/1 var(--font-body);text-decoration:underline;cursor:pointer;padding:8px;margin-left:auto;min-height:32px}
 .ev-count{font-size:12.5px;color:var(--muted);margin-top:2px}
 .nr-panel label{font-weight:600}
@@ -259,3 +256,23 @@ li.task-list-item:focus-visible{outline:3px solid var(--focus);outline-offset:2p
 .nmchip.on{background:#C8F03C;border-color:#141414;color:#141414}
 .card .nm-why.under{margin-top:4px;white-space:normal}
 @media (max-width:700px){.nm-row{grid-template-columns:1fr}}
+
+/* DESK-0154 / DESK-0155 (Chaz F1 to F5): one flag component for every flagged thing. Red #C21B24, white text, a 3 px rule on the left,
+   one 20 px reason line cut with an ellipsis, More opens the rest in place. Marks, words and colours are the same in every style. */
+.flag{display:inline-flex;align-items:center;gap:5px;font:600 10.5px/1 var(--font-mono);letter-spacing:.1em;text-transform:uppercase;color:#FFFFFF;background:#C21B24;border-radius:5px;padding:4px 6px;flex:none}
+.flagged,.nr-reason{border-left:3px solid #C21B24}
+.reason,.nr-reason .why{font-size:13.5px;line-height:20px;height:20px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ink);min-width:0;flex:1 1 0}
+.tbtn{border:0;background:transparent;padding:0 6px;min-height:20px;min-width:60px;text-align:center;font:600 13px/20px var(--font-body);text-decoration:underline;text-underline-offset:3px;cursor:pointer;color:var(--ink);flex:none}
+.nr-reason{margin:4px 0 0;padding:0 0 0 10px;display:flex;align-items:center;flex-wrap:wrap;gap:8px;min-height:20px;font-size:14px;color:var(--ink)}
+.nr-reason .more{flex-basis:100%;margin:0;padding:2px 0 6px;font-size:13.5px;line-height:1.45}
+.nr-reason .more[hidden]{display:none}
+.flagrow{display:flex;align-items:center;gap:8px;min-height:20px;margin-top:4px}
+.md li.flagged{padding-left:10px;margin:8px 0}
+.rejected-note{display:flex;flex-direction:column;gap:4px;padding:10px 12px;margin:0 0 14px;background:var(--card);border:1px solid var(--line);border-left:3px solid #C21B24;border-radius:0 10px 10px 0}
+.rejected-note .who{display:flex;gap:8px;align-items:center;font-size:12.5px;color:var(--muted)}
+.flag-empty{font-size:12.5px;color:var(--muted);margin:0 0 6px}
+/* a masked word: its own text, transparent on a tint, so it is exactly as wide as the word; Show only changes colour */
+.mask{border-radius:4px;background:#F3C9CC;color:inherit;cursor:pointer}
+.mask[data-ready]{color:transparent;user-select:none}
+.mask[data-ready].shown{color:inherit;background:transparent;user-select:text}
+@media (prefers-color-scheme:dark){.mask{background:#5A2A2D}}
