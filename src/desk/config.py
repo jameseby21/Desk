@@ -11,7 +11,7 @@ CONFIG_NAME = "desk.toml"
 DEFAULTS: dict = {
     "desk": {"owner": "james"},
     "approval": {"delegated_types": ["task"], "delegated_max_size": "s"},
-    "git": {"sync": False},
+    "git": {"sync": False, "debounce_seconds": 30},
     "stale": {"days": 21},
     "life": {"combos": False},
     "attachments": {"max_mb": 8},
@@ -25,7 +25,8 @@ delegated_types = ["task"]  # main may approve these ...
 delegated_max_size = "s"     # ... up to this size
 
 [git]
-sync = false               # when true: pull before and push after every write command
+sync = false               # when true: pull at the start of a command; commit and push after the store has been idle for debounce_seconds, or on `drew sync`
+debounce_seconds = 30      # idle time before pending changes are committed
 
 [stale]
 days = 21

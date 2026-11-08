@@ -411,6 +411,12 @@ def cmd_bench(args):
         print(f"baseline saved to {bench.save_baseline(result)}")
 
 
+def cmd_sync(args):
+    s = _store(args)
+    made, last = s.sync_now()
+    print(("committed pending changes; " if made else "nothing pending to commit; ") + last)
+
+
 def cmd_doctor(args):
     lines, stale = ver.doctor_report(_home_or_none(args), args.repo)
     for line in lines:
@@ -543,6 +549,9 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--out", help="write the results as JSON here")
     sp.add_argument("--save-baseline", action="store_true", help="record these numbers in desk/bench/baseline.json for this ticket count")
     sp.set_defaults(fn=cmd_bench)
+
+    sp = sub.add_parser("sync", help="with [git] sync = true: pull, commit what is pending now (skipping the idle wait), push")
+    sp.set_defaults(fn=cmd_sync)
 
     sp = sub.add_parser("upgrade", help="reinstall the tool from the repo (refuses while the UI is running)")
     sp.add_argument("--repo", help="the Desk repo (else DESK_REPO, else <store>/desk)")

@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import datetime as dt
+import json
 import re
 import sqlite3
 import subprocess
+import threading
+import time
 from pathlib import Path
 
 from . import yamlio
@@ -340,12 +343,85 @@ class Store:
     def _git(self, *args: str) -> subprocess.CompletedProcess:
         return subprocess.run(["git", *args], cwd=self.home, capture_output=True, text=True)
 
+    # Writes never commit on the spot. `sync_after` records that something is pending (.desk/sync-pending.json) and the
+    # commit happens when the store has been idle for [git] debounce_seconds (default 30): in the UI by a timer, in the
+    # CLI at the next start of any command, or at once with `drew sync`. The files are already on disk, so stopping
+    # mid-debounce loses nothing; the pending note makes the next start commit them.
+    background_flush = False  # the UI sets this: a timer commits after the idle time instead of waiting for the next start
+    _timer: "threading.Timer | None" = None
+
+    @property
+    def sync_on(self) -> bool:
+        return bool(self.config["git"].get("sync"))
+
+    @property
+    def debounce_seconds(self) -> float:
+        try:
+            return max(0.0, float(self.config["git"].get("debounce_seconds", 30)))
+        except (TypeError, ValueError):
+            return 30.0
+
+    @property
+    def _pending_path(self) -> Path:
+        return self.home / ".desk" / "sync-pending.json"
+
+    def pending(self) -> dict | None:
+        try:
+            return json.loads(self._pending_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+
     def sync_before(self) -> None:
-        if self.config["git"].get("sync"):
+        if self.sync_on:
+            self.flush()  # earlier work that has been idle long enough
             self._git("pull", "--rebase", "--autostash")
 
     def sync_after(self, message: str) -> None:
-        if self.config["git"].get("sync"):
-            self._git("add", "-A")
-            self._git("commit", "-m", message)
-            self._git("push")
+        if not self.sync_on:
+            return
+        pend = self.pending() or {"messages": []}
+        pend["messages"] = (pend["messages"] + [message])[-500:]
+        pend["count"] = int(pend.get("count", 0)) + 1
+        pend["last"] = time.time()
+        self._pending_path.parent.mkdir(parents=True, exist_ok=True)
+        self._pending_path.write_text(json.dumps(pend), encoding="utf-8")
+        self.schedule_flush()
+
+    def schedule_flush(self) -> None:
+        """In a long-running process (the UI), commit after the idle time. Each new write restarts the wait."""
+        if not (Store.background_flush and self.sync_on and self.pending()):
+            return
+        if Store._timer is not None:
+            Store._timer.cancel()
+        Store._timer = threading.Timer(self.debounce_seconds + 0.05, self.flush)
+        Store._timer.daemon = True
+        Store._timer.start()
+
+    def flush(self, force: bool = False) -> bool:
+        """Commit and push what is pending when the store has been idle for the debounce time (or at once with force).
+        Returns True when a commit was made."""
+        pend = self.pending()
+        if not pend or not self.sync_on:
+            return False
+        if not force and time.time() - float(pend.get("last", 0)) < self.debounce_seconds:
+            return False
+        msgs = pend.get("messages") or ["desk: sync"]
+        n = int(pend.get("count", len(msgs)))
+        message = msgs[0] if n == 1 else f"desk: {n} changes (first: {msgs[0].removeprefix('desk: ')}; last: {msgs[-1].removeprefix('desk: ')})"
+        self._git("add", "-A")
+        made = self._git("commit", "-m", message).returncode == 0
+        self._git("push")
+        try:
+            self._pending_path.unlink()
+        except OSError:
+            pass
+        return made
+
+    def sync_now(self) -> tuple[bool, str]:
+        """`drew sync`: pull, commit what is pending, push. (committed?, git's last word)"""
+        if not self.sync_on:
+            return False, "[git] sync is false in desk.toml; nothing to do"
+        self._git("pull", "--rebase", "--autostash")
+        made = self.flush(force=True)
+        r = self._git("push")
+        return made, (r.stderr or r.stdout).strip().splitlines()[-1] if (r.stderr or r.stdout).strip() else "pushed"

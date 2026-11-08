@@ -609,4 +609,7 @@ def main() -> None:
     home = find_home(os.environ.get("DESK_HOME"))
     port = int(os.environ.get("DESK_UI_PORT", "8765"))
     print(f"Desk UI on http://127.0.0.1:{port}  (store: {home})")
+    Store.background_flush = True  # commit on a timer after the idle time, and now if something was left pending
+    Store(home).flush()
+    Store(home).schedule_flush()
     uvicorn.run(create_app(home), host="127.0.0.1", port=port, log_level="warning")
