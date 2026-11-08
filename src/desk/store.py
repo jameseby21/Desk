@@ -112,6 +112,14 @@ class Store:
         return int(self.config["stale"]["days"])
 
     @property
+    def assignee_required_from(self) -> dt.date | None:
+        """The date from which a blank assignee on an open ticket is an error instead of a warning ([rules] assignee_required_from)."""
+        try:
+            return dt.date.fromisoformat(str(self.config.get("rules", {}).get("assignee_required_from") or "")[:10])
+        except ValueError:
+            return None
+
+    @property
     def combos(self) -> bool:
         return bool(self.config.get("life", {}).get("combos", False))
 
@@ -299,7 +307,11 @@ class Store:
         if ticket.path is None:
             ticket.path = self.path_for(ticket)
         self.tickets_dir.mkdir(parents=True, exist_ok=True)
-        return ticket.write()
+        path = ticket.write()
+        from . import identity  # every write records who made it (DESK-0144)
+
+        identity.record_write(self.home, ticket.id)
+        return path
 
     # -- derived -----------------------------------------------------------
     def is_stale(self, ticket: Ticket, on: dt.date | None = None) -> bool:

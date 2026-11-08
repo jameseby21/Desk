@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Desk · Who are you{% endblock %}
+{% block body %}
+<h1>Who are you?</h1>
+<p>Desk records who made every change. It knows this computer's user name, <code>{{ os_user }}</code>, but not which person that is. Say so once and it is written into <code>people.yaml</code>; you will not be asked again.</p>
+<form class="post-once card section" method="post" action="/whoami" data-progress="none" style="display:flex;flex-direction:column;gap:10px;max-width:520px">
+  <input type="hidden" name="token" value="{{ token() }}">
+  <label>I am<select name="pick"><option value="">(someone not listed: fill in the name below)</option>{% for p in people %}{% if p.kind != 'code' %}<option value="{{ p.key }}"{% if p.key == owner %} selected{% endif %}>{{ p.name }}{% if p.role %} · {{ p.role }}{% endif %}</option>{% endif %}{% endfor %}</select></label>
+  <label>Or my display name<input type="text" name="new_name" placeholder="Ann Lee"></label>
+  <label>Kind<select name="new_kind"><option value="person">person</option><option value="coworker">coworker thread</option><option value="agent">agent</option></select></label>
+  <button class="btn ball" type="submit">That is me</button>
+</form>
+<p class="muted">Only the store owner can later choose Act as to write as someone else; the record then reads <code>{{ owner }} (as chaz)</code>. A name that is only typed (<code>--as</code>, a script) is recorded as claimed, not confirmed.</p>
+{% endblock %}

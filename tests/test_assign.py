@@ -52,7 +52,7 @@ def test_board_and_projects_filter_chips(store):
     ops.assign(store, a, "chaz")
     ops.assign(store, b, "codex")
     c = TestClient(create_app(store.home))
-    page = c.get("/board").text
+    page = c.get("/board?open=*&g=*").text  # the board opens at projects (DESK-0084); `*` opens everything
     assert "assignee=chaz" in page and "assignee=codex" in page and "Alpha thing" in page and "Beta thing" in page
     page = c.get("/board?assignee=chaz").text
     assert "Alpha thing" in page and "Beta thing" not in page

@@ -110,7 +110,7 @@ def test_rename_shows_formerly_in_cli_and_ui(store, capsys):
     ops.move(store, store.get(t.id), "ready", actor="main")
     client = TestClient(create_app(store.home))
     assert "(formerly FR)" in client.get("/").text
-    assert "(formerly FR)" in client.get("/board").text
+    assert "(formerly FR)" in client.get("/board?open=*&g=*").text  # opened: the board starts at projects (DESK-0084)
     assert "(formerly FR)" in client.get("/ticket/FR-0001").text
     page = client.get("/projects").text
     assert "learninglabs" in page and page.count("fraud") == 1  # old key only as an alias

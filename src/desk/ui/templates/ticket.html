@@ -21,10 +21,11 @@
   <span class="chip">{{ t.id }}</span>{% if formerly %}<span class="muted formerly">(formerly {{ formerly }})</span>{% endif %}<span class="chip" title="{{ titles.get(t.project, t.project) }}">{{ t.project }}</span><span class="chip ty ty-{{ t.meta.get('type') }}">{{ t.meta.get('type') }}</span>
   <span class="chip {% if t.status=='review' %}ball{% elif t.status=='blocked' %}red{% endif %}">{{ screen(t.status) }} · {{ t.status }}</span>
   {% if stale %}<span class="chip red">{{ screen('stale') }}</span>{% endif %}
+  {% if t.meta.get('sprint') %}<a class="chip" href="/sprint/{{ sprint_slug(t.meta.get('sprint')) }}" title="Sprint page">{{ t.meta.get('sprint') }}</a>{% endif %}
   {% for tag in t.tags %}<span class="tag">#{{ tag }}</span>{% endfor %}
 </div>
 <h1 style="margin-top:10px">{{ t.meta.get('title') }}</h1>
-<p class="muted" style="margin-top:0">{{ t.meta.get('priority') }} · size {{ t.meta.get('size') }} · owner {{ t.meta.get('owner') }} · created {{ t.meta.get('created') }} · updated {{ t.meta.get('updated') }}{% if t.meta.get('done_at') %} · done {{ t.meta.get('done_at') }}{% endif %}{% if t.meta.get('branch') %} · <code>{{ t.meta.get('branch') }}</code>{% endif %}</p>
+<p class="muted" style="margin-top:0">{{ t.meta.get('priority') }} · size {{ t.meta.get('size') }} · owner {{ who(t.meta.get('owner')) }} · created {{ t.meta.get('created') }} · updated {{ t.meta.get('updated') }}{% if t.meta.get('done_at') %} · done {{ t.meta.get('done_at') }}{% endif %}{% if t.meta.get('branch') %} · <code>{{ t.meta.get('branch') }}</code>{% endif %}</p>
 
 <div class="cols">
   <div>
@@ -36,6 +37,25 @@
       <div class="row" style="justify-content:space-between"><span class="label">Acceptance (this ticket's outcome)</span></div>
       {% set summary = check_summary(t.section('Acceptance')) %}{% if summary %}<div id="chk-summary" class="chk-summary" role="status" aria-live="polite">{{ summary }}</div>{% endif %}
       {% if t.section('Acceptance') %}<div class="md" data-check-section="Acceptance">{{ render(t.section('Acceptance'), t, 'Acceptance')|safe }}</div>{% else %}<p class="muted">No acceptance lines yet.</p>{% endif %}
+      {% if t.is_open %}
+      <details class="refine-split" id="refine"><summary>Refine or split</summary>
+        <form class="post-once rs-form" method="post" action="/ticket/{{ t.id }}/refine" data-inplace="refresh" data-progress="Sending,Saving,Done">
+          <input type="hidden" name="token" value="{{ token() }}">
+          <b>Refine</b> <span class="muted">making the requirement clearer; it is written down, dated, under Acceptance</span>
+          <label>The refinement<input type="text" name="line" required minlength="3" placeholder="The list also shows closed tickets when asked"></label>
+          <div class="row"><label>New review-by (only if it costs time)<input type="date" name="review_by"></label><label>Why it costs time<input type="text" name="reason" placeholder="needed before the date can move"></label></div>
+          <button class="btn small" type="submit">Add the refinement</button><span class="dp-slot"></span>
+        </form>
+        <form class="post-once rs-form" method="post" action="/ticket/{{ t.id }}/split" data-inplace="refresh" data-progress="Sending,Saving,Done">
+          <input type="hidden" name="token" value="{{ token() }}">
+          <b>Split</b> <span class="muted">a change of scope becomes a new ticket; this one keeps its Outcome and asks for the completion decision</span>
+          <label>Title of the new ticket<input type="text" name="title" required minlength="3"></label>
+          <label>What it is for<textarea name="details" rows="2"></textarea></label>
+          <div class="row"><label>Size<select name="size"><option>xs</option><option selected>s</option><option>m</option></select></label><label>Due (review-by)<input type="date" name="due"></label></div>
+          <button class="btn small" type="submit">Split into a new ticket</button><span class="dp-slot"></span>
+        </form>
+      </details>
+      {% endif %}
     </div>
 
     <div class="card section" id="done-means">
@@ -117,7 +137,7 @@
         <div class="shots" id="shots" hidden></div>
         <label class="evline" id="evline" hidden>Evidence for <select name="line"><option value="">No line</option>{% for n, txt in acc_lines %}<option value="{{ n }}">Line {{ n }}: {{ txt[:48] }}{% if txt|length > 48 %}…{% endif %}</option>{% endfor %}</select></label>
         <div class="attach-note" id="attach-note" role="status"></div>
-        <div class="composer-foot"><input type="text" name="who" placeholder="who (default {{ owner }})" aria-label="Who is posting"><span class="dp-slot"></span><span id="post-status" class="post-status" role="status" aria-live="polite"></span><button class="btn ball post-btn" type="submit">Post</button></div>
+        <div class="composer-foot"><span class="muted" style="font-size:12.5px" title="{{ me.short() }}">posting as {{ me.display() }}</span><span class="dp-slot"></span><span id="post-status" class="post-status" role="status" aria-live="polite"></span><button class="btn ball post-btn" type="submit">Post</button></div>
       </form>
       <form class="post-once attach-form" method="post" action="/ticket/{{ t.id }}/attach" enctype="multipart/form-data" data-inplace="attach" data-progress="Uploading,Saving,Done">
         <input type="hidden" name="token" value="{{ token() }}">
@@ -159,7 +179,17 @@
 
     <div class="card section" style="font-size:14px;display:flex;flex-direction:column;gap:10px">
       {% if t.meta.get('effort_hours') %}<div><span class="label">Effort</span><div>{{ t.meta.get('effort_hours')[0] }} to {{ t.meta.get('effort_hours')[1] }} hours{% if t.meta.get('confidence') %}, {{ (t.meta.get('confidence')*100)|int }}% sure{% endif %}</div></div>{% endif %}
-      {% if t.meta.get('assignee') %}<div><span class="label">Assignee</span><div>{{ t.meta.get('assignee') }}{% if t.meta.get('assigned_at') %} <span class="muted">since {{ t.meta.get('assigned_at') }}</span>{% endif %}<br>{% if t.meta.get('handoff') %}Hand-off: {% if t.meta.get('handoff').startswith('http') %}<a href="{{ t.meta.get('handoff') }}" rel="noopener">{{ t.meta.get('handoff') }}</a>{% else %}<code>{{ t.meta.get('handoff') }}</code> (Drive doc id){% endif %}{% else %}<span class="chip red">no hand-off record linked</span>{% endif %}<br><span class="muted" style="font-size:12.5px">Done means: {{ assign_dod }}</span></div></div>{% endif %}
+      <div id="assignee"><span class="label">Assignee</span>
+        <form class="post-once assign-form autosubmit" method="post" action="/ticket/{{ t.id }}/assign" data-inplace="refresh" data-progress="Sending,Saving,Done">
+          <input type="hidden" name="token" value="{{ token() }}">
+          <select name="to" aria-label="Assignee"><option value=""{% if not cur_assignee %} selected{% endif %}>(not assigned yet)</option>
+            {% for label, ps in assign_groups %}<optgroup label="{{ label }}">{% for p in ps %}<option value="{{ p.key }}"{% if p.key == cur_assignee %} selected{% endif %}>{{ p.name }}{% if p.role and p.kind != 'code' %} · {{ p.role }}{% endif %}</option>{% endfor %}</optgroup>{% endfor %}
+            {% if cur_assignee and not cur_known %}<option value="{{ cur_assignee }}" selected>{{ cur_assignee }} (not in people.yaml)</option>{% endif %}</select>
+          <noscript><button class="btn small" type="submit">Save</button></noscript><span class="dp-slot"></span>
+        </form>
+        {% if t.meta.get('assignee') %}<div class="muted" style="font-size:12.5px">{% if (t.meta.get('assigned_by') or '').startswith('rule:') %}assigned by rule <b>{{ t.meta.get('assigned_by')[5:] }}</b> until a person changes it{% elif t.meta.get('assigned_by') %}assigned by {{ who(t.meta.get('assigned_by')) }}{% endif %}{% if t.meta.get('assigned_at') %} · since {{ t.meta.get('assigned_at') }}{% endif %}</div>
+        {% if t.meta.get('handoff') %}Hand-off: {% if t.meta.get('handoff').startswith('http') %}<a href="{{ t.meta.get('handoff') }}" rel="noopener">{{ t.meta.get('handoff') }}</a>{% else %}<code>{{ t.meta.get('handoff') }}</code> (Drive doc id){% endif %}{% else %}<span class="chip red">no hand-off record linked</span>{% endif %}<br><span class="muted" style="font-size:12.5px">Done means: {{ assign_dod }}</span>{% else %}<div class="muted" style="font-size:12.5px">Blank means James has not scanned this ticket yet.</div>{% endif %}
+      </div>
       {% if t.meta.get('cloned_from') %}<div><span class="label">Cloned from</span><div><a href="/ticket/{{ t.meta.get('cloned_from') }}"><code>{{ t.meta.get('cloned_from') }}</code></a></div></div>{% endif %}
       {% if t.meta.get('blocks') %}<div><span class="label">Blocks</span><div>{% for d in t.meta.get('blocks') %}<a href="/ticket/{{ d }}"><code>{{ d }}</code></a> {% endfor %}</div></div>{% endif %}
       {% if t.meta.get('related') %}<div><span class="label">Related</span><div>{% for d in t.meta.get('related') %}<a href="/ticket/{{ d }}"><code>{{ d }}</code></a> {% endfor %}</div></div>{% endif %}
