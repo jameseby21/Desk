@@ -1,24 +1,31 @@
+{# The drilled-in view of one group (DESK-0035): five working columns, the title leads each card, Finished folds to one line. #}
 {% macro calm_card(t, s) -%}
 {% set brand = s.brand_for(t.project) %}
-{% set ask = ask_badge(t) %}
-{% set extra = card_extra(t, s) %}
-<a href="/ticket/{{ t.id }}" class="ccard-link" style="text-decoration:none"><div class="ccard{% if t.status == 'blocked' or s.is_stale(t) %} edge-red{% endif %}"{% if brand and brand.accent %} style="--accent:{{ brand.accent }}"{% endif %}>
-  <div class="cc-top"><code class="cc-id">{{ t.id }}</code>{% if s.formerly(t) %}<span class="muted formerly">(formerly {{ s.formerly(t) }})</span>{% endif %}
-    {% if ask %}<span class="chip ball">{{ ask }}</span>{% endif %}<span class="chip">{{ t.meta.get('priority') }}</span>{% if extra %}<span class="chip" title="{{ extra|join(', ') }}">+{{ extra|length }}</span>{% endif %}</div>
+{% set a = card_age(t) %}{% set rb = card_review(t) %}
+<a href="/ticket/{{ t.id }}" class="ccard-link" style="text-decoration:none"><div class="ccard{% if t.status == 'blocked' or s.is_stale(t) %} edge-red{% endif %}"{% if brand and brand.accent %} style="--accent:{{ brand.accent }}"{% endif %} title="{{ t.meta.get('priority') }} · {{ t.meta.get('type') }}{% if a is not none %} · {{ a }} d old{% endif %}{% if rb %} · review {{ rb }}{% endif %} · owner {{ person(t.meta.get('owner')) }}">
   <div class="cc-title" title="{{ t.meta.get('title') }}">{{ t.meta.get('title') }}</div>
-  <div class="cc-foot muted"><span class="cc-owner">{{ who(t.meta.get('owner')) }}</span>{% if t.meta.get('assignee') and t.meta.get('assignee') != t.meta.get('owner') %}<span class="cc-owner" title="Assignee">&rarr; {{ who(t.meta.get('assignee')) }}</span>{% endif %}{% set a = card_age(t) %}{% if a is not none %}<span>{{ a }} d</span>{% endif %}{% set rb = card_review(t) %}{% if rb %}<span>review {{ rb }}</span>{% endif %}<span class="dot {{ card_proof(t) }}" title="{{ {'none': 'No report yet', 'notrun': 'A check failed: not run', 'ran': 'A report is written'}[card_proof(t)] }}"></span></div>
+  <div class="cc-foot muted"><code class="cc-id">{{ t.id }}</code>{% if s.formerly(t) %}<span class="formerly">(formerly {{ s.formerly(t) }})</span>{% endif %}<span class="cc-owner">{{ who(t.meta.get('assignee') or t.meta.get('owner')) }}</span>{% if t.meta.get('priority') == 'p0' %}<span class="badge urgent">Urgent</span>{% endif %}{% if t.meta.get('type') == 'bug' %}<span class="badge bug">Bug</span>{% endif %}{% if t.status == 'changes_requested' %}<span class="tag red">{{ screen('changes_requested') }}</span>{% elif t.status == 'triage' %}<span class="tag">{{ screen('triage') }}</span>{% endif %}<span class="dot {{ card_proof(t) }}" title="{{ {'none': 'No report yet', 'notrun': 'A check failed: not run', 'ran': 'A report is written'}[card_proof(t)] }}"></span></div>
 </div></a>
 {%- endmacro %}
-{% macro columns(tickets, s) -%}
-<div class="board scroll">
-{% for st, items in columns_of(tickets) %}
-  {% if items or st in ['ready','in_progress','review'] %}
-  <details class="col" open>
-    <summary class="colhead"><span>{{ screen(st) }} <span class="muted" style="font-weight:400">{{ st }}</span></span><span>{{ items|length }}</span></summary>
-    {% for t in items[:8] %}{{ calm_card(t, s) }}{% endfor %}
-    {% if items|length > 8 %}<details class="more"><summary>Show {{ items|length - 8 }} more</summary>{% for t in items[8:] %}{{ calm_card(t, s) }}{% endfor %}</details>{% endif %}
-  </details>
-  {% endif %}
+{% macro more_link(project, slug, col, shown, total) -%}
+<a class="more" href="/board/column?project={{ project|urlencode }}&amp;slug={{ slug|urlencode }}&amp;col={{ col }}&amp;offset={{ shown }}&amp;by={{ by }}{% if filter_q %}&amp;{{ filter_q }}{% endif %}" data-more>{{ total - shown }} more</a>
+{%- endmacro %}
+{% macro columns(tickets, s, project, slug) -%}
+{% set labels = {'inbox': 'Inbox', 'ready': 'Ready', 'in_progress': 'In progress', 'review': 'Review', 'blocked': 'Blocked'} %}
+<div class="board5">
+{% for key, items in columns_of(tickets) %}
+  <section class="col5" data-col="{{ key }}">
+    <h3 class="colhead"><span>{{ labels[key] }}</span><span>{{ items|length }}</span></h3>
+    {% for t in items[:first_cards] %}{{ calm_card(t, s) }}{% else %}<p class="muted col-none">{{ 'Nothing blocked' if key == 'blocked' else 'Nothing here' }}</p>{% endfor %}
+    {% if items|length > first_cards %}{{ more_link(project, slug, key, first_cards, items|length) }}{% endif %}
+  </section>
 {% endfor %}
 </div>
+{% set fin = finished_of(tickets) %}
+{% if fin['items'] %}
+<details class="finished"><summary>Finished: {% set bits = [] %}{% if fin.done %}{% set _ = bits.append('<b>' ~ fin.done ~ ' done</b>') %}{% endif %}{% if fin.approved %}{% set _ = bits.append(fin.approved ~ ' approved and waiting for merge') %}{% endif %}{% if fin.rejected %}{% set _ = bits.append(fin.rejected ~ ' let go') %}{% endif %}{{ bits|join(', ')|safe }} · <span class="show">Show finished</span></summary>
+  <div class="fin-cards">{% for t in fin['items'][:first_cards] %}{{ calm_card(t, s) }}{% endfor %}</div>
+  {% if fin['items']|length > first_cards %}{{ more_link(project, slug, 'finished', first_cards, fin['items']|length) }}{% endif %}
+</details>
+{% endif %}
 {%- endmacro %}

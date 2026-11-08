@@ -15,12 +15,16 @@ from dataclasses import dataclass, field
 
 from . import nav as navmod
 from .store import Store
+from .todayview import queue_key
 from .ticket import CLOSED, PRIORITIES, STATUSES, Ticket
 from .tracks import UNTRACKED, track_of, track_slug
 
 NO_SPRINT = "No sprint"
 BY = ("track", "sprint")
-FIRST_CARDS = 8
+FIRST_CARDS = 12  # cards a column shows before "N more"
+# The five working columns (DESK-0035): Inbox takes Triage, In progress takes claimed and Sent back. Approved, Done and Let go fold into Finished.
+COLUMNS = ("inbox", ("inbox", "triage")), ("ready", ("ready",)), ("in_progress", ("claimed", "in_progress", "changes_requested")), ("review", ("review",)), ("blocked", ("blocked",))
+FINISHED = ("approved", "done", "rejected")
 WIDE = "*"
 
 
@@ -105,8 +109,27 @@ def build(store: Store, tickets: list[Ticket], by: str = "track", open_spec: str
 
 
 def by_status(tickets: list[Ticket]) -> list[tuple[str, list[Ticket]]]:
-    """The status columns of one group, in the order of the lifecycle; empty columns that do not matter are left out by the template."""
+    """One column per status in lifecycle order (kept for callers that want every status)."""
     return [(st, [t for t in tickets if t.status == st]) for st in STATUSES]
+
+
+def five(tickets: list[Ticket]) -> list[tuple[str, list[Ticket]]]:
+    """The five working columns of one group, each in queue order (priority, review-by, id). All five are always drawn so a column
+    that is empty says so instead of vanishing."""
+    return [(key, sorted([t for t in tickets if t.status in states], key=queue_key)) for key, states in COLUMNS]
+
+
+def finished(tickets: list[Ticket]) -> dict:
+    """The one Finished line: counts of approved (waiting for merge), done and let go, and the tickets in queue order."""
+    items = sorted([t for t in tickets if t.status in FINISHED], key=lambda t: (str(t.meta.get("updated") or ""), t.id), reverse=True)
+    return {"items": items, **{st: sum(1 for t in items if t.status == st) for st in FINISHED}}
+
+
+def column_items(tickets: list[Ticket], col: str) -> list[Ticket]:
+    """The tickets of one column by its key (`inbox`, `ready`, `in_progress`, `review`, `blocked` or `finished`)."""
+    if col == "finished":
+        return finished(tickets)["items"]
+    return dict(five(tickets)).get(col, [])
 
 
 def age_days(t: Ticket, today: dt.date | None = None) -> int | None:

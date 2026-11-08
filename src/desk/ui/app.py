@@ -186,6 +186,12 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         shown = key if pe.get(key) is None else pe.display(key)
         return Markup(f'<span class="who" title="{html.escape(key)}"><i class="wdot" style="background:{html.escape(pe.colour(key))}"></i>{html.escape(shown)}</span>')
 
+    def person_name(key) -> str:
+        """The plain display name of an owner or assignee, for a hover title."""
+        key = " ".join(str(key or "").split())
+        pe = peoplemod.load(home or find_home())
+        return key if not key or pe.get(key) is None else pe.display(key)
+
     @contextlib.asynccontextmanager
     async def lifespan(_app):
         yield
@@ -202,9 +208,9 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
     mermaid_src = "/static/mermaid.min.js" if (STATIC / "mermaid.min.js").exists() else MERMAID_CDN
     templates.env.globals.update(screen=screen, md=md_html, has_mermaid=has_mermaid, statuses=STATUSES,
                                  sections=SECTIONS, mermaid_src=mermaid_src, by_project=by_project, token=tokens.issue, check_summary=lambda text: Markup(summary_html(text)), track_slug=trk.track_slug, track_of=trk.track_of,
-                                 build=ver.describe(), who=who_html, sprint_slug=lambda n: sprintmod.slugify(str(n), 60), ask_badge=lambda t: ((asks.ask_of(t) or {}).get("kind") or "").capitalize(),
+                                 build=ver.describe(), who=who_html, person=person_name, sprint_slug=lambda n: sprintmod.slugify(str(n), 60), ask_badge=lambda t: ((asks.ask_of(t) or {}).get("kind") or "").capitalize(),
                                  card_extra=lambda t, st: [x for x in [str(t.meta.get("type") or "")] + ([screen("stale")] if st.is_stale(t) else []) + [f"#{x}" for x in t.tags] if x],
-                                 card_age=bv.age_days, card_review=bv.review_by_text, card_proof=bv.proof_dot, columns_of=bv.by_status)
+                                 card_age=bv.age_days, card_review=bv.review_by_text, card_proof=bv.proof_dot, columns_of=bv.five, finished_of=bv.finished, first_cards=bv.FIRST_CARDS)
     shown = {"censor": None}  # the profanity filter for the request being rendered; None when the person switched it off
 
     def finalize(v):
@@ -455,7 +461,22 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         by = by if by in bv.BY else "track"
         sel = board_sel([], assignee, track, sprint)
         ts = [t for t in bf.apply(s.tickets(), sel) if t.project == project and trk.track_slug(bv.group_name(t, by) if bv.group_name(t, by) not in (bv.UNTRACKED, bv.NO_SPRINT) else "") == slug]
-        return templates.TemplateResponse(request, "_bcols_frag.html", ctx(request, s, tickets=sorted(ts, key=lambda t: t.id), s=s))
+        return templates.TemplateResponse(request, "_bcols_frag.html", ctx(request, s, tickets=sorted(ts, key=lambda t: t.id), s=s, project=project, slug=slug, by=by, filter_q=bf.query(sel)))
+
+    @app.get("/board/column", response_class=HTMLResponse)
+    def board_column(request: Request, project: str, slug: str, col: str, offset: int = bv.FIRST_CARDS, by: str = "track", frag: int = 0,
+                     track: list[str] = Query([]), assignee: list[str] = Query([]), sprint: list[str] = Query([])):
+        """The cards of one column after the first ones ("N more"): a fragment for the board to fill in place (`frag=1`), a page otherwise."""
+        s = store()
+        by = by if by in bv.BY else "track"
+        sel = board_sel([], assignee, track, sprint)
+        ts = [t for t in bf.apply(s.tickets(), sel) if t.project == project and trk.track_slug(bv.group_name(t, by) if bv.group_name(t, by) not in (bv.UNTRACKED, bv.NO_SPRINT) else "") == slug]
+        items = bv.column_items(ts, col)[max(offset, 0):]
+        if frag:
+            return templates.TemplateResponse(request, "_bmore.html", ctx(request, s, items=items, s=s))
+        label = {"inbox": "Inbox", "ready": "Ready", "in_progress": "In progress", "review": "Review", "blocked": "Blocked", "finished": "Finished"}.get(col, col)
+        return templates.TemplateResponse(request, "board_more.html", ctx(request, s, items=items, s=s, project=project, label=label, offset=offset,
+                                                                  group=bv.group_name(ts[0], by) if ts else slug))
 
     @app.get("/sprint", response_class=HTMLResponse)
     def sprint_index(request: Request):

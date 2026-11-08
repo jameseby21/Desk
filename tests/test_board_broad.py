@@ -101,19 +101,11 @@ def test_calm_cards_at_most_two_chips_plus_n_and_clamped_title(store):
     page = TestClient(create_app(store.home)).get("/board?open=desk&g=desk:t").text
     card = page[page.index('class="ccard'):]
     card = card[:card.index("</a>")]
-    chips = re.findall(r'<span class="chip[^"]*"', card)
-    assert len(chips) <= 3 and "+" in card  # priority, the +N, and no more than one badge
+    assert not re.search(r'class="chip', card) and "+" not in card.split("cc-title")[0]  # DESK-0035: the title leads and tags are not chips; the long column is in test_board_columns
     assert 'class="cc-title"' in card and f'title="{long.strip()}"' in card  # the full title on hover
     css = (create_app(store.home).router and open("src/desk/ui/static/desk.css", encoding="utf-8").read())
     assert "-webkit-line-clamp:3" in css and "overflow-x:auto" in css and "position:sticky" in css  # three lines, own scroll, sticky headers
     assert t.id in page
-
-
-def test_a_long_column_shows_eight_then_show_more(store):
-    for i in range(11):
-        _mk(store, f"Ready card {i}", track="Big", priority="p2", status="ready")
-    page = TestClient(create_app(store.home)).get("/board?open=desk&g=desk:big").text
-    assert "Show 3 more" in page and len(_cards(page)) == 11
 
 
 def test_review_by_age_and_proof_dot_helpers(store):

@@ -323,3 +323,14 @@ details.dd>summary::-webkit-details-marker{display:none}details.dd>summary::afte
 a.tok{display:inline-flex;gap:6px;align-items:center;padding:6px 12px;border-radius:999px;background:var(--ink);color:var(--on-ink);text-decoration:none;font-weight:600;font-size:14px}a.tok:hover{color:var(--on-ink);background:var(--red)}
 .views{margin-left:auto;font-size:14px;color:var(--muted)}.views a{margin-left:8px;font-weight:600}
 .vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+/* Five working columns, calm cards (DESK-0035) */
+.board5{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:12px;align-items:start}
+@media (max-width:1000px){.board5{grid-template-columns:repeat(auto-fit,minmax(220px,1fr))}}
+.col5{min-width:0;max-height:70vh;overflow-y:auto}
+.col5 .colhead{position:sticky;top:0;z-index:1;margin:0;font-size:15px}
+.col-none{margin:8px 6px;font-size:14px}
+a.more{display:block;padding:8px 6px;color:var(--muted);font-size:14px;text-decoration:none}a.more:hover{color:var(--ink);text-decoration:underline}
+details.finished{margin:12px 0 4px;padding-top:10px;border-top:1px solid var(--line)}details.finished>summary{cursor:pointer;color:var(--muted);list-style:none}details.finished>summary b{color:var(--ink)}details.finished .show{color:var(--ink);font-weight:600}
+.fin-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:0 12px}
+.cc-foot{flex-wrap:wrap}.cc-foot .formerly{font-size:12px}
+.tag{display:inline-block;padding:1px 7px;border-radius:6px;font:600 11.5px var(--font-body);background:var(--paper);border:1px solid var(--line)}.tag.red{background:var(--red);border-color:var(--red);color:var(--on-red)}

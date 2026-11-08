@@ -36,7 +36,7 @@
   {% for g in r.groups %}
   <details class="bgroup" data-key="g" data-val="{{ r.key }}:{{ g.slug }}" data-project="{{ r.key }}" data-slug="{{ g.slug }}"{% if g.is_open %} open{% endif %}>
     <summary><b class="bname" title="{{ g.name }}">{{ g.name }}</b> <span class="bcounts">{{ counts_line(g.counts, g.open) }}</span> {{ top_chip(g.top) }}{% if g.top_ticket %}<a class="btop" href="/ticket/{{ g.top_ticket.id }}" title="{{ g.top_ticket.meta.get('title') }}">{{ g.top_ticket.id }}</a>{% endif %}<span class="muted bgn">{{ g.total }} ticket{{ 's' if g.total != 1 }}</span></summary>
-    <div class="gbody">{% if g.is_open %}{{ columns(g.tickets, s) }}{% endif %}</div>
+    <div class="gbody">{% if g.is_open %}{{ columns(g.tickets, s, r.key, g.slug) }}{% endif %}</div>
   </details>
   {% endfor %}
   </div>
@@ -59,6 +59,14 @@
     if (gs.length) u.searchParams.set("g", gs.join(","));
     history.replaceState(null, "", u);
   }
+  board.addEventListener("click", function (e) {  /* "N more" fills in place; without script the link is a page */
+    var a = e.target.closest && e.target.closest("a[data-more]");
+    if (!a || e.ctrlKey || e.metaKey || e.shiftKey) return;
+    e.preventDefault();
+    a.textContent = "Loading...";
+    fetch(a.href + "&frag=1").then(function (r) { return r.text(); }).then(function (h) { a.insertAdjacentHTML("beforebegin", h); a.remove(); })
+      .catch(function () { a.textContent = "Could not load. Reload the page."; });
+  });
   board.querySelectorAll("details.bproj").forEach(function (d) { d.addEventListener("toggle", sync); });
   board.querySelectorAll("details.bgroup").forEach(function (d) {
     d.addEventListener("toggle", function () {
