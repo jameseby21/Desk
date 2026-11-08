@@ -9,6 +9,8 @@ import re
 
 from markdown_it import MarkdownIt
 from markdown_it.token import Token
+
+from ..docs import DOC_FULL, DOC_RE, slug
 from mdit_py_plugins.tasklists import tasklists_plugin
 
 _md = MarkdownIt("commonmark", {"html": False, "linkify": False, "typographer": False})
@@ -21,11 +23,69 @@ _CHECKBOX = re.compile(r'<input class="task-list-item-checkbox"[^>]*>')
 _COMMENT_LINE = re.compile(r"^[ 	]*<!--.*?-->[ 	]*$", re.M)
 
 
+_WIKI = re.compile(r"\[\[([^\[\]\n]{1,80})\]\]")
+
+
+def _text(content: str) -> Token:
+    t = Token("text", "", 0)
+    t.content = content
+    return t
+
+
+def _spans(content: str, env: dict) -> list[tuple[int, int, str, object]]:
+    """Non-overlapping (start, end, kind, data) link candidates in one run of plain text, left to right."""
+    cands = []
+    known = env.get("known") or {}
+    for m in ID_RE.finditer(content):
+        if m.group(0) in known:
+            cands.append((m.start(), m.end(), "id", m.group(0)))
+    exists = env.get("docs")
+    if exists:
+        for m in DOC_RE.finditer(content):
+            if exists(m.group(0).split("#", 1)[0]):
+                cands.append((m.start(), m.end(), "doc", m.group(0)))
+    if env.get("glossary_on"):
+        for m in _WIKI.finditer(content):
+            cands.append((m.start(), m.end(), "wiki", m.group(1).strip()))
+        rx = env.get("gloss_rx")
+        if rx:
+            for m in rx.finditer(content):
+                cands.append((m.start(), m.end(), "term", m.group(0)))
+    cands.sort(key=lambda c: (c[0], -(c[1] - c[0])))
+    out, end = [], 0
+    for c in cands:
+        if c[0] >= end:
+            out.append(c)
+            end = c[1]
+    return out
+
+
+def _link(href: str, label: str, cls: str, **attrs) -> list[Token]:
+    lo = Token("link_open", "a", 1)
+    lo.attrs = {"href": href, **attrs, "class": cls}
+    return [lo, _text(label), Token("link_close", "a", -1)]
+
+
+def _term_html(shown: str, term: str, definition: str) -> Token:
+    e = html.escape
+    t = Token("html_inline", "", 0)
+    t.content = (f'<span class="gloss" tabindex="0">{e(shown)}<span class="pop" role="tooltip"><b>{e(term)}</b> {e(definition)} '
+                 f'<a href="/doc/glossary.md#{slug(term)}">More</a></span></span>')
+    return t
+
+
 def _autolink(state):
-    """Core rule: a known ticket id in plain text becomes a link to its page. Unknown ids stay text."""
-    known = state.env.get("known")
-    if not known:
+    """Core rule: known ticket ids, store paths that exist, `[[Term]]` and the first use of a glossary term per page become
+    links or popovers. Unknown ids and missing files stay plain text."""
+    env = state.env
+    gl = env.get("glossary") or {}
+    env["glossary_on"] = bool(gl)
+    if gl and "gloss_rx" not in env:
+        terms = sorted((v[0] for v in gl.values()), key=len, reverse=True)
+        env["gloss_rx"] = re.compile(r"(?<![\w-])(?:%s)(?![\w-])" % "|".join(re.escape(x) for x in terms), re.I)
+    if not (env.get("known") or env.get("docs") or gl):
         return
+    seen = env.setdefault("seen", set())
     for block in state.tokens:
         if block.type != "inline" or not block.children:
             continue
@@ -33,37 +93,46 @@ def _autolink(state):
         for tok in block.children:
             if tok.type == "link_open":
                 in_link += 1
+                href = tok.attrGet("href") or ""
+                if env.get("docs") and DOC_FULL.fullmatch(href) and env["docs"](href.split("#", 1)[0]):
+                    tok.attrSet("href", "/doc/" + href)
             elif tok.type == "link_close":
                 in_link -= 1
-            if tok.type != "text" or in_link or not ID_RE.search(tok.content):
+            if tok.type == "code_inline" and not in_link and env.get("docs") and DOC_FULL.fullmatch(tok.content)                     and env["docs"](tok.content.split("#", 1)[0]):
+                out += _link("/doc/" + tok.content, tok.content, "docref")
+                continue
+            if tok.type != "text" or in_link:
                 out.append(tok)
                 continue
             pos = 0
-            for m in ID_RE.finditer(tok.content):
-                info = known.get(m.group(0))
-                if not info:
-                    continue
-                if m.start() > pos:
-                    t = Token("text", "", 0)
-                    t.content = tok.content[pos:m.start()]
-                    out.append(t)
-                lo = Token("link_open", "a", 1)
-                lo.attrs = {"href": f"/ticket/{m.group(0)}", "title": str(info[0]), "data-status": str(info[1]), "class": "tid"}
-                t = Token("text", "", 0)
-                t.content = m.group(0)
-                out += [lo, t, Token("link_close", "a", -1)]
-                pos = m.end()
+            for start, end, kind, data in _spans(tok.content, env):
+                if kind == "term":
+                    key = str(data).lower()
+                    if key in seen or key not in gl:
+                        continue
+                    seen.add(key)
+                if start > pos:
+                    out.append(_text(tok.content[pos:start]))
+                if kind == "id":
+                    info = env["known"][data]
+                    out += _link(f"/ticket/{data}", str(data), "tid", title=str(info[0]), **{"data-status": str(info[1])})
+                elif kind == "doc":
+                    out += _link("/doc/" + str(data), str(data), "docref")
+                elif kind == "wiki":
+                    out += _link(f"/doc/glossary.md#{slug(str(data))}", str(data), "gloss-link")
+                else:
+                    term, definition = gl[str(data).lower()]
+                    out.append(_term_html(str(data), term, definition))
+                pos = end
             if pos < len(tok.content):
-                t = Token("text", "", 0)
-                t.content = tok.content[pos:]
-                out.append(t)
+                out.append(_text(tok.content[pos:]))
         block.children = out
 
 
 def _render_link_open(self, tokens, idx, options, env):
     tok = tokens[idx]
     href = tok.attrGet("href") or ""
-    if href.startswith("/ticket/"):
+    if href.startswith(("/ticket/", "/doc/")):
         return self.renderToken(tokens, idx, options, env)
     if href.startswith("assets/"):
         tok.attrSet("href", "/" + href)
@@ -95,15 +164,29 @@ _md.add_render_rule("image", _render_image)
 _md.add_render_rule("fence", _render_fence)
 
 
-def render(text: str, *, known: dict | None = None, check: dict | None = None, actions=None) -> str:
+def _render_heading_open(self, tokens, idx, options, env):
+    inline = tokens[idx + 1] if idx + 1 < len(tokens) else None
+    if env.get("ids") and inline is not None and inline.type == "inline":
+        tokens[idx].attrSet("id", slug(inline.content))
+    return self.renderToken(tokens, idx, options, env)
+
+
+_md.add_render_rule("heading_open", _render_heading_open)
+
+
+def render(text: str, *, known: dict | None = None, check: dict | None = None, actions=None,
+           docs=None, glossary: dict | None = None, seen: set | None = None, ids: bool = False) -> str:
     """Markdown to HTML for one ticket section.
 
     known:   {ticket id: (title, status)}; those ids become links.
     check:   {"id": ticket id, "section": name}; checkbox lines become real checkboxes that POST to /ticket/<id>/check.
+    docs:    fn(store-relative path) -> bool; existing paths like docs/X.md become links to /doc/<path>.
+    glossary: {lowercase term: (Term, definition)}; the first use of each term in `seen` gets a popover, `[[Term]]` always links.
     actions: optional fn(id, status) -> html appended to a checkbox line that links to a known ticket (review weeks).
     """
     text = text or ""
-    out = _md.render(_COMMENT_LINE.sub("", text), {"known": known or {}})
+    out = _md.render(_COMMENT_LINE.sub("", text), {"known": known or {}, "docs": docs, "glossary": glossary or {},
+                                                  "seen": seen if seen is not None else set(), "ids": ids})
     if not check:
         return out
     from ..ticket import check_lines

@@ -1,0 +1,86 @@
+"""Doc-path links, the read-only /doc viewer, glossary popovers, [[Term]] and Mentioned-in backlinks."""
+
+import pytest
+from fastapi.testclient import TestClient
+
+from desk import docs, ops
+from desk.ui.app import create_app
+
+
+@pytest.fixture
+def doc_store(store):
+    (store.home / "docs").mkdir()
+    (store.home / "docs" / "EDITIONS.md").write_text("# Editions\n\n## Free edition\nText here.\n", encoding="utf-8")
+    (store.home / "glossary.md").write_text("# Glossary\n\n## Ask\nWhat a ticket wants from you.\n\n## Proof\nA run that shows it works.\n", encoding="utf-8")
+    (store.home / "secret.txt").write_text("nope", encoding="utf-8")
+    return store
+
+
+def _client(store):
+    return TestClient(create_app(store.home))
+
+
+def test_doc_path_links_and_opens(doc_store):
+    t = ops.new(doc_store, "Linker", "jre")
+    t.set_section("Context", "See docs/EDITIONS.md#free-edition for it, and docs/MISSING.md too, and `docs/EDITIONS.md`.")
+    doc_store.save(t)
+    c = _client(doc_store)
+    page = c.get(f"/ticket/{t.id}").text
+    assert 'href="/doc/docs/EDITIONS.md#free-edition"' in page and 'href="/doc/docs/EDITIONS.md"' in page
+    assert 'href="/doc/docs/MISSING.md"' not in page and "docs/MISSING.md" in page
+    r = c.get("/doc/docs/EDITIONS.md")
+    assert r.status_code == 200 and 'id="free-edition"' in r.text and "Text here." in r.text
+
+
+@pytest.mark.parametrize("bad", ["../secret.txt", "docs/../../x.md", "..%2fsecret.md", "secret.txt", "docs/nothere.md", "C:/Windows/win.md",
+                                 "jeby-private/x.md", "other/EDITIONS.md", ".desk/x.md", "docs//EDITIONS.md/.."])
+def test_traversal_and_strays_refused(doc_store, bad):
+    assert _client(doc_store).get("/doc/" + bad).status_code == 404
+
+
+def test_resolve_doc_is_store_only(doc_store, tmp_path):
+    outside = tmp_path / "outside.md"
+    outside.write_text("x", encoding="utf-8")
+    assert docs.resolve_doc(doc_store.home, str(outside)) is None
+    assert docs.resolve_doc(doc_store.home, "docs/EDITIONS.md") is not None
+    assert docs.resolve_doc(doc_store.home, "glossary.md") is not None
+
+
+def test_glossary_popover_once_and_wiki_link(doc_store):
+    t = ops.new(doc_store, "Terms", "jre")
+    t.set_section("Context", "An ask is here. Another ask later. Also [[Proof]] and a Proof word.")
+    t.set_section("Outcome", "The ask again, in another section.")
+    doc_store.save(t)
+    page = _client(doc_store).get(f"/ticket/{t.id}").text
+    assert page.count('<span class="gloss"') == 2 and page.count("A run that shows it works.") == 1  # ask and Proof, once each
+    assert page.count("What a ticket wants from you.") == 1
+    assert 'href="/doc/glossary.md#proof"' in page
+    r = _client(doc_store).get("/doc/glossary.md")
+    assert r.status_code == 200 and 'id="ask"' in r.text and '<span class="gloss"' not in r.text
+
+
+def test_wiki_link_always_links(doc_store):
+    t = ops.new(doc_store, "Wiki", "jre")
+    t.set_section("Context", "[[Ask]] one. [[Ask]] two.")
+    doc_store.save(t)
+    page = _client(doc_store).get(f"/ticket/{t.id}").text
+    assert page.count('href="/doc/glossary.md#ask"') == 2
+
+
+def test_mentioned_in_lists_the_right_tickets(doc_store):
+    a = ops.new(doc_store, "Target", "jre")
+    b = ops.new(doc_store, "Mentions target", "jre")
+    c = ops.new(doc_store, "Unrelated", "jre")
+    d = ops.new(doc_store, "Mentions doc", "jre")
+    b.set_section("Context", f"Blocked by {a.id} until later.")
+    d.set_section("Report", "Read projects/jre.md and docs/EDITIONS.md.")
+    for x in (b, d):
+        doc_store.save(x)
+    client = _client(doc_store)
+    page = client.get(f"/ticket/{a.id}").text
+    mentioned = page.split("Mentioned in")[1]
+    assert b.id in mentioned and c.id not in mentioned and d.id not in mentioned
+    assert "No other ticket mentions" in client.get(f"/ticket/{c.id}").text
+    proj = client.get("/doc/projects/jre.md").text.split("Mentioned in")[1]
+    assert d.id in proj and b.id not in proj
+    assert d.id in client.get("/doc/docs/EDITIONS.md").text.split("Mentioned in")[1]

@@ -54,6 +54,9 @@
     <div class="card section"><span class="label">{{ name }}</span><div class="md">{{ render(t.section(name))|safe }}</div></div>
     {% endif %}{% endfor %}
 
+    <div class="card section"><span class="label">Mentioned in</span>
+      {% if mentions %}<ul class="mentions">{% for m in mentions %}<li><a class="tid" href="/ticket/{{ m.id }}" data-status="{{ m.status }}">{{ m.id }}</a> {{ m.meta.get('title') }}</li>{% endfor %}</ul>{% else %}<p class="muted">No other ticket mentions {{ t.id }}.</p>{% endif %}</div>
+
     <div class="card section"><span class="label">Decision</span>
       {% if t.section('Decision') %}<div class="md">{{ render(t.section('Decision'))|safe }}</div>{% else %}<p class="muted">Nothing decided yet.</p>{% endif %}</div>
 

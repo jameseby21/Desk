@@ -15,10 +15,10 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from .. import ops, review as rv, style as styles, tracks as trk, version as ver
+from .. import docs as docsmod, ops, review as rv, style as styles, tracks as trk, version as ver
 from ..config import find_home
 from ..rules import RuleError
-from ..store import Store, id_parts
+from ..store import Store, id_parts, split_profile
 from ..ticket import SECTIONS, STATUSES
 from ..words import screen
 from urllib.parse import quote
@@ -107,8 +107,13 @@ def create_app(home: Path | None = None) -> FastAPI:
 
     def ctx(request: Request, st: Store, **kw) -> dict:
         known = None
+        seen: set = set()
+        gloss = docsmod.glossary(st.home)
 
-        def render(text, t=None, section=None):
+        def exists(rel):
+            return docsmod.resolve_doc(st.home, rel) is not None
+
+        def render(text, t=None, section=None, doc=False):
             """Section markdown with ticket-id links; with `t` and `section`, checkboxes are live."""
             nonlocal known
             if known is None:
@@ -117,7 +122,8 @@ def create_app(home: Path | None = None) -> FastAPI:
             actions = (lambda i, status: review_actions(i, status, t.id)) if check and rv.is_review_ticket(t) else None
             if check:
                 check = {**check, "token": tokens.issue}
-            return md_html(text, known=known, check=check, actions=actions)
+            return md_html(text, known=known, check=check, actions=actions, docs=exists, ids=doc,
+                           glossary={} if doc == 'glossary' else gloss, seen=seen)
 
         return {"render": render, "request": request, "owner": st.owner, "style": styles.load(st.home), "favicon": FAVICON, "home": str(st.home), "today": dt.date.today().isoformat(),
                 "titles": {k: st.project_title(k) for k in st.projects()}, **kw}
@@ -227,8 +233,22 @@ def create_app(home: Path | None = None) -> FastAPI:
             deps.append((str(d), dep.status if dep else "missing"))
         mermaid = any(has_mermaid(t.section(name)) for name in t.sections)
         return templates.TemplateResponse(request, "ticket.html", ctx(request, s, t=t, deps=deps, stale=s.is_stale(t), error=error, s=s,
-                                                             formerly=s.formerly(t), mermaid=mermaid,
+                                                             formerly=s.formerly(t), mermaid=mermaid, mentions=docsmod.mentioned_in(list(by_id.values()), ticket_id=t.id),
                                                              notice=notice(ok, at, dup)))
+
+    @app.get("/doc/{path:path}", response_class=HTMLResponse)
+    def doc(request: Request, path: str):
+        """A Markdown file from the store, read-only. Only the known folders and top-level .md files; nothing outside the store."""
+        s = store()
+        target = docsmod.resolve_doc(s.home, path)
+        if target is None:
+            return HTMLResponse("<p>No such document</p>", status_code=404)
+        rel = target.relative_to(s.home.resolve()).as_posix()
+        meta, body = split_profile(target.read_text(encoding="utf-8"))
+        c = ctx(request, s)
+        mentions = docsmod.mentioned_in(s.tickets(), path=rel)
+        html_body = c["render"](body, doc="glossary" if rel == "glossary.md" else True)
+        return templates.TemplateResponse(request, "doc.html", {**c, "rel": rel, "body_html": html_body, "meta": meta, "mentions": mentions})
 
     def notice(ok: str, at: str, dup: int) -> str:
         if dup:

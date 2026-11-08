@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}Desk · {{ rel }}{% endblock %}
+{% block body %}
+<p style="font-size:14px"><a href="/">Today</a> › <code>{{ rel }}</code> <span class="muted">(read-only; edit the file in your repo)</span></p>
+{% if meta %}<dl class="docmeta">{% for k, v in meta.items() %}<dt>{{ k }}</dt><dd>{{ v if v is string else v|string }}</dd>{% endfor %}</dl>{% endif %}
+<div class="card section"><div class="md">{{ body_html|safe }}</div></div>
+<div class="card section" style="margin-top:14px"><span class="label">Mentioned in</span>
+  {% if mentions %}<ul class="mentions">{% for m in mentions %}<li><a class="tid" href="/ticket/{{ m.id }}" data-status="{{ m.status }}">{{ m.id }}</a> {{ m.meta.get('title') }}</li>{% endfor %}</ul>{% else %}<p class="muted">No ticket mentions {{ rel }}.</p>{% endif %}</div>
+{% endblock %}
