@@ -377,6 +377,48 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         except KeyError:
             return HTMLResponse("<p>No such ticket</p>", status_code=404)
 
+    def card_ticket(s: Store, t) -> str:
+        """The hover card of a ticket id: id, status, project, title, a one-line summary and how much of Acceptance is true."""
+        e = html.escape
+        body = (t.section("Context") or t.section("Outcome")).strip()
+        summary = re.sub(r"\s+", " ", re.sub(r"[`*_>#\[\]]", "", body.split("\n\n")[0]))[:200] if body else ""
+        acc = t.acceptance()
+        facts = [f"{t.meta.get('type')}", f"{t.meta.get('priority')}", f"owner {t.meta.get('owner')}"] + ([f"{sum(1 for ok, _ in acc if ok)} of {len(acc)} accepted"] if acc else [])
+        text = (f'<div class="hc-top"><b class="hc-id">{e(t.id)}</b> <span class="chip {"ball" if t.status == "review" else "red" if t.status == "blocked" else ""}">{e(screen(t.status))} · {e(t.status)}</span> '
+                f'<span class="chip">{e(t.project)}</span></div><p class="hc-title">{e(str(t.meta.get("title") or ""))}</p>'
+                + (f'<p class="hc-body">{e(summary)}</p>' if summary else "") + f'<p class="hc-facts">{e(" · ".join(facts))}</p>')
+        cf = censor_for(s)
+        return cf(text) if cf else text
+
+    def card_doc(s: Store, target: Path) -> str:
+        """The hover card of a store document: its title, path, first paragraph, and the two ways in (read here, edit in VS Code)."""
+        e = html.escape
+        rel = target.relative_to(s.home.resolve()).as_posix()
+        _, md = split_profile(target.read_text(encoding="utf-8"))
+        title = next((ln[2:].strip() for ln in md.splitlines() if ln.startswith("# ")), target.stem)
+        para = next((p for p in re.split(r"\n\s*\n", md) if p.strip() and not p.lstrip().startswith(("#", "|", "```", "<!--", "---"))), "")
+        para = re.sub(r"\s+", " ", re.sub(r"[`*_>#]|\[([^\]]*)\]\([^)]*\)", lambda m: m.group(1) or "", para)).strip()[:260]
+        text = (f'<div class="hc-top"><b>{e(title)}</b></div><p class="hc-facts"><code>{e(rel)}</code></p>' + (f'<p class="hc-body">{e(para)}</p>' if para else "")
+                + f'<p class="hc-links"><a href="/doc/{e(quote(rel, safe="/"))}">Read here</a> <a class="vsc" href="{e(docsmod.vscode_url(target))}">Edit in VS Code</a></p>')
+        cf = censor_for(s)
+        return cf(text) if cf else text
+
+    @app.get("/card/ticket/{ticket_id}", response_class=HTMLResponse)
+    def card_for_ticket(ticket_id: str):
+        s = store()
+        try:
+            return HTMLResponse(card_ticket(s, s.get(ticket_id)))
+        except KeyError:
+            return HTMLResponse("<p>No such ticket</p>", status_code=404)
+
+    @app.get("/card/doc/{path:path}", response_class=HTMLResponse)
+    def card_for_doc(path: str):
+        s = store()
+        target = docsmod.resolve_doc(s.home, path)
+        if target is None:
+            return HTMLResponse("<p>No such document</p>", status_code=404)
+        return HTMLResponse(card_doc(s, target))
+
     @app.get("/ticket/{ticket_id}", response_class=HTMLResponse)
     def ticket(request: Request, ticket_id: str, error: str | None = None):
         s = store()
@@ -392,7 +434,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         mermaid = any(has_mermaid(t.section(name)) for name in t.sections)
         return templates.TemplateResponse(request, "ticket.html", ctx(request, s, t=t, deps=deps, stale=s.is_stale(t), error=error, s=s,
                                                              formerly=s.formerly(t), mermaid=mermaid, mentions=docsmod.mentioned_in(list(by_id.values()), ticket_id=t.id),
-                                                             owning=docsmod.owning_docs(s, t), source_doc=source_doc(s, t), acc_lines=[(i + 1, c.text) for i, c in enumerate(parse_checks(t.section("Acceptance")))], dod=dod_view(s, t), reply_ask=reply_ask(s, t), **nav_view(s, t), events_url=f"/events/{t.id}", events_since=ev.ticket_stamp(s, t.id)))
+                                                             owning=docsmod.owning_docs(s, t), source_doc=source_doc(s, t), acc_lines=[(i + 1, c.text) for i, c in enumerate(parse_checks(t.section("Acceptance")))], dod=dod_view(s, t), reply_ask=reply_ask(s, t), doc_links=doc_links(s, t), **nav_view(s, t), events_url=f"/events/{t.id}", events_since=ev.ticket_stamp(s, t.id)))
 
     def nav_view(s: Store, t) -> dict:
         """Previous and Next for this ticket in the walk this person chose (scope and order, kept in .desk/settings.toml)."""
@@ -449,6 +491,17 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
                 it["body"] = body
                 it["edit_url"] = docsmod.vscode_url(target)
         return d
+
+    def doc_links(s: Store, t) -> dict:
+        """{text as written in docs_to_update: {path, edit_url}} for each entry that is a Markdown file that exists."""
+        out = {}
+        for d in t.meta.get("docs_to_update") or []:
+            d = str(d)
+            res = docsmod.resolve_for(s, t.project, d)[0] if d.split("#", 1)[0].lower().endswith(".md") else None
+            target = docsmod.resolve_doc(s.home, res.split("#", 1)[0]) if res else None
+            if target:
+                out[d] = {"path": res, "edit_url": docsmod.vscode_url(target)}
+        return out
 
     def source_doc(s: Store, t) -> list[dict]:
         """Each path of `source:` (several may be separated by `;` or `,`), resolved against the store root then the repo."""

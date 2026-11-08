@@ -226,3 +226,7 @@ li.task-list-item:focus-visible{outline:3px solid var(--focus);outline-offset:2p
 .tnav .pos{font-weight:600;font-variant-numeric:tabular-nums}.tnav .btn.off{opacity:.45;cursor:default}
 .navpick{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-left:auto}.navpick label{display:inline-flex;align-items:center;gap:6px;color:var(--muted)}
 .navpick select{width:auto;padding:4px 8px;font-size:13px}
+/* DESK-0085: hover cards on ticket ids and document links */
+.hcard{position:absolute;z-index:40;width:max-content;max-width:340px;padding:10px 12px;border:1.5px solid var(--ink);border-radius:12px;background:var(--card);color:var(--ink);box-shadow:4px 4px 0 var(--ball);font-size:13.5px;line-height:1.4}
+.hcard p{margin:6px 0 0}.hcard .hc-top{display:flex;flex-wrap:wrap;gap:6px;align-items:center}.hcard .hc-id{font-family:var(--font-mono);font-size:13px}
+.hcard .hc-title{font-weight:700}.hcard .hc-body{color:var(--muted)}.hcard .hc-facts{font:12px var(--font-mono);color:var(--muted)}.hcard .hc-links{display:flex;gap:10px;align-items:center}
