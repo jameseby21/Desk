@@ -147,3 +147,36 @@ def test_project_term_links_to_project_doc(repo_store):
     repo_store.save(t)
     page = _client(repo_store).get(f"/ticket/{t.id}").text
     assert page.count("jeby%20Real%20Estate/docs/ARCH.md#lot") >= 2 and "/doc/glossary.md#lot" not in page
+
+
+def test_resolver_prefers_root_then_repo(repo_store):
+    # docs/EDITIONS.md exists at the store root; docs/ARCH.md only inside the project's repo folder
+    assert docs.resolve_for(repo_store, "jre", "docs/EDITIONS.md") == ("docs/EDITIONS.md", ["docs/EDITIONS.md", "jeby Real Estate/docs/EDITIONS.md"])
+    res, tried = docs.resolve_for(repo_store, "jre", "docs/ARCH.md#layers")
+    assert res == "jeby Real Estate/docs/ARCH.md#layers" and tried[0] == "docs/ARCH.md"
+    assert docs.resolve_for(repo_store, "algo", "docs/ARCH.md")[0] is None  # another project's repo does not apply
+
+
+def test_repo_key_and_known_folder(repo_store):
+    (repo_store.home / "Algo" / "docs").mkdir(parents=True)
+    (repo_store.home / "Algo" / "docs" / "ROADMAP.md").write_text("# Roadmap\n", encoding="utf-8")
+    assert docs.resolve_for(repo_store, "algo", "docs/ROADMAP.md")[0] == "Algo/docs/ROADMAP.md"  # known folder, no profile
+    (repo_store.home / "other" / "docs").mkdir(parents=True)
+    (repo_store.home / "other" / "docs" / "X.md").write_text("# X\n", encoding="utf-8")
+    (repo_store.projects_dir / "jre.md").write_text("---\nkey: jre\nrepo: other\n---\n# jRE\n", encoding="utf-8")
+    assert docs.resolve_for(repo_store, "jre", "docs/X.md")[0] == "other/docs/X.md"
+
+
+def test_repo_relative_link_renders_and_multi_source(repo_store):
+    from desk.rules import validate_store
+
+    t = ops.new(repo_store, "Backfilled", "jre")
+    t.meta["source"] = "docs/ARCH.md#lot; docs/README.md, docs/NOWHERE.md"
+    t.set_section("Context", "See docs/ARCH.md#layers.")
+    repo_store.save(t)
+    page = _client(repo_store).get(f"/ticket/{t.id}").text
+    assert 'href="/doc/jeby%20Real%20Estate/docs/ARCH.md#layers"' in page
+    assert 'href="/doc/jeby%20Real%20Estate/docs/ARCH.md#lot"' in page and 'href="/doc/jeby%20Real%20Estate/docs/README.md"' in page
+    _, warnings = validate_store(repo_store)
+    mine = [w for w in warnings if w.startswith(t.id)]
+    assert len(mine) == 1 and "docs/NOWHERE.md" in mine[0] and "tried: docs/NOWHERE.md, jeby Real Estate/docs/NOWHERE.md" in mine[0]

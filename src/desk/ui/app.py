@@ -133,7 +133,10 @@ def create_app(home: Path | None = None) -> FastAPI:
             actions = (lambda i, status: review_actions(i, status, t.id)) if check and rv.is_review_ticket(t) else None
             if check:
                 check = {**check, "token": tokens.issue}
+            owner_t = t if t is not None else kw.get("t")
+            project = getattr(owner_t, "project", "") or ""
             return md_html(text, known=known, check=check, actions=actions, docs=exists, ids=doc,
+                           resolve=lambda p: docsmod.resolve_for(st, project, p)[0],
                            glossary={} if doc == 'glossary' else gloss, seen=seen)
 
         return {"render": render, "request": request, "owner": st.owner, "style": styles.load(st.home), "favicon": FAVICON, "home": str(st.home), "today": dt.date.today().isoformat(),
@@ -267,11 +270,14 @@ def create_app(home: Path | None = None) -> FastAPI:
         return templates.TemplateResponse(request, "doc.html", {**c, "rel": rel, "body_html": html_body, "meta": meta, "mentions": mentions,
                                                                "edit_url": docsmod.vscode_url(target), "doc_index": index})
 
-    def source_doc(s: Store, t) -> dict | None:
-        src = str(t.meta.get("source") or "").strip()
-        base = src.split("#", 1)[0]
-        target = docsmod.resolve_doc(s.home, base) if base.lower().endswith(".md") else None
-        return {"path": src, "edit_url": docsmod.vscode_url(target)} if target else None
+    def source_doc(s: Store, t) -> list[dict]:
+        """Each path of `source:` (several may be separated by `;` or `,`), resolved against the store root then the repo."""
+        out = []
+        for part in docsmod.split_sources(t.meta.get("source")):
+            res = docsmod.resolve_for(s, t.project, part)[0] if part.split("#", 1)[0].lower().endswith(".md") else None
+            target = docsmod.resolve_doc(s.home, res.split("#", 1)[0]) if res else None
+            out.append({"text": part, "path": res, "edit_url": docsmod.vscode_url(target)} if target else {"text": part, "path": None})
+        return out
 
     def notice(ok: str, at: str, dup: int) -> str:
         if dup:

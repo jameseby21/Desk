@@ -33,6 +33,15 @@ def _text(content: str) -> Token:
     return t
 
 
+def _res(env: dict, text: str) -> str | None:
+    """The store-relative path (anchor kept) a doc reference in the text points at, or None when it resolves nowhere."""
+    fn = env.get("resolve")
+    if fn:
+        return fn(text)
+    exists = env.get("docs")
+    return text if exists and exists(text.split("#", 1)[0]) else None
+
+
 def _spans(content: str, env: dict) -> list[tuple[int, int, str, object]]:
     """Non-overlapping (start, end, kind, data) link candidates in one run of plain text, left to right."""
     cands = []
@@ -40,10 +49,9 @@ def _spans(content: str, env: dict) -> list[tuple[int, int, str, object]]:
     for m in ID_RE.finditer(content):
         if m.group(0) in known:
             cands.append((m.start(), m.end(), "id", m.group(0)))
-    exists = env.get("docs")
-    if exists:
+    if env.get("docs"):
         for m in DOC_RE.finditer(content):
-            if exists(m.group(0).split("#", 1)[0]):
+            if _res(env, m.group(0)):
                 cands.append((m.start(), m.end(), "doc", m.group(0)))
     if env.get("glossary_on"):
         for m in _WIKI.finditer(content):
@@ -105,9 +113,10 @@ def _autolink(state):
             if tok.type == "link_open":
                 in_link += 1
                 href = unquote(tok.attrGet("href") or "")
-                if env.get("docs") and DOC_FULL.fullmatch(href) and env["docs"](href.split("#", 1)[0]):
-                    tok.attrSet("href", "/doc/" + quote(href, safe="/#"))
-                    edits.append(href)
+                res = _res(env, href) if env.get("docs") and DOC_FULL.fullmatch(href) else None
+                if res:
+                    tok.attrSet("href", "/doc/" + quote(res, safe="/#"))
+                    edits.append(res)
                 else:
                     edits.append("")
             elif tok.type == "link_close":
@@ -117,9 +126,11 @@ def _autolink(state):
                 if last:
                     out += _edit_link(env, last)
                 continue
-            if tok.type == "code_inline" and not in_link and env.get("docs") and DOC_FULL.fullmatch(tok.content)                     and env["docs"](tok.content.split("#", 1)[0]):
-                out += _link("/doc/" + quote(tok.content, safe="/#"), tok.content, "docref") + _edit_link(env, tok.content)
-                continue
+            if tok.type == "code_inline" and not in_link and env.get("docs") and DOC_FULL.fullmatch(tok.content):
+                res = _res(env, tok.content)
+                if res:
+                    out += _link("/doc/" + quote(res, safe="/#"), tok.content, "docref") + _edit_link(env, res)
+                    continue
             if tok.type != "text" or in_link:
                 out.append(tok)
                 continue
@@ -136,7 +147,8 @@ def _autolink(state):
                     info = env["known"][data]
                     out += _link(f"/ticket/{data}", str(data), "tid", title=str(info[0]), **{"data-status": str(info[1])})
                 elif kind == "doc":
-                    out += _link("/doc/" + quote(str(data), safe="/#"), str(data), "docref") + _edit_link(env, str(data))
+                    res = _res(env, str(data)) or str(data)
+                    out += _link("/doc/" + quote(res, safe="/#"), str(data), "docref") + _edit_link(env, res)
                 elif kind == "wiki":
                     entry = gl.get(str(data).lower())
                     href = entry[2] if entry and len(entry) > 2 and entry[2] else f"/doc/glossary.md#{slug(str(data))}"
@@ -196,17 +208,18 @@ _md.add_render_rule("heading_open", _render_heading_open)
 
 
 def render(text: str, *, known: dict | None = None, check: dict | None = None, actions=None,
-           docs=None, glossary: dict | None = None, seen: set | None = None, ids: bool = False) -> str:
+           docs=None, resolve=None, glossary: dict | None = None, seen: set | None = None, ids: bool = False) -> str:
     """Markdown to HTML for one ticket section.
 
     known:   {ticket id: (title, status)}; those ids become links.
     check:   {"id": ticket id, "section": name}; checkbox lines become real checkboxes that POST to /ticket/<id>/check.
-    docs:    fn(store-relative path) -> bool; existing paths like docs/X.md become links to /doc/<path>.
+    docs:    fn(store-relative path) -> Path or None; existing paths like docs/X.md become links to /doc/<path>.
+    resolve: fn(path as written) -> store-relative path (anchor kept) or None; lets a project-relative path link to its real file.
     glossary: {lowercase term: (Term, definition)}; the first use of each term in `seen` gets a popover, `[[Term]]` always links.
     actions: optional fn(id, status) -> html appended to a checkbox line that links to a known ticket (review weeks).
     """
     text = text or ""
-    out = _md.render(_COMMENT_LINE.sub("", text), {"known": known or {}, "docs": docs, "glossary": glossary or {},
+    out = _md.render(_COMMENT_LINE.sub("", text), {"known": known or {}, "docs": docs, "resolve": resolve, "glossary": glossary or {},
                                                   "seen": seen if seen is not None else set(), "ids": ids})
     if not check:
         return out

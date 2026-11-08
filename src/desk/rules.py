@@ -175,8 +175,8 @@ def validate_store(store: "Store") -> tuple[list[str], list[str]]:
         warnings += w
         from .docs import dead_links  # local import: docs depends on ticket only, keep rules import-light
 
-        for link in dead_links(store, t):
-            warnings.append(f"{t.id}: doc link `{link}` points at a file that does not exist (drift)")
+        for link, tried in dead_links(store, t):
+            warnings.append(f"{t.id}: doc link `{link}`: dead link (tried: {', '.join(tried)})")
         if t.status == "done":
             for dep in t.meta.get("depends_on") or []:
                 d = by_id.get(str(dep))

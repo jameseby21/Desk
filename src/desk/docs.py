@@ -110,16 +110,46 @@ def mentioned_in(tickets: list[Ticket], *, ticket_id: str = "", path: str = "") 
 
 # -- a project's own indexes (read, never generated) ----------------------------------------------
 
+KNOWN_REPOS = {"jre": "jeby Real Estate", "musicalgames": "Games/MusicalGames", "algo": "Algo", "temujin": "Temujin",
+               "desk": "desk", "standards": "standards", "jeby-us": "jeby-us"}
+
+
 def repo_dir(store, project: str) -> str:
-    """The project's repo folder inside the store: `repo:` in its profile, else the first column of a `| Repo |` table row.
-    Empty when the profile names none or the folder is not in the store."""
+    """The project's repo folder inside the store: `repo:` in its profile, else the first path of a `| Repo |` table row
+    (cut at ` →` or `(`; its first segment is tried too), else a known folder for the project. Empty when none exists."""
     meta, body = store.project_profile(project)
     raw = str(meta.get("repo") or "")
     if not raw:
         m = re.search(r"^\|\s*Repo\s*\|\s*([^|\n]+)", body, re.M)
         raw = m.group(1) if m else ""
-    raw = raw.split("→")[0].split("->")[0].strip().strip("`").strip("/")
-    return raw if raw and (store.home / raw).is_dir() and ".." not in raw else ""
+    raw = raw.split("→")[0].split("->")[0].split("(")[0].strip().strip("`").strip("/").strip()
+    cands = [raw, raw.split("/")[0].strip()] if raw else []
+    if project in KNOWN_REPOS:
+        cands.append(KNOWN_REPOS[project])
+    for c in cands:
+        if c and ".." not in c and (store.home / c).is_dir():
+            return c
+    return ""
+
+
+def resolve_for(store, project: str, path: str) -> tuple[str | None, list[str]]:
+    """Resolve a doc path written in a ticket: first the store root, then the project's repo folder. Returns
+    (store-relative path with any #anchor kept, or None) and the store-relative paths tried (anchor dropped)."""
+    base, sep, anchor = (path or "").strip().replace("\\", "/").partition("#")
+    base = base.strip("/")
+    tried = [base]
+    repo = repo_dir(store, project) if project else ""
+    if repo and not base.startswith(repo + "/"):
+        tried.append(f"{repo}/{base}")
+    for c in tried:
+        if resolve_doc(store.home, c):
+            return c + sep + anchor, tried
+    return None, tried
+
+
+def split_sources(src: str) -> list[str]:
+    """A `source:` value may hold several paths separated by `;` or `,`."""
+    return [p.strip() for p in re.split(r"[;,]", str(src or "")) if p.strip()]
 
 
 def glob_re(glob: str) -> re.Pattern:
@@ -227,21 +257,23 @@ _FENCE = re.compile(r"```.*?```", re.S)
 _MDLINK = re.compile(r"\]\(([^)\s]+?\.md(?:#[-\w]+)?)\)")
 
 
-def dead_links(store, t: Ticket) -> list[str]:
-    """Doc paths a ticket links to (in its body or `source:`) whose file does not exist. Only paths that start in a folder
-    of the store count, and placeholders such as `projects/<key>.md` are ignored."""
+def dead_links(store, t: Ticket) -> list[tuple[str, list[str]]]:
+    """(path, tried) for doc paths a ticket links to (in its body or `source:`) that resolve nowhere: not under the store
+    root, not under the project's repo folder. Only paths that start in a folder of the store count, and placeholders such
+    as `projects/<key>.md` are ignored."""
     tops = {p.name for p in store.home.iterdir() if p.is_dir() and not p.name.startswith(".")} | set(DOC_DIRS)
     text = _FENCE.sub("", body_text(t))
     cands = [m.group(0) for m in DOC_RE.finditer(text)] + [m.group(1) for m in _MDLINK.finditer(text)]
-    src = str(t.meta.get("source") or "").strip()
-    if src.split("#", 1)[0].lower().endswith(".md") and "/" in src:
-        cands.append(src)
-    dead = []
+    cands = [c for c in cands if c.split("/", 1)[0] in tops]
+    for src in split_sources(t.meta.get("source")):  # an explicit source: is checked whatever its first folder
+        if src.split("#", 1)[0].lower().endswith(".md") and "/" in src:
+            cands.append(src)
+    dead, seen = [], set()
     for c in cands:
         if c.startswith(("http://", "https://", "/")) or any(ch in c for ch in "<>*{}$"):
             continue
-        if c.split("/", 1)[0] not in tops:
-            continue
-        if resolve_doc(store.home, c.split("#", 1)[0]) is None and c not in dead:
-            dead.append(c)
+        res, tried = resolve_for(store, t.project, c)
+        if res is None and c not in seen:
+            seen.add(c)
+            dead.append((c, tried))
     return dead
