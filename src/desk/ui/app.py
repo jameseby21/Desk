@@ -19,7 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from .. import timing
-from .. import asks, nav as navmod, buildstamp as bs, comments as cm, docs as docsmod, ops, profanity, review as rv, style as styles, tracks as trk, version as ver
+from .. import asks, nav as navmod, needs_me as nmod, buildstamp as bs, comments as cm, docs as docsmod, ops, profanity, review as rv, style as styles, tracks as trk, version as ver
 from ..config import find_home
 from ..rules import RuleError
 from ..store import Store, id_parts, split_profile
@@ -275,7 +275,12 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
             stale = []
         combos = combos_for(ts) if s.combos else []
         asked = cm.query(s, author=s.owner, unanswered=True)
-        return templates.TemplateResponse(request, "today.html", ctx(request, s, asked=asked, mouth=by_project(mouth), feet=by_project(feet + decisions),
+        nm = nmod.build(s, tickets=ts)
+        style_name = styles.load(s.home)["name"]
+        head, body = nmod.empty_words(style_name)
+        back = "/" + ("?" + "&".join(x for x in (f"cap={cap}" if cap != "normal" else "", f"track={track}" if track else "") if x) if (cap != "normal" or track) else "")
+        return templates.TemplateResponse(request, "today.html", ctx(request, s, asked=asked, nm=nm, empty_head=head, empty_body=body, back=back,
+                                                             all_open_href="/board" + (f"?track={track}" if track else ""), n_open=sum(1 for t in ts if t.is_open), mouth=by_project(mouth), feet=by_project(feet + decisions),
                                                              others=by_project(others), stale=by_project(stale),
                                                              decided=by_project(decided), cap=cap, s=s, combos=combos, review_line=review_line,
                                                              chips=chips, track=track, chip_base="/", chip_extra=f"cap={cap}", events_url="/events", events_since=ev.tickets_stamp(s)))
@@ -320,7 +325,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         return RedirectResponse("/settings?saved=1", status_code=303)
 
     @app.get("/board", response_class=HTMLResponse)
-    def board(request: Request, project: str | None = None, track: str = "", assignee: str = ""):
+    def board(request: Request, project: str | None = None, track: str = "", assignee: str = "", needs: str = ""):
         s = store()
         ts = [t for t in s.tickets() if not project or t.project == project]
         achips = assignee_chips(ts)
@@ -329,9 +334,17 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         chips = trk.track_chips(ts)
         if track:
             ts = [t for t in ts if trk.track_of(t) and trk.track_slug(trk.track_of(t)) == track]
+        nm_items = {i.id: i for i in nmod.build(s, tickets=ts)}  # Needs me (DESK-0149): the same set as Today's first block
+        needs = "1" if needs == "1" else ""
+        if needs:
+            ts = [t for t in ts if t.id in nm_items]
+        keep = [f"project={project}" if project else "", f"assignee={quote(assignee)}" if assignee else "", f"track={track}" if track else ""]
+        keep = [x for x in keep if x]
+        href = lambda extra: "/board" + ("?" + "&".join(keep + extra) if keep or extra else "")  # noqa: E731
         cols = [(st, by_project([t for t in ts if t.status == st])) for st in STATUSES]
         return templates.TemplateResponse(request, "board.html", ctx(request, s, cols=cols, project=project, projects=sorted(s.projects()), s=s,
-                                                           chips=chips, track=track, chip_base="/board", chip_extra="&".join(x for x in (f"project={project}" if project else "", f"assignee={quote(assignee)}" if assignee else "") if x),
+                                                           chips=chips, track=track, chip_base="/board", chip_extra="&".join(x for x in (f"project={project}" if project else "", f"assignee={quote(assignee)}" if assignee else "", "needs=1" if needs else "") if x),
+                                                           needs=needs, nm_items=nm_items, nm_count=len(nm_items), needs_href=href(["needs=1"]), all_href=href([]),
                                                            achips=achips, assignee=assignee, abase="/board", aextra=f"project={project}" if project else "", events_url="/events", events_since=ev.tickets_stamp(s)))
 
     @app.get("/projects", response_class=HTMLResponse)
@@ -585,6 +598,17 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
             "<!doctype html><meta charset=utf-8><title>Already sent</title><body style=\"font:16px system-ui;max-width:40em;margin:3em auto;padding:0 1em\">"
             "<h1>That form was already sent</h1><p>This button works once, so a double click or a refresh can not post twice. "
             f"Nothing more was written.</p><p><a href=\"/ticket/{e}\">Back to {e}</a></p></body>", status_code=409)
+
+    @app.post("/needs-me/seen")
+    def post_needs_seen(ids: list[str] = Form([]), every: str = Form("", alias="all"), next: str = Form("/"), token: str = Form("")):
+        """Mark seen (DESK-0149): clears changes, never asks. `all=1` marks every change on the list; `ids` marks the named tickets."""
+        if not tokens.use(token):
+            return _spent("")
+        s = store()
+        want = {i.upper() for i in ids}
+        items = [i for i in nmod.build(s) if i.group == "change" and (every or i.id in want)]
+        nmod.mark(s, [i.ticket for i in items])
+        return RedirectResponse(next if re.fullmatch(r"/[A-Za-z0-9_?=&%.\-]*", next or "") else "/", status_code=303)
 
     @app.post("/ticket/{ticket_id}/decide")
     def post_decide(request: Request, ticket_id: str, action: str = Form(""), words: str = Form(""), next: str = Form(""), token: str = Form(""),

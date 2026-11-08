@@ -46,7 +46,15 @@ def move(store: Store, t: Ticket, new: str, *, actor: str | None = None, reason:
     if note:
         t.append_line("Comments", _stamp(actor or "desk", note))
     store.save(t)
+    _acted(store, t, actor)
     return t
+
+
+def _acted(store: Store, t: Ticket, actor: str | None) -> None:
+    """The store's owner just acted on `t`: Needs me (DESK-0149) compares later changes against this moment."""
+    from . import needs_me
+
+    needs_me.record_action(store, t, actor)
 
 
 def new(store: Store, title: str, project: str, type_: str = "feature", **kw) -> Ticket:
@@ -148,6 +156,7 @@ def toggle_check(store: Store, ticket_id: str, section: str, index: int, checked
     parts[c.first:c.last + 1] = render_check(c)
     t.sections[section] = "\n".join(parts)
     store.save(t)
+    _acted(store, t, actor)
     return t
 
 
@@ -201,6 +210,7 @@ def unblock(store: Store, t: Ticket, actor: str | None = None, to: str | None = 
     t.meta.pop("blocked_from", None)
     t.append_line("Comments", _stamp(actor or "desk", f"unblocked → {target}"))
     store.save(t)
+    _acted(store, t, actor)
     return t
 
 
@@ -272,6 +282,7 @@ def comment(store: Store, t: Ticket, text: str, actor: str | None = None, kind: 
         return CommentResult(t, False)
     t.append_line("Comments", _stamp(who, f"{text.strip()} <!-- kind: {kind} -->", at_time=True))
     store.save(t)
+    _acted(store, t, who)
     return CommentResult(t, True)
 
 

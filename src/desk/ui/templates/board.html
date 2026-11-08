@@ -6,11 +6,15 @@
   <h1>The board{% if project %} · {{ titles.get(project, project) }} <span class="chip">{{ project }}</span>{% endif %}</h1>
   <div class="row"><a class="btn" href="/board">All</a>{% for p in projects %}<a class="btn{% if p == project %} ball{% endif %}" href="/board?project={{ p }}" title="{{ titles.get(p, p) }}">{{ p }}</a>{% endfor %}</div>
 </div>
+<div class="row trackchips"><span class="label">Show</span>
+  <a class="nmchip{% if needs %} on{% endif %}" href="{{ needs_href }}">Needs me · {{ nm_count }}</a>
+  <a class="nmchip{% if not needs %} on{% endif %}" href="{{ all_href }}">All open</a>
+</div>
 {{ abar(achips, assignee, abase, aextra) }}
 {{ bar(chips, track, chip_base, chip_extra) }}
 <div class="board">
 {% for st, items in cols %}
-  {% if items or st in ['ready','in_progress','review'] %}
+  {% if items or (not needs and st in ['ready','in_progress','review']) %}
   <div class="col">
     <h3><span>{{ screen(st) }} <span class="muted" style="font-weight:400">{{ st }}</span></span><span>{{ items|length }}</span></h3>
     {% for t in items %}
@@ -18,6 +22,7 @@
       <span class="chip">{{ t.id }}</span>{% if s.formerly(t) %} <span class="muted formerly">(formerly {{ s.formerly(t) }})</span>{% endif %} <span class="chip">{{ t.meta.get('priority') }}</span> <span class="chip ty ty-{{ t.meta.get('type') }}">{{ t.meta.get('type') }}</span>{% if s.is_stale(t) %} <span class="chip red">{{ screen('stale') }}</span>{% endif %}
       <div style="font-weight:600;margin-top:6px">{{ t.meta.get('title') }}</div>
       <div class="muted" style="font-size:12.5px" title="{{ titles.get(t.project, t.project) }}">{{ t.project }} · {{ t.meta.get('owner') }}</div>
+      {% if needs and nm_items.get(t.id) %}<div class="nm-why under">{{ nm_items[t.id].why }}</div>{% endif %}
     </div></a>
     {% endfor %}
   </div>
