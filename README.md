@@ -173,6 +173,8 @@ uv sync
 uv run pytest
 ```
 
+Architecture: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)
+
 ## License
 
 MIT, copyright JA Insights LLC.
