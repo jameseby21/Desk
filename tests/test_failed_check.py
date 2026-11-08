@@ -1,5 +1,7 @@
 """DESK-0091: the third checkbox state `- [!]`, tried and failed."""
 
+import re
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -45,15 +47,17 @@ def test_two_boxes_right_aligned_done_and_not_accepted_with_reason(store):
     assert "error=" in r.headers["location"]
     # with a reason the same line carries the suffix, and the page shows it in red
     assert "error" not in _post(c, t, index=0, state="!", reason="Wrong colour").headers["location"]
-    assert store.get(t.id).sections["Acceptance"].split("\n")[0] == "- [!] one — not accepted: Wrong colour"
+    first = store.get(t.id).sections["Acceptance"].split("\n")[:2]  # DESK-0120: byline comment, then the quoted reason
+    assert re.fullmatch(r"- \[!\] one  <!-- by james \d{4}-\d\d-\d\dT\d\d:\d\d -->", first[0]) and first[1] == "  > Not accepted (must fix): Wrong colour"
     page = c.get(f"/ticket/{t.id}").text
-    assert '<div class="nr-reason">Not accepted: Wrong colour</div>' in page and "— not accepted" not in page.split("Acceptance (this")[1].split("Done means")[0]
+    acc = page.split("Acceptance (this")[1].split("Done means")[0]
+    assert re.search(r'<div class="nr-reason".*?<span class="why">Wrong colour</span>', acc, re.S) and "— not accepted" not in acc and "> Not accepted" not in acc
     # unchecking returns to [ ] and removes the suffix
     assert "error" not in _post(c, t, index=0, state=" ").headers["location"]
     assert store.get(t.id).sections["Acceptance"].split("\n")[0] == "- [ ] one"
     # How to validate lines work the same way
     ops.toggle_check(store, t.id, "How to validate", 0, "!", reason="not there")
-    assert store.get(t.id).sections["How to validate"].strip() == "- [!] open it — not accepted: not there"
+    assert store.get(t.id).sections["How to validate"].strip().split("\n")[1] == "  > Not accepted (must fix): not there"
     with pytest.raises(ValueError):
         ops.toggle_check(store, t.id, "How to validate", 0, "!")
     ops.toggle_check(store, t.id, "Acceptance", 0)  # None flips open <-> done

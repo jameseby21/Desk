@@ -22,7 +22,6 @@ _md.use(tasklists_plugin, enabled=False)  # checkboxes render disabled; the file
 ID_RE = re.compile(r"(?<![A-Za-z0-9-])[A-Z]{2,10}-\d{4}(?!\d)")
 _CHECKBOX = re.compile(r'<input class="task-list-item-checkbox"[^>]*>')
 _COMMENT_LINE = re.compile(r"^[ 	]*<!--.*?-->[ 	]*$", re.M)
-_CHECK_HEAD = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+\[[ xX!]\]\s*")
 _TICK = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#141414" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>'
 _CROSS = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="3.6" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>'
 
@@ -260,26 +259,27 @@ def render(text: str, *, known: dict | None = None, check: dict | None = None, a
     """
     text = text or ""
     from ..ops import press
-    from ..ticket import check_states, split_reason
+    from ..ticket import DEFAULT_SEVERITY, SEVERITIES, parse_checks
 
-    states = check_states(text)
-    lines = text.split("\n")
-    reasons: dict[int, str] = {}  # box index -> the reason written after ` — not accepted:` on a `[!]` line
-    labels: dict[int, str] = {}  # box index -> the line's own words, for the buttons' accessible names
-    for i, (n, st) in enumerate(states):
-        body, why = split_reason(lines[n])
-        labels[i] = " ".join(re.sub(_CHECK_HEAD, "", body).split())[:120]
-        if st == "!":  # `[!]` is ours, not the task-list plugin's: render it as done, then restyle it below
-            reasons[i] = why
-            lines[n] = body.replace("[!]", "[x]", 1)
-    if reasons:
-        text = "\n".join(lines)
-    out = _md.render(_COMMENT_LINE.sub("", text), {"known": known or {}, "docs": docs, "resolve": resolve, "glossary": glossary or {},
-                                                  "seen": seen if seen is not None else set(), "ids": ids, "censor": censor})
-    failed = any(st == "!" for _, st in states)
+    checks = parse_checks(text)
+    by_first = {c.first: c for c in checks}
+    kept, i = [], 0
+    src = text.split("\n")
+    while i < len(src):  # what markdown sees: the line's words only. Byline, quoted reason and evidence lines are drawn below.
+        c = by_first.get(i)
+        if c is None:
+            kept.append(src[i])
+            i += 1
+            continue
+        kept.append(f"{c.head}{'x' if c.state == '!' else c.state}{c.mid}{c.text}")  # a `[!]` goes through the task-list plugin as done
+        kept += c.extra
+        i = c.last + 1
+    out = _md.render(_COMMENT_LINE.sub("", "\n".join(kept)), {"known": known or {}, "docs": docs, "resolve": resolve, "glossary": glossary or {},
+                                                              "seen": seen if seen is not None else set(), "ids": ids, "censor": censor})
+    failed = any(c.state == "!" for c in checks)
     if not check and not failed:
         return out
-    n = len(states)
+    n = len(checks)
     if len(_CHECKBOX.findall(out)) != n:  # cannot map boxes to lines safely: leave them read-only
         return out
     counter = iter(range(n))
@@ -288,38 +288,46 @@ def render(text: str, *, known: dict | None = None, check: dict | None = None, a
 
     def box(m):
         i = next(counter)
-        st = states[i][1]
-        mark = ""
+        c = checks[i]
+        st = c.state
         under = ""
         if st == "!":
-            why = (censor(reasons[i]) if censor else reasons[i])
-            under = f'<div class="nr-reason">Not accepted: {e(why)}</div>' if why else '<div class="nr-reason">Not accepted</div>'
+            why = (censor(c.reason) if censor else c.reason)
+            under = _reason_html(c, why, editable=bool(check))
+        elif c.evidence:
+            under = f'<div class="ev-count">{_shots(len(c.evidence))}</div>'
         if not check:
             if st == "!":
-                mark = f"@@NR{i}@@"
-                pending[mark] = under
-                return f'<span class="chk-failed" role="img" aria-label="not accepted">&#10007;</span>{mark}'
+                pending[f"@@NR{i}@@"] = under
+                return f'<span class="chk-failed" role="img" aria-label="not accepted">&#10007;</span>@@NR{i}@@'
             return m.group(0)
         sec, tid = e(check["section"]), e(check["id"])
-        what = e(labels[i])
+        what = e(" ".join(c.text.split())[:120])
         tok = lambda: check["token"]() if check.get("token") else ""  # noqa: E731
-        head = (f'<form class="chk post-once" method="post" action="/ticket/{tid}/check"><input type="hidden" name="token" value="{tok()}">'
-                f'<input type="hidden" name="section" value="{sec}"><input type="hidden" name="index" value="{i}">')
-        done = (f'{head}<input type="hidden" name="state" value="{press(st, "done")[0]}"><button type="submit" class="hit" data-act="done" '
+
+        def head():  # every form has its own one-time token
+            return (f'<form class="chk post-once" method="post" action="/ticket/{tid}/check"><input type="hidden" name="token" value="{tok()}">'
+                    f'<input type="hidden" name="section" value="{sec}"><input type="hidden" name="index" value="{i}">')
+
+        done = (f'{head()}<input type="hidden" name="state" value="{press(st, "done")[0]}"><button type="submit" class="hit" data-act="done" '
                 f'aria-pressed="{"true" if st == "x" else "false"}" aria-label="Done: {what}"><span class="box{" on-done" if st == "x" else ""}">{_TICK}</span></button></form>')
         if st == "!":
-            na = (f'{head}<input type="hidden" name="state" value="{press(st, "no")[0]}"><button type="submit" class="hit" data-act="no" aria-pressed="true" '
+            na = (f'{head()}<input type="hidden" name="state" value="{press(st, "no")[0]}"><button type="submit" class="hit" data-act="no" aria-pressed="true" '
                   f'aria-label="Not accepted: {what}"><span class="box on-no">{_CROSS}</span></button></form>')
         else:
             na = (f'<button type="button" class="hit" data-act="no" aria-pressed="false" aria-label="Not accepted: {what}" aria-expanded="false">'
                   f'<span class="box">{_CROSS}</span></button>')
-            panel = (f'{head}<label>Why isn&#39;t this accepted?<textarea name="reason" rows="2" required minlength="3" placeholder="Say what is missing or wrong."></textarea></label>'
-                     f'<div class="row"><span style="margin-left:auto" class="row"><button type="button" class="btn small" data-act="cancel">Cancel</button>'
-                     f'<button type="submit" class="btn small ink" name="state" value="{press(st, "no")[0]}">Save reason</button></span></div></form>')
-            under = f'<div class="nr-panel" hidden data-line="{i}">{panel}</div>'
-        mark = f"@@NR{i}@@"
-        pending[mark] = under
-        return f'<span class="chk2">{done}{na}</span>{mark}'
+        sev = c.severity or DEFAULT_SEVERITY
+        pills = "".join(f'<label class="sevpill"><input type="radio" name="severity" value="{v}"{" checked" if v == sev else ""}><span>{lab}</span></label>'
+                        for v, lab in zip(SEVERITIES, ("Must fix", "Should", "Nit")))
+        cancel = ('<button type="submit" class="btn small" name="state" value=" " formnovalidate data-act="cancel-clear">Cancel</button>' if st == "x"
+                  else '<button type="button" class="btn small" data-act="cancel">Cancel</button>')
+        panel = (f'<div class="nr-panel" hidden data-line="{i}">{head()}<label>Why isn&#39;t this accepted?'
+                 f'<textarea name="reason" rows="2" required placeholder="Say what is missing or wrong.">{e(c.reason) if st == "!" else ""}</textarea></label>'
+                 f'<div class="nr-err" role="alert"></div><div class="sevs" role="radiogroup" aria-label="How serious">{pills}</div>'
+                 f'<div class="row nr-actions">{cancel}<button type="submit" class="btn small ink" name="state" value="!">Save reason</button></div></form></div>')
+        pending[f"@@NR{i}@@"] = under + panel
+        return f'<span class="chk2">{done}{na}</span>@@NR{i}@@'
 
     out = _CHECKBOX.sub(box, out)
     out = _place_reasons(out, pending)
@@ -335,6 +343,35 @@ def render(text: str, *, known: dict | None = None, check: dict | None = None, a
     if check:  # a line can be tabbed to; D, N and Esc act on it (static/checks.js)
         out = out.replace('<li class="task-list-item">', '<li class="task-list-item" tabindex="0">')
     return out
+
+
+def _shots(n: int) -> str:
+    return f"{n} screenshot{'' if n == 1 else 's'}"
+
+
+def _clock(when: str) -> str:
+    """`2026-11-08T03:41` as `3:41 AM` (with the date when it is not today)."""
+    import datetime as dt
+
+    try:
+        d = dt.datetime.fromisoformat(when)
+    except ValueError:
+        return when
+    t = d.strftime("%I:%M %p").lstrip("0")
+    return t if d.date() == dt.date.today() else f"{d.strftime('%b')} {d.day}, {t}"
+
+
+def _reason_html(c, why: str, editable: bool) -> str:
+    """The saved reason under a Not accepted line: severity, the reason, who, when, evidence count and an Edit link."""
+    from ..ticket import DEFAULT_SEVERITY
+
+    e = html.escape
+    sev = c.severity or DEFAULT_SEVERITY
+    label = {"must fix": "Must fix", "should": "Should", "nit": "Nit"}[sev]
+    meta = [x for x in (f"{c.who[:1].upper()}{c.who[1:]} · {_clock(c.when)}" if c.who and c.when else "", _shots(len(c.evidence)) if c.evidence else "") if x]
+    return (f'<div class="nr-reason" data-sev="{sev}"><span class="sev">{label}</span> <span class="why">{e(why) if why else "Not accepted"}</span>'
+            + (f'<span class="nr-meta">{e(" · ".join(meta))}</span>' if meta else "")
+            + ('<button type="button" class="linkbtn" data-act="edit">Edit</button>' if editable else "") + "</div>")
 
 
 def _place_reasons(out: str, pending: dict) -> str:

@@ -14,7 +14,7 @@ from pathlib import Path
 from . import review
 from .rules import RuleError, check_transition
 from .store import Store, join_profile, split_profile
-from .ticket import CLONED_SECTIONS, Ticket, check_states, slugify, split_reason, today
+from .ticket import CLONED_SECTIONS, DEFAULT_SEVERITY, MIN_REASON, SEVERITIES, Ticket, parse_checks, reason_ok, render_check, slugify, today
 
 PRIVATE_NAMES = {"private_context.md"}
 PRIVATE_PARTS = {"jeby-private"}
@@ -103,18 +103,21 @@ def press(cur: str, which: str) -> tuple[str, bool]:
 
 
 def toggle_check(store: Store, ticket_id: str, section: str, index: int, checked: "bool | str | None" = None, actor: str | None = None,
-                 reason: str = "") -> Ticket:
-    """Set the `index`-th checkbox line of `section`; only that line changes.
+                 reason: str = "", severity: str = "") -> Ticket:
+    """Set the `index`-th checkbox line of `section`; only that line (and the quoted lines under it) changes.
     `checked` is True/False (done/open), a state char (' ', 'x', '!'), or None to flip open <-> done.
-    Not accepted (`!`) REQUIRES a reason, written on the same line as ` — not accepted: <reason>`; any other state removes it."""
+    Not accepted (`!`) REQUIRES a reason of 3 or more non-space characters and takes a severity (must fix, the default, should, nit).
+    It is written as `- [!] text  <!-- by who when -->` with `> Not accepted (severity): reason` under it. Any other state drops
+    the reason, severity, who and when; `> Evidence:` lines stay."""
     if section not in CHECK_SECTIONS:
         raise ValueError(f"Checkboxes can only be changed in {', '.join(CHECK_SECTIONS)}.")
     t = store.get(ticket_id)
     raw = t.sections.get(section) or ""
-    lines = check_states(raw)
-    if not 0 <= index < len(lines):
+    checks = parse_checks(raw)
+    if not 0 <= index < len(checks):
         raise ValueError(f"{t.id} {section} has no checkbox line {index}; reload the page.")
-    n, cur = lines[index]
+    c = checks[index]
+    cur = c.state
     if checked is None:
         new = " " if cur == "x" else "x"
     elif isinstance(checked, bool):
@@ -123,13 +126,22 @@ def toggle_check(store: Store, ticket_id: str, section: str, index: int, checked
         new = checked
     else:
         raise ValueError("A checkbox is open, done (x) or not accepted (!).")
-    reason = " ".join((reason or "").split())
-    if new == "!" and not reason:
-        raise ValueError("Not accepted needs a reason: say what is wrong.")
+    if new == "!":
+        reason = " ".join((reason or "").split())
+        if not reason_ok(reason):
+            raise ValueError(f"Not accepted needs a reason: say what is wrong, at least {MIN_REASON} characters.")
+        sev = " ".join((severity or DEFAULT_SEVERITY).lower().split())
+        if sev not in SEVERITIES:
+            raise ValueError(f"The severity is one of: {', '.join(SEVERITIES)}.")
+        c.reason, c.severity, c.legacy = reason, sev, False
+        c.who = re.sub(r"[^\w.@-]+", "-", actor or "desk").strip("-") or "desk"
+        c.when = dt.datetime.now().strftime("%Y-%m-%dT%H:%M")
+    else:
+        c.reason = c.severity = c.who = c.when = ""
+        c.legacy = False
+    c.state = new
     parts = raw.split("\n")
-    body, _old = split_reason(parts[n])
-    m = re.match(r"^(\s*(?:[-*+]|\d+[.)])\s+\[)[ xX!](\].*)$", body, re.S)
-    parts[n] = m.group(1) + new + m.group(2) + (f" — not accepted: {reason}" if new == "!" else "")
+    parts[c.first:c.last + 1] = render_check(c)
     t.sections[section] = "\n".join(parts)
     store.save(t)
     return t

@@ -22,7 +22,7 @@ from .. import buildstamp as bs, docs as docsmod, ops, profanity, review as rv, 
 from ..config import find_home
 from ..rules import RuleError
 from ..store import Store, id_parts, split_profile
-from ..ticket import SECTIONS, STATUSES
+from ..ticket import SECTIONS, STATUSES, check_states
 from ..words import screen
 from urllib.parse import quote
 
@@ -493,17 +493,24 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         return _back(ticket_id, None, next, ok="decide")
 
     @app.post("/ticket/{ticket_id}/check")
-    def post_check(ticket_id: str, section: str = Form(...), index: int = Form(...), checked: str = Form(""), state: str = Form(""), reason: str = Form(""), token: str = Form("")):
+    def post_check(request: Request, ticket_id: str, section: str = Form(...), index: int = Form(...), checked: str = Form(""), state: str = Form(""), reason: str = Form(""), severity: str = Form(""), token: str = Form("")):
+        """Set one box. A form post redirects back with a confirmation or an error line; with `Accept: application/json` the
+        reply is JSON: 200 with the new state, 422 with the refusal (a reason under 3 characters, an unknown severity)."""
+        wants_json = "application/json" in request.headers.get("accept", "")
         if not tokens.use(token):
-            return _spent(ticket_id)
+            return JSONResponse({"error": "That form was already sent; reload the page."}, status_code=409) if wants_json else _spent(ticket_id)
         s = store()
         try:
             s.sync_before()
             want = state if state in (" ", "x", "!") else (None if checked == "" and state == "" else (checked not in ("0", "")))
-            t = ops.toggle_check(s, ticket_id, section, index, want, actor=s.owner, reason=reason)
+            t = ops.toggle_check(s, ticket_id, section, index, want, actor=s.owner, reason=reason, severity=severity)
             s.sync_after(f"desk: check {t.id}")
         except (KeyError, RuleError, ValueError) as e:
+            if wants_json:
+                return JSONResponse({"error": str(e).strip("'\"")}, status_code=404 if isinstance(e, KeyError) else 422)
             return _back(ticket_id, str(e))
+        if wants_json:
+            return JSONResponse({"ok": True, "state": check_states(t.sections.get(section) or "")[index][1]})
         return _back(ticket_id, ok="check")
 
     @app.post("/ticket/{ticket_id}/comment")

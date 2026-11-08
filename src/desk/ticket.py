@@ -133,6 +133,104 @@ def check_states(text: str) -> list[tuple[int, str]]:
     return out
 
 
+SEVERITIES = ("must fix", "should", "nit")  # shown Must fix, Should, Nit
+DEFAULT_SEVERITY = "must fix"
+MIN_REASON = 3  # non-space characters
+
+# The three states in the file (Chaz, DESK-0100; DESK-0120):
+#   - [ ] open
+#   - [x] done
+#   - [!] not accepted  <!-- by james 2026-11-08T03:41 -->
+#     > Not accepted (must fix): the quoted reason, one line
+#     > Evidence: assets/DESK-0082/2026-11-08-0341-run.png
+# `> Evidence:` lines may follow a line in any state. The older inline form `- [!] text — not accepted: reason` is still read.
+_CHECK_LINE = re.compile(r"^(\s*(?:[-*+]|\d+[.)])\s+\[)( |x|X|!)(\]\s)(.*)$")
+_BYLINE = re.compile(r"\s*<!--\s*by\s+(.+?)\s+(\d{4}-\d{2}-\d{2}T\d{2}:\d{2})\s*-->\s*$")
+_QUOTE = re.compile(r"^(\s+)>\s?(.*)$")
+_NA_QUOTE = re.compile(r"^Not accepted(?:\s*\(([^)]*)\))?\s*:\s*(.*)$", re.I)
+_EV_QUOTE = re.compile(r"^Evidence:\s*(.+?)\s*$", re.I)
+
+
+@dataclass
+class Check:
+    """One checkbox line and the quoted lines under it. `first`/`last` are line numbers in the section text (inclusive)."""
+
+    first: int
+    last: int
+    head: str  # everything up to and including `[`
+    state: str  # ' ', 'x' or '!'
+    mid: str  # `] ` as written
+    text: str  # the line's words: no byline comment, no legacy ` — not accepted:` suffix
+    who: str = ""
+    when: str = ""  # 2026-11-08T03:41
+    severity: str = ""  # '' when the file did not say (the legacy form)
+    reason: str = ""
+    evidence: list = field(default_factory=list)
+    extra: list = field(default_factory=list)  # other quoted lines, kept as written
+    legacy: bool = False  # the reason was on the line itself
+
+    @property
+    def cont(self) -> str:
+        """Indent of the quoted lines: the width of the list marker, so they belong to this list item."""
+        return " " * (len(self.head) - 1)
+
+
+def reason_ok(reason: str) -> bool:
+    return len("".join((reason or "").split())) >= MIN_REASON
+
+
+def parse_checks(text: str) -> list[Check]:
+    """Every checkbox line in a section's text with the quoted reason and evidence lines under it; fenced code is skipped."""
+    lines = (text or "").split("\n")
+    out, fence, i = [], False, 0
+    while i < len(lines):
+        line = lines[i]
+        if line.lstrip().startswith(("```", "~~~")):
+            fence = not fence
+            i += 1
+            continue
+        m = None if fence else _CHECK_LINE.match(line)
+        if not m:
+            i += 1
+            continue
+        head, ch, mid, body = m.groups()
+        c = Check(i, i, head, "x" if ch in "xX" else ch, mid, body.rstrip())
+        b = _BYLINE.search(c.text)
+        if b:
+            c.who, c.when, c.text = b.group(1), b.group(2), c.text[:b.start()].rstrip()
+        if c.state == "!":
+            c.text, legacy = split_reason(c.text)
+            if legacy:
+                c.reason, c.legacy = legacy, True
+        indent = len(line) - len(line.lstrip())
+        j = i + 1
+        while j < len(lines) and (q := _QUOTE.match(lines[j])) and len(q.group(1)) > indent:
+            body_q = q.group(2)
+            na, ev = _NA_QUOTE.match(body_q), _EV_QUOTE.match(body_q)
+            if c.state == "!" and na and not c.reason:
+                sev = (na.group(1) or "").strip().lower()
+                c.severity, c.reason = (sev if sev in SEVERITIES else ""), na.group(2).strip()
+            elif ev:
+                c.evidence.append(ev.group(1))
+            else:
+                c.extra.append(lines[j])
+            j += 1
+        c.last = j - 1
+        out.append(c)
+        i = j
+    return out
+
+
+def render_check(c: Check) -> list[str]:
+    """The lines for one check in the current file format (a legacy inline reason becomes a quoted line)."""
+    byline = f"  <!-- by {c.who} {c.when} -->" if c.who and c.when else ""
+    out = [f"{c.head}{c.state}{c.mid}{c.text}{byline}"]
+    if c.state == "!" and c.reason:
+        out.append(f"{c.cont}> Not accepted" + (f" ({c.severity})" if c.severity else "") + f": {c.reason}")
+    out += [f"{c.cont}> Evidence: {e}" for e in c.evidence]
+    return out + list(c.extra)
+
+
 def check_lines(text: str) -> list[tuple[int, bool]]:
     """(line number, checked) for every checkbox line in a section's text, fenced code skipped. Failed counts as not checked."""
     return [(n, st == "x") for n, st in check_states(text)]
@@ -189,15 +287,14 @@ class Ticket:
         for line in self.section("Acceptance").splitlines():
             m = re.match(r"^\s*[-*]\s*\[( |x|X|!)\]\s*(.*)$", line)
             if m:
-                out.append((m.group(1).lower() == "x", m.group(2)))
+                out.append((m.group(1).lower() == "x", _BYLINE.sub("", m.group(2))))
         return out
 
     def failed_checks(self, sections: tuple = ("Acceptance", "Evidence")) -> list[tuple[str, str]]:
         """(section, text) of every `- [!]` line: checked off as tried, and it did not work."""
         out = []
         for name in sections:
-            lines = (self.sections.get(name) or "").split("\n")
-            out += [(name, re.sub(_CHECK, "", lines[n]).strip()) for n, st in check_states(self.sections.get(name) or "") if st == "!"]
+            out += [(name, c.text) for c in parse_checks(self.sections.get(name) or "") if c.state == "!"]
         return out
 
     # -- (de)serialisation ------------------------------------------------

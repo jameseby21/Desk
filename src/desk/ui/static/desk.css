@@ -149,10 +149,28 @@ li.task-list-item:focus-visible{outline:3px solid var(--focus);outline-offset:2p
 .box.on-done{background:var(--ball);border-color:var(--ink)}
 .box.on-no{background:var(--red);border-color:var(--red);color:var(--on-red)}
 .box.on-done svg,.box.on-no svg{opacity:1}
-.nr-reason{color:#C0262D;font-size:13px;font-weight:600;margin-top:2px}
+
 .nr-panel{margin:8px 0 0;padding:12px;border-radius:10px;background:#FBEDEE;border:1px solid #F0C7CA;color:#141414}
 .nr-panel[hidden]{display:none}
 .nr-panel form{display:flex;flex-direction:column;gap:8px}
 .btn.ink{background:var(--ink);color:var(--on-ink)}
 .reload-bar{background:var(--ball);color:#141414;text-align:center;padding:6px 12px;font-weight:600;position:sticky;top:0;z-index:20}.reload-bar[hidden]{display:none}
 .stale-bar{background:#F2D98B;color:#141414;text-align:center;padding:8px 12px;font-weight:700;position:sticky;top:0;z-index:30}
+/* DESK-0119: the reason a line was not accepted stays under the line */
+.nr-reason{margin:6px 0 0;padding:8px 12px;border-left:3px solid var(--red);background:#FBF6F6;border-radius:0 8px 8px 0;display:flex;gap:10px;align-items:baseline;flex-wrap:wrap;font-size:14px;color:#141414}
+.nr-reason .sev{font:600 11px/1 var(--font-mono);letter-spacing:.08em;text-transform:uppercase;color:#8E1218}
+.nr-reason .why{flex:1 1 200px}
+.nr-meta{flex-basis:100%;order:3;font-size:12.5px;color:#4A4A45}
+.linkbtn{border:0;background:transparent;color:inherit;font:600 13px/1 var(--font-body);text-decoration:underline;cursor:pointer;padding:8px;margin-left:auto;min-height:32px}
+.ev-count{font-size:12.5px;color:var(--muted);margin-top:2px}
+.nr-panel label{font-weight:600}
+.nr-err{color:#8E1218;font-size:13px;font-weight:600}.nr-err:empty{display:none}
+.sevs{display:flex;gap:6px;flex-wrap:wrap}
+.sevpill{position:relative;flex-direction:row;cursor:pointer}
+.sevpill input{position:absolute;opacity:0;inset:0;margin:0;cursor:pointer}
+.sevpill span{display:inline-flex;align-items:center;min-height:32px;padding:0 12px;border-radius:999px;border:1px solid #D5D2C7;background:#FFFFFF;color:#141414;font:600 12.5px/1 var(--font-body)}
+.sevpill input:checked+span{background:#141414;color:#FFFFFF;border-color:#141414}
+.sevpill input:focus-visible+span{outline:3px solid var(--focus);outline-offset:2px}
+.nr-actions{justify-content:flex-end}
+.box.pending{background:var(--red);border-color:var(--red);color:var(--on-red)}
+.box.pending svg{opacity:1}
