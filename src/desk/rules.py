@@ -6,7 +6,7 @@ import datetime as dt
 import re
 from typing import TYPE_CHECKING
 
-from . import people
+from . import ladder, people
 from .store import id_parts
 from .ticket import CLOSED, ID_LISTS_LOOSE, ID_LISTS_STRICT, PRIORITIES, REQUIRED, LEGACY_TYPES, SIZES, STATUSES, TYPES, Ticket, canon_type, parse_checks, validate_steps
 
@@ -190,6 +190,7 @@ def validate_store(store: "Store") -> tuple[list[str], list[str]]:
 
         for link, tried in dead_links(store, t):
             warnings.append(f"{t.id}: doc link `{link}`: dead link (tried: {', '.join(tried)})")
+        warnings += ladder.warnings(t)  # DESK-0139: a wall of text, or a field that should be a linked file
         if t.status == "done":
             for dep in t.meta.get("depends_on") or []:
                 d = by_id.get(str(dep))

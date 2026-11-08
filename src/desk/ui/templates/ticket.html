@@ -1,5 +1,12 @@
 {% extends "base.html" %}
 {% block title %}Desk · {{ t.id }}{% endblock %}
+{% macro shaped(text) -%}
+{# Long text follows the formatting ladder (DESK-0139): a lead and a few bullets open, the rest is folded, a wall of prose is flagged. #}
+{% set f = ladder(text) %}
+{% if f.flags %}<p class="readflag">{% if 'wall' in f.flags %}<span class="chip red">Wall of text</span> One long paragraph: open with a lead sentence and use a list.{% endif %}{% if 'save' in f.flags %} <span class="chip red">Very long</span> Over 4,000 characters: save it as a Markdown file and link it.{% endif %}</p>{% endif %}
+<div class="md">{{ render(f.head)|safe }}</div>
+{% if f.rest %}<details class="ladder"><summary>{{ f.label }}</summary><div class="md">{{ render(f.rest)|safe }}</div></details>{% endif %}
+{%- endmacro %}
 {% block body %}
 <p style="font-size:14px"><a href="/">Today</a> › <a href="/board?project={{ t.project }}">{{ titles.get(t.project, t.project) }}</a> › <code>{{ t.id }}</code>{% if formerly %} <span class="muted">(formerly {{ formerly }})</span>{% endif %}</p>
 {% if error %}<div class="error">{{ error }}</div>{% endif %}
@@ -30,7 +37,7 @@
 <div class="cols">
   <div>
     {% for name in ['Context','Outcome'] %}{% if t.section(name) %}
-    <div class="card section"><span class="label">{{ name }}</span><div class="md">{{ render(t.section(name))|safe }}</div></div>
+    <div class="card section"><span class="label">{{ name }}</span>{{ shaped(t.section(name)) }}</div>
     {% endif %}{% endfor %}
 
     <div class="card section" id="acceptance">
@@ -64,7 +71,7 @@
     <div class="card section">
       <div class="row" style="justify-content:space-between"><span class="label">Proof (Report)</span>
         {% if not t.section('Report') %}<span class="chip red">Not run</span>{% endif %}</div>
-      {% if t.section('Report') %}<div class="md">{{ render(t.section('Report'))|safe }}</div>{% else %}<p class="muted">No report yet. A claim with no run behind it gets a red tag, not a pass.</p>{% endif %}
+      {% if t.section('Report') %}{{ shaped(t.section('Report')) }}{% else %}<p class="muted">No report yet. A claim with no run behind it gets a red tag, not a pass.</p>{% endif %}
       {% set bad = t.failed_checks() %}{% if bad %}<div class="failed-checks"><span class="label">Failed checks ({{ bad|length }})</span><ul>{% for sec, txt in bad %}<li><span class="chip red">Not run</span> {{ sec }}: {{ txt }}</li>{% endfor %}</ul></div>{% endif %}
     </div>
 
@@ -98,6 +105,7 @@
 
     <div class="card section" id="comments"><span class="label">Talk (Comments)</span>
       <div class="md" data-comments>{% if t.section('Comments') %}{{ comments_html(t.section('Comments'))|safe }}{% else %}<p class="muted">No comments.</p>{% endif %}</div>
+      <details class="addc" id="add-comment"><summary>Add a comment</summary>
       <form class="post-once composer" id="composer" method="post" action="/ticket/{{ t.id }}/comment" data-timeout-ms="10000" data-posting="Posting…" data-progress="Sending,Saving,Done">
         <input type="hidden" name="token" value="{{ token() }}">
         <div class="kinds sevs" role="radiogroup" aria-label="Kind of comment">{% for k in ['Question','Suggestion','Concern','FYI'] %}<label class="sevpill"><input type="radio" name="kind" value="{{ k }}"{% if loop.first %} checked{% endif %}><span>{{ k }}</span></label>{% endfor %}</div>
@@ -112,6 +120,7 @@
         <label class="muted" style="font-size:13px">Or attach an image <input type="file" name="file" accept="image/png,image/jpeg,image/gif,image/webp" required></label>
         <button class="btn small" type="submit">Attach</button>
       </form>
+      </details>
     </div>
 
     <details class="card section dm" id="done-means"><summary><span class="label">Done means</span> <span class="dm-line">{{ dod.line }} &middot; {{ dod.n_checks }} check{{ 's' if dod.n_checks != 1 }}</span><span class="show">Show checklist</span></summary>

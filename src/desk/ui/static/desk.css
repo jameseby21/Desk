@@ -338,3 +338,7 @@ details.finished{margin:12px 0 4px;padding-top:10px;border-top:1px solid var(--l
 details.dm>summary{display:flex;align-items:baseline;gap:12px;cursor:pointer;list-style:none;flex-wrap:wrap}details.dm>summary::-webkit-details-marker{display:none}
 details.dm .dm-line{color:var(--muted);flex:1;min-width:0}details.dm .show{margin-left:auto;font-weight:600}details.dm[open] .show::after{content:" (hide)";font-weight:400;color:var(--muted)}
 details.hidden-secs{margin:14px 0}details.hidden-secs>.card{margin-top:10px}p.hidden-secs{font-size:14px}
+/* Text ladder and the folded composer (DESK-0139) */
+details.ladder{margin:8px 0 0;border-top:1px solid var(--line);padding-top:8px}details.ladder>summary{cursor:pointer;color:var(--muted);font-size:14px}details.ladder[open]>summary{margin-bottom:6px}
+.readflag{margin:4px 0 8px;font-size:13.5px;color:var(--muted)}
+details.addc{margin-top:10px}details.addc>summary{cursor:pointer;font-weight:600;padding:6px 0}
