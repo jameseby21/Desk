@@ -143,7 +143,7 @@ def check_states(text: str) -> list[tuple[int, str]]:
     return out
 
 
-SEVERITIES = ("must fix", "should", "nit")  # shown Must fix, Should, Nit
+SEVERITIES = ("must fix", "should", "nit")  # shown Must fix, Should fix, Minor (James, 2026-11-08: "Nit" is not human-readable)
 DEFAULT_SEVERITY = "must fix"
 MIN_REASON = 3  # non-space characters
 

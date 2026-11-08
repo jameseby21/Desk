@@ -319,7 +319,7 @@ def render(text: str, *, known: dict | None = None, check: dict | None = None, a
                   f'<span class="box">{_CROSS}</span></button>')
         sev = c.severity or DEFAULT_SEVERITY
         pills = "".join(f'<label class="sevpill"><input type="radio" name="severity" value="{v}"{" checked" if v == sev else ""}><span>{lab}</span></label>'
-                        for v, lab in zip(SEVERITIES, ("Must fix", "Should", "Nit")))
+                        for v, lab in zip(SEVERITIES, ("Must fix", "Should fix", "Minor")))
         cancel = ('<button type="submit" class="btn small" name="state" value=" " formnovalidate data-act="cancel-clear">Cancel</button>' if st == "x"
                   else '<button type="button" class="btn small" data-act="cancel">Cancel</button>')
         panel = (f'<div class="nr-panel" hidden data-line="{i}">{head()}<label>Why isn&#39;t this accepted?'
@@ -381,7 +381,7 @@ def _reason_html(c, why: str, editable: bool) -> str:
 
     e = html.escape
     sev = c.severity or DEFAULT_SEVERITY
-    label = {"must fix": "Must fix", "should": "Should", "nit": "Nit"}[sev]
+    label = {"must fix": "Must fix", "should": "Should fix", "nit": "Minor"}[sev]
     meta = [x for x in (f"{c.who[:1].upper()}{c.who[1:]} · {_clock(c.when)}" if c.who and c.when else "", _shots(len(c.evidence)) if c.evidence else "") if x]
     return (f'<div class="nr-reason" data-sev="{sev}"><span class="sev">{label}</span> <span class="why">{e(why) if why else "Not accepted"}</span>'
             + (f'<span class="nr-meta">{e(" · ".join(meta))}</span>' if meta else "")
