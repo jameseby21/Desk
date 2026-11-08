@@ -170,3 +170,7 @@ uv run pytest
 ## License
 
 MIT, copyright JA Insights LLC.
+
+## Ticket-id prefixes
+
+A project's ticket prefix is the `prefix:` field in the frontmatter of `projects/<key>.md` (for example `prefix: FP` for `fightplan`). Without one, the key is uppercased with hyphens removed.

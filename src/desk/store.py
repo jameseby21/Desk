@@ -112,7 +112,18 @@ class Store:
         raise KeyError(f"No ticket {ticket_id}")
 
     def key_for(self, project: str) -> str:
-        return project.upper()
+        """The ticket-id prefix for a project: its profile's `prefix:` frontmatter field, else the key uppercased."""
+        path = self.projects().get(project)
+        if path:
+            text = path.read_text(encoding="utf-8")
+            if text.startswith("---"):
+                head = text.split("---", 2)[1]
+                for line in head.splitlines():
+                    if line.strip().startswith("prefix:"):
+                        val = line.split(":", 1)[1].strip().strip('"').strip("'")
+                        if val:
+                            return val.upper()
+        return project.upper().replace("-", "")
 
     def next_id(self, project: str) -> str:
         key = self.key_for(project)
