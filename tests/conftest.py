@@ -22,6 +22,7 @@ def _tickets_get_validate_steps(monkeypatch):
     def with_steps(*a, **k):
         t = real(*a, **k)
         t.sections["How to validate"] = "1. Run it and look.\n"
+        t.sections["Commands"] = "- `uv run --no-sync pytest -q`\n"  # a ticket with its commands, so the tests of other rules are not about DESK-0177
         return t
 
     monkeypatch.setattr(store_mod, "new_ticket", with_steps)

@@ -8,7 +8,7 @@ import json
 import sys
 from pathlib import Path
 
-from . import accept_migrate, check_migrate, nav, ops, profanity, retype, review as rv, style as styles, tests_migrate, tracks as trk, version as ver
+from . import accept_migrate, check_migrate, commands_migrate, nav, ops, profanity, retype, review as rv, style as styles, tests_migrate, tracks as trk, version as ver
 from .config import HomeNotFound, find_home
 from .rules import RuleError, validate_store
 from .store import Store
@@ -859,6 +859,8 @@ def cmd_migrate(args):
         return cmd_migrate_tests(args)
     if args.what == "assignee":
         return cmd_migrate_assignee(args)
+    if args.what == "commands":
+        return cmd_migrate_commands(args)
     s = _store(args)
     rules_path = Path(args.rules) if args.rules else s.home / trk.RULES_PATH
     if not rules_path.is_absolute() and not rules_path.exists():
@@ -989,6 +991,21 @@ def cmd_migrate_tests(args):
     print(f"Added the Tests section to {wrote} ticket(s).")
 
 
+def cmd_migrate_commands(args):
+    s = _store(args)
+    todo = commands_migrate.plan(s.tickets())
+    seeded = 0
+    for t, found in todo:
+        seeded += bool(found)
+        print(f"{t.id}  {str(t.meta.get('title', ''))[:50]}  " + (", ".join(f"`{c}`" for c in found) if found else "(placeholder)"))
+    print(f"\n{len(todo)} ticket(s) without a Commands section would get one ({seeded} seeded from How to validate, {len(todo) - seeded} with the placeholder); {len(s.tickets()) - len(todo)} left alone.")
+    if not args.apply:
+        print("Dry run: nothing written. Add --apply to add the section (only `## Commands` is added; updated dates are not touched).")
+        return
+    wrote = sum(commands_migrate.apply_file(t, found) for t, found in todo)
+    print(f"Added the Commands section to {wrote} ticket(s).")
+
+
 def cmd_migrate_checks(args):
     s = _store(args)
     tickets = s.tickets()
@@ -1102,8 +1119,8 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--ref", help="install this git ref of the repo instead of its working folder")
     sp.set_defaults(fn=cmd_refresh)
 
-    sp = sub.add_parser("migrate", help="one-off bulk edits; `migrate track` assigns tracks from tracks/rules.yaml, `migrate type` retires the legacy slice and chore types, `migrate acceptance` strips boilerplate Acceptance lines that restate the Definition of Done, `migrate checks` rewrites inline `not accepted` lines as the quoted-reason block, `migrate tests` adds the Tests section to every ticket without one, `migrate assignee` fills blank assignees from assign.yaml (never overrides one)")
-    sp.add_argument("what", choices=["track", "type", "acceptance", "checks", "tests", "assignee"])
+    sp = sub.add_parser("migrate", help="one-off bulk edits; `migrate track` assigns tracks from tracks/rules.yaml, `migrate type` retires the legacy slice and chore types, `migrate acceptance` strips boilerplate Acceptance lines that restate the Definition of Done, `migrate checks` rewrites inline `not accepted` lines as the quoted-reason block, `migrate tests` adds the Tests section to every ticket without one, `migrate commands` adds the Commands section (seeded from the How to validate lines that look like commands), `migrate assignee` fills blank assignees from assign.yaml (never overrides one)")
+    sp.add_argument("what", choices=["track", "type", "acceptance", "checks", "tests", "assignee", "commands"])
     sp.add_argument("--include-closed", action="store_true", help="assignee: also fill closed tickets (default: open tickets only)")
     mode = sp.add_mutually_exclusive_group(required=True)
     mode.add_argument("--dry-run", action="store_true", help="print ticket -> track and counts; write nothing")

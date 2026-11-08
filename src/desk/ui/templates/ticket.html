@@ -68,6 +68,12 @@
     <div class="card section" id="validate"><span class="label">How to validate</span>
       {% if t.validate_steps() %}<div class="md" data-check-section="How to validate">{{ render(t.validate_steps(), t, 'How to validate')|safe }}</div>{% else %}<p class="muted">Not written yet. A ticket cannot be handed over for review without it.</p>{% endif %}</div>
 
+    {% set cc = cmds(t.section('Commands')) %}{% set cmds_hidden = not cc[0] and not cc[1] %}
+    {% if not cmds_hidden %}
+    <div class="card section" id="commands"><span class="label">Commands</span>
+      {% for c in cc[0] %}<div class="cmd"><code>{{ c }}</code><button type="button" class="btn small copy" data-copy="{{ c }}" aria-label="Copy {{ c }}">Copy</button></div>{% endfor %}
+      {% if cc[1] %}<ul class="mentions">{% for p in cc[1] %}<li>{{ p }}</li>{% endfor %}</ul>{% endif %}</div>
+    {% endif %}
     <div class="card section">
       <div class="row" style="justify-content:space-between"><span class="label">Proof (Report)</span>
         {% if not t.section('Report') %}<span class="chip red">Not run</span>{% endif %}</div>
@@ -142,7 +148,7 @@
     {# Sections still holding their seeded default, or empty, are hidden and named in one line (DESK-0175); nothing is removed. #}
     {% set hid = [] %}{% for name in ['Tests','Docs to update','Out of scope'] %}{% if t.is_default(name) %}{% set _ = hid.append(name) %}{% endif %}{% endfor %}
     {% set no_decision = not t.section('Decision') and not reply_ask %}
-    {% set hid_all = (['Tests'] if 'Tests' in hid else []) + (['Attachments'] if not t.section('Attachments') else []) + (['Docs to update'] if 'Docs to update' in hid else []) + (['Out of scope'] if 'Out of scope' in hid else []) + (['Decision'] if no_decision else []) + (['Mentioned in'] if not mentions else []) %}
+    {% set hid_all = (['Tests'] if 'Tests' in hid else []) + (['Commands'] if cmds_hidden else []) + (['Attachments'] if not t.section('Attachments') else []) + (['Docs to update'] if 'Docs to update' in hid else []) + (['Out of scope'] if 'Out of scope' in hid else []) + (['Decision'] if no_decision else []) + (['Mentioned in'] if not mentions else []) %}
     {% if 'Tests' not in hid %}
     <div class="card section" id="tests"><span class="label">Tests</span>
       {% if t.tests_text() %}<div class="md">{{ render(t.tests_text())|safe }}</div>{% else %}<p class="muted">No Tests text yet. Name the automated test, or the steps a person performs and what they must see.</p>{% endif %}</div>
@@ -150,7 +156,7 @@
     {% for name in ['Docs to update','Out of scope'] %}{% if name not in hid %}
     <div class="card section"><span class="label">{{ name }}</span><div class="md">{{ render(t.section(name))|safe }}</div></div>
     {% endif %}{% endfor %}
-    {% if hid or no_decision or not mentions %}
+    {% if hid or no_decision or not mentions or cmds_hidden %}
     <details class="fold hidden-secs" id="hidden-sections"><summary>Hidden while still default or empty: {{ hid_all|join(', ') }} &middot; <b>Show</b></summary>
       {% if 'Tests' in hid %}
     <div class="card section" id="tests"><span class="label">Tests</span>
@@ -159,6 +165,7 @@
       {% for name in ['Docs to update','Out of scope'] %}{% if name in hid %}
       <div class="card section"><span class="label">{{ name }}</span>{% if t.section(name) %}<div class="md">{{ render(t.section(name))|safe }}</div>{% else %}<p class="muted">Empty.</p>{% endif %}</div>
       {% endif %}{% endfor %}
+      {% if cmds_hidden %}<div class="card section" id="commands"><span class="label">Commands</span><p class="muted">None yet. A worker adds the exact commands it ran.</p></div>{% endif %}
       {% if no_decision %}<div class="card section" id="decision"><span class="label">Decision</span><p class="muted">Nothing decided yet.</p></div>{% endif %}
       {% if not mentions %}<div class="card section"><span class="label">Mentioned in</span><p class="muted">No other ticket mentions {{ t.id }}.</p></div>{% endif %}
     </details>
@@ -239,6 +246,7 @@
 <script src="/static/shots.js" defer></script>
 <script src="/static/checks.js" defer></script>
 <script src="/static/composer.js" defer></script>
+<script src="/static/copy.js" defer></script>
 {% if mermaid %}
 <script src="{{ mermaid_src }}"></script>
 <script>if (window.mermaid) { mermaid.initialize({ startOnLoad: true, securityLevel: "strict" }); }</script>

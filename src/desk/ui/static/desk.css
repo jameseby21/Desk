@@ -347,3 +347,9 @@ header .user{margin-left:auto;display:inline-flex;align-items:center;gap:8px;tex
 header .user .uinit{display:inline-grid;place-items:center;width:28px;height:28px;border-radius:50%;background:var(--ink);color:var(--on-ink);font-size:13px}
 header .search-open{position:relative;flex:0 1 320px;margin-left:12px}header .search-open input{padding-right:34px}
 header .search-open kbd{position:absolute;right:10px;top:50%;transform:translateY(-50%);font:500 12px var(--font-mono);color:var(--muted);border:1px solid var(--line);border-radius:5px;padding:0 6px;background:var(--card)}
+/* Commands with a copy button (DESK-0177) */
+.cmd{display:flex;align-items:center;gap:10px;margin:6px 0;padding:6px 6px 6px 12px;background:var(--paper);border:1px solid var(--line);border-radius:10px}
+.cmd code{flex:1;min-width:0;overflow-x:auto;white-space:pre;font:500 13.5px var(--font-mono)}.cmd .copy{flex:none}
+/* Commands with a copy button (DESK-0177) */
+.cmd{display:flex;align-items:center;gap:10px;margin:6px 0;padding:6px 6px 6px 12px;background:var(--paper);border:1px solid var(--line);border-radius:10px}
+.cmd code{flex:1;min-width:0;overflow-x:auto;white-space:pre;font:500 13.5px var(--font-mono)}.cmd .copy{flex:none}

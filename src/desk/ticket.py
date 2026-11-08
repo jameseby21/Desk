@@ -14,6 +14,7 @@ SECTIONS = [
     "Outcome",
     "Acceptance",
     "How to validate",  # written before the work starts: the steps that confirm the Outcome once the work is claimed done
+    "Commands",  # the exact commands that check it, one per bullet in backticks; a worker adds the ones it ran (DESK-0177, rule 45)
     "Tests",  # the automated test that proves it, or the exact steps a person performs and what they must see (all failures become tests)
     "Prompt",  # what an agent pastes to execute the ticket
     "Docs to update",
@@ -50,6 +51,7 @@ VALIDATE_HINTS = {
     "release": "The version to install or fetch and the command that shows it.",
 }
 # What a section holds while nobody has written anything of their own into it (DESK-0175): the page hides it until they do.
+SEED_COMMANDS = "- none yet (a worker adds the exact commands it ran)"
 SEED_TESTS = "The How to validate lines, performed by a person, are the test until an automated one exists."
 SECTION_DEFAULTS = {
     "Tests": SEED_TESTS,
@@ -394,5 +396,6 @@ def new_ticket(ticket_id: str, title: str, project: str, type_: str = "feature",
     t = Ticket(meta=meta, sections={s: "" for s in SECTIONS})
     hint = VALIDATE_HINTS.get(canon_type(type_), VALIDATE_HINTS["feature"])
     t.sections["How to validate"] = f"<!-- Write this before the work starts. {hint} -->" + chr(10)
+    t.sections["Commands"] = SEED_COMMANDS + chr(10)
     t.sections["Tests"] = "<!-- Name the automated test (file and what it protects), or the steps a person performs and what they must see. -->" + chr(10)
     return t
