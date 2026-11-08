@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import datetime as dt
 import json
 import re
@@ -20,6 +21,7 @@ from .ticket import SIZES, canon_type, Ticket, new_ticket, slugify
 _ID = re.compile(r"^(?P<key>[A-Z0-9][A-Z0-9-]*)-(?P<num>\d{4,})$")
 _PROFILE_FM = re.compile(r"\A---\r?\n(.*?)\r?\n---\r?\n?(.*)\Z", re.S)
 _PROFILE_CACHE: dict = {}
+_PARSE_CACHE: dict = {}  # path -> (file text, meta, sections): a file whose text is unchanged is not parsed again (DESK-0183)
 _KV = re.compile(r"^([A-Za-z_][\w-]*):\s?(.*)$")
 
 
@@ -252,9 +254,18 @@ class Store:
 
     @timed_db
     def tickets(self) -> list[Ticket]:
+        """Every ticket, read from disk on every call. Parsing is most of the cost (210 of 370 ms at 1,417 tickets), so a file whose text is
+        exactly what was parsed before reuses that parse; each caller gets its own copy, so changing a ticket never changes the cache."""
         out = []
         for p in self.ticket_paths():
-            out.append(Ticket.load(p))
+            text = p.read_text(encoding="utf-8")
+            hit = _PARSE_CACHE.get(p)
+            if hit is None or hit[0] != text:
+                t = Ticket.parse(text, p)
+                _PARSE_CACHE[p] = (text, copy.deepcopy(t.meta), dict(t.sections))
+                out.append(t)
+                continue
+            out.append(Ticket(copy.deepcopy(hit[1]), dict(hit[2]), p))
         out.sort(key=lambda t: t.id)
         return out
 
