@@ -16,6 +16,7 @@ from .ticket import SIZES, canon_type, Ticket, new_ticket, slugify
 
 _ID = re.compile(r"^(?P<key>[A-Z0-9][A-Z0-9-]*)-(?P<num>\d{4,})$")
 _PROFILE_FM = re.compile(r"\A---\r?\n(.*?)\r?\n---\r?\n?(.*)\Z", re.S)
+_PROFILE_CACHE: dict = {}
 _KV = re.compile(r"^([A-Za-z_][\w-]*):\s?(.*)$")
 
 
@@ -132,56 +133,94 @@ class Store:
         return {p.stem: p for p in sorted(self.projects_dir.glob("*.md"))}
 
     @timed_db
+    def _profile(self, key: str):
+        """The cache entry (signature, meta, body, memo) of projects/<key>.md, re-read only when its (mtime_ns, size) changed; None without a profile.
+        The cache is per process and keyed by path, so the per-request Store objects of the UI share it."""
+        if not key or "/" in key or "\\" in key:
+            return None
+        path = self.projects_dir / f"{key}.md"
+        try:
+            st = path.stat()
+        except OSError:
+            _PROFILE_CACHE.pop(path, None)
+            return None
+        sig = (st.st_mtime_ns, st.st_size)
+        hit = _PROFILE_CACHE.get(path)
+        if hit is None or hit[0] != sig:
+            meta, body = split_profile(path.read_text(encoding="utf-8"))
+            hit = (sig, meta, body, {})
+            _PROFILE_CACHE[path] = hit
+        return hit
+
     def project_profile(self, key: str) -> tuple[dict, str]:
-        """(frontmatter mapping, body) of projects/<key>.md; ({}, "") when there is no profile."""
-        path = self.projects().get(key)
-        if not path:
-            return {}, ""
-        return split_profile(path.read_text(encoding="utf-8"))
+        """(frontmatter mapping, body) of projects/<key>.md; ({}, "") when there is no profile. Shared with the cache: do not modify it."""
+        hit = self._profile(key)
+        return (hit[1], hit[2]) if hit else ({}, "")
+
+    def _memo(self, key: str, name: str, compute):
+        """A value derived from the profile alone, computed once per version of the file."""
+        hit = self._profile(key)
+        if hit is None:
+            return compute({}, "")
+        memo = hit[3]
+        if name not in memo:
+            memo[name] = compute(hit[1], hit[2])
+        return memo[name]
 
     def brand_for(self, project: str) -> dict | None:
         """{'mark_url', 'accent', 'family'} for a project whose profile has a `brand:` block, else None.
-        mark_url is None when the mark file is missing; the block still counts as present."""
-        meta, _ = self.project_profile(project)
-        b = meta.get("brand")
-        if isinstance(b, str):
-            try:
-                b = yamlio.load(b)
-            except yamlio.YAMLError:
-                b = None
-        if not isinstance(b, dict):
+        mark_url is None when the mark file is missing; the block still counts as present (the file is checked on every call)."""
+        def parse(meta, _body):
+            b = meta.get("brand")
+            if isinstance(b, str):
+                try:
+                    b = yamlio.load(b)
+                except yamlio.YAMLError:
+                    b = None
+            if not isinstance(b, dict):
+                return None
+            return str(b.get("mark") or "").replace("\\", "/"), str(b.get("accent") or ""), str(b.get("family") or "")
+
+        got = self._memo(project, "brand", parse)
+        if got is None:
             return None
-        mark = str(b.get("mark") or "").replace("\\", "/")
+        mark, accent, family = got
         url = None
         if mark and (self.home / mark).is_file():
             root = "assets/brand/"
             url = "/brand/" + (mark[len(root):] if mark.startswith(root) else mark)
-        return {"mark_url": url, "mark": mark, "accent": str(b.get("accent") or ""), "family": str(b.get("family") or "")}
+        return {"mark_url": url, "mark": mark, "accent": accent, "family": family}
 
     def project_title(self, key: str) -> str:
-        meta, body = self.project_profile(key)
-        for line in body.splitlines():
-            if line.startswith("# "):
-                return line[2:].strip()
-        if meta.get("name"):
-            return str(meta["name"])
-        return key
+        def title(meta, body):
+            for line in body.splitlines():
+                if line.startswith("# "):
+                    return line[2:].strip()
+            if meta.get("name"):
+                return str(meta["name"])
+            return key
+
+        return self._memo(key, "title", title)
 
     def key_for(self, project: str) -> str:
         """The ticket-id prefix for a project: its profile's `prefix:` frontmatter field, else the key uppercased."""
-        meta, _ = self.project_profile(project)
-        val = str(meta.get("prefix") or "").strip()
-        return val.upper() if val else project.upper()
+        def prefix(meta, _body):
+            val = str(meta.get("prefix") or "").strip()
+            return val.upper() if val else project.upper()
+
+        return self._memo(project, "key", prefix)
 
     def aliases_for(self, project: str) -> list[str]:
         """Old keys and old prefixes a project answers to (`aliases:` in its profile)."""
-        meta, _ = self.project_profile(project)
-        v = meta.get("aliases")
-        if isinstance(v, str):
-            v = [v]
-        if not isinstance(v, list):
-            return []
-        return [str(x).strip() for x in v if str(x).strip()]
+        def aliases(meta, _body):
+            v = meta.get("aliases")
+            if isinstance(v, str):
+                v = [v]
+            if not isinstance(v, list):
+                return ()
+            return tuple(str(x).strip() for x in v if str(x).strip())
+
+        return list(self._memo(project, "aliases", aliases))
 
     def prefixes_for(self, project: str) -> set[str]:
         """Every id prefix that is valid for a project: the current prefix plus every alias, uppercased."""
