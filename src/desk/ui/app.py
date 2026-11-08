@@ -17,6 +17,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
+from .. import timing
 from .. import buildstamp as bs, docs as docsmod, ops, profanity, review as rv, style as styles, tracks as trk, version as ver
 from ..config import find_home
 from ..rules import RuleError
@@ -118,9 +119,11 @@ def why_text(home: Path) -> str:
 
 def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastAPI:
     app = FastAPI(title="Desk")
+    app.add_middleware(timing.TimingMiddleware)
     tokens = Tokens()
     app.state.tokens = tokens
     templates = Jinja2Templates(directory=str(TEMPLATES))
+    templates.TemplateResponse = timing.timed_render(templates.TemplateResponse)
     mermaid_src = "/static/mermaid.min.js" if (STATIC / "mermaid.min.js").exists() else MERMAID_CDN
     templates.env.globals.update(screen=screen, md=md_html, has_mermaid=has_mermaid, statuses=STATUSES,
                                  sections=SECTIONS, mermaid_src=mermaid_src, by_project=by_project, token=tokens.issue, track_slug=trk.track_slug, track_of=trk.track_of,

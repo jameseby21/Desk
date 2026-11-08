@@ -1,0 +1,15 @@
+# Speed budgets in milliseconds, checked against the p95 of each path at 10,000 tickets (Lily SPEC 3.4).
+# The same numbers are applied to the 1,000-ticket pytest case: a budget that holds at 10k holds at 1k.
+# `search` has no code path yet; it is listed so the budget exists the day search ships.
+[budgets_ms]
+today = 150
+board = 150
+ticket_page = 50
+search = 50
+new = 100
+move = 100
+
+# A path may get slower than its committed baseline p50 by this share (plus the floor) before the pytest marker fails.
+[regression]
+max_share = 0.20
+floor_ms = 2.0

@@ -37,3 +37,5 @@ packages = ["src/desk"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = "-m 'not bench'"
+markers = ["bench: speed budgets and regression check at 1,000 tickets (slow); run with pytest -m bench"]

@@ -10,6 +10,7 @@ from pathlib import Path
 
 import yaml
 
+from .timing import timed_db
 from .config import DEFAULT_TOML, CONFIG_NAME, load_config
 from .ticket import SIZES, canon_type, Ticket, new_ticket, slugify
 
@@ -130,6 +131,7 @@ class Store:
             return {}
         return {p.stem: p for p in sorted(self.projects_dir.glob("*.md"))}
 
+    @timed_db
     def project_profile(self, key: str) -> tuple[dict, str]:
         """(frontmatter mapping, body) of projects/<key>.md; ({}, "") when there is no profile."""
         path = self.projects().get(key)
@@ -198,6 +200,7 @@ class Store:
             return []
         return sorted(p for p in self.tickets_dir.glob("*.md") if p.is_file())
 
+    @timed_db
     def tickets(self) -> list[Ticket]:
         out = []
         for p in self.ticket_paths():
@@ -205,9 +208,11 @@ class Store:
         out.sort(key=lambda t: t.id)
         return out
 
+    @timed_db
     def by_id(self) -> dict[str, Ticket]:
         return {t.id: t for t in self.tickets()}
 
+    @timed_db
     def get(self, ticket_id: str) -> Ticket:
         ticket_id = ticket_id.upper()
         for p in self.ticket_paths():

@@ -396,6 +396,21 @@ def _home_or_none(args) -> Path | None:
         return None
 
 
+def cmd_bench(args):
+    from . import bench
+
+    result = bench.run(args.tickets, runs=args.runs, progress=lambda m: print(m, file=sys.stderr))
+    print(bench.table(result))
+    for f in bench.budget_failures(result):
+        print("OVER BUDGET  " + f)
+    for f in bench.regressions(result):
+        print("REGRESSION   " + f)
+    if args.out:
+        Path(args.out).write_text(json.dumps(result, indent=2) + "\n", encoding="utf-8")
+    if args.save_baseline:
+        print(f"baseline saved to {bench.save_baseline(result)}")
+
+
 def cmd_doctor(args):
     lines, stale = ver.doctor_report(_home_or_none(args), args.repo)
     for line in lines:
@@ -521,6 +536,13 @@ def build_parser() -> argparse.ArgumentParser:
     sp = sub.add_parser("doctor", help="installed version and commit vs the repo, tool and store paths, UI port; exit 1 when stale")
     sp.add_argument("--repo", help="the Desk repo (else DESK_REPO, else <store>/desk)")
     sp.set_defaults(fn=cmd_doctor)
+
+    sp = sub.add_parser("bench", help="build a throwaway store of N synthetic tickets and print p50/p95 per data path against the budgets")
+    sp.add_argument("--tickets", type=int, default=1000)
+    sp.add_argument("--runs", type=int, default=7, help="timed requests per page path")
+    sp.add_argument("--out", help="write the results as JSON here")
+    sp.add_argument("--save-baseline", action="store_true", help="record these numbers in desk/bench/baseline.json for this ticket count")
+    sp.set_defaults(fn=cmd_bench)
 
     sp = sub.add_parser("upgrade", help="reinstall the tool from the repo (refuses while the UI is running)")
     sp.add_argument("--repo", help="the Desk repo (else DESK_REPO, else <store>/desk)")

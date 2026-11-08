@@ -24,6 +24,7 @@ Every command a person or an agent runs day to day, with what it does and when. 
 | `drew rename-project old new` | renames a project; ids stay, old key and prefix become aliases | |
 | `drew intake <folder-or-zip> --topic x --project key` | copies a hand-off into `intake/` and opens a ticket | refuses private files |
 | `drew index` | rebuilds `.desk/index.sqlite` | derived, gitignored |
+| `drew bench --tickets N [--runs R] [--out file.json] [--save-baseline]` | builds a throwaway store (30 projects with brand blocks, N tickets of about 3.4 KB) in a temp folder, drives Today, board and a ticket page through the app, times `next_id`, `new`, `move` and reindex, prints p50 and p95 per path against `src/desk/bench/budgets.toml`, deletes the folder | before and after any speed change; `uv run --no-sync pytest -m bench` runs the 1,000-ticket case and fails on a broken budget or a p50 more than 20% over `src/desk/bench/baseline.json` |
 
 ## Build, release, docs
 | Command | What it does | Notes |
@@ -49,6 +50,7 @@ Every command a person or an agent runs day to day, with what it does and when. 
 ## In the UI
 | Where | What |
 | --- | --- |
+| every response | a `Server-Timing: db;dur=..., render;dur=..., total;dur=...` header; a request over 300 ms logs `slow request METHOD /path N ms` to stderr (logger `desk.slow`) |
 | `/projects?p=<key>&t=<track slug>&k=<ID>` | project, track, ticket and peek panel; what is open lives in the address |
 | `/board?track=<slug>`, `/?track=<slug>` | the track filter chip |
 | `/doc/<store-relative path>.md` | a store Markdown file, read-only; `glossary.md` terms get popovers and `[[Term]]` links to them |
