@@ -8,7 +8,7 @@ import json
 import sys
 from pathlib import Path
 
-from . import ops, review as rv, version as ver
+from . import ops, review as rv, tracks as trk, version as ver
 from .config import HomeNotFound, find_home
 from .rules import RuleError, validate_store
 from .store import Store
@@ -400,6 +400,32 @@ def cmd_upgrade(args):
     print(f"Upgraded: {out or 'installed (run `drew --version` to confirm)'}")
 
 
+def cmd_migrate(args):
+    s = _store(args)
+    rules_path = Path(args.rules) if args.rules else s.home / trk.RULES_PATH
+    if not rules_path.is_absolute() and not rules_path.exists():
+        rules_path = s.home / rules_path
+    try:
+        rules = trk.load_rules(rules_path)
+    except trk.RulesError as e:
+        _die(str(e))
+    tickets = s.tickets()
+    pairs = trk.plan(tickets, rules)
+    rows = [[t.id, str(t.meta.get("title", ""))[:60], name] for t, name in pairs]
+    if rows:
+        print(_table(rows, ["ticket", "title", "track"]))
+        print()
+    print(_table([[n, str(c)] for n, c in trk.counts(pairs)], ["track", "tickets"]))
+    kept = len(tickets) - len(pairs)
+    print()
+    print(f"{len(pairs)} to set; {kept} left alone (already have a track, or no rule matched); rules: {rules_path}")
+    if not args.apply:
+        print("Dry run: nothing written. Add --apply to write track: lines.")
+        return
+    wrote = sum(1 for t, name in pairs if trk.write_track(t, name))
+    print(f"Wrote track: to {wrote} tickets. updated dates were not changed.")
+
+
 def cmd_home(args):
     print(_store(args).home)
 
@@ -427,6 +453,14 @@ def build_parser() -> argparse.ArgumentParser:
     sp = sub.add_parser("upgrade", help="reinstall the tool from the repo (refuses while the UI is running)")
     sp.add_argument("--repo", help="the Desk repo (else DESK_REPO, else <store>/desk)")
     sp.set_defaults(fn=cmd_upgrade)
+
+    sp = sub.add_parser("migrate", help="one-off bulk edits; `migrate track` assigns tracks from tracks/rules.yaml (dry run by default)")
+    sp.add_argument("what", choices=["track"])
+    mode = sp.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--dry-run", action="store_true", help="print ticket -> track and counts; write nothing")
+    mode.add_argument("--apply", action="store_true", help="write track: into each matched ticket's frontmatter")
+    sp.add_argument("--rules", help="rules file (default tracks/rules.yaml in the store)")
+    sp.set_defaults(fn=cmd_migrate)
 
     sp = sub.add_parser("home", help="print the resolved store path")
     sp.set_defaults(fn=cmd_home)

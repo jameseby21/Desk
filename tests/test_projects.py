@@ -113,5 +113,5 @@ def test_rename_shows_formerly_in_cli_and_ui(store, capsys):
     assert "(formerly FR)" in client.get("/board").text
     assert "(formerly FR)" in client.get("/ticket/FR-0001").text
     page = client.get("/projects").text
-    assert "learninglabs" in page and "fraud" not in page.split("<tr>")[0]  # old key only as an alias
+    assert "learninglabs" in page and page.count("fraud") == 1  # old key only as an alias
     assert "formerly fraud, FR" in page

@@ -49,7 +49,7 @@ REQUIRED = ["id", "title", "project", "type", "status", "priority", "size", "own
 META_ORDER = [
     "id", "title", "project", "type", "status", "priority", "size", "owner", "assignee", "branch",
     "depends_on", "blocks", "related", "cloned_from", "docs_to_update", "dod", "tags", "effort_hours",
-    "confidence", "review_by", "smallest_step", "blocked_on", "blocked_from", "source", "evidence",
+    "confidence", "review_by", "smallest_step", "blocked_on", "blocked_from", "source", "evidence", "track",
     "created", "updated", "done_at",
 ]
 # Optional list-of-ids fields: every id must exist (errors) or should (warnings).

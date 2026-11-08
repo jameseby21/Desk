@@ -1,10 +1,12 @@
 {% extends "base.html" %}
+{% from "_chips.html" import bar %}
 {% block title %}Desk · Board{% endblock %}
 {% block body %}
 <div class="row" style="justify-content:space-between">
   <h1>The board{% if project %} · {{ titles.get(project, project) }} <span class="chip">{{ project }}</span>{% endif %}</h1>
   <div class="row"><a class="btn" href="/board">All</a>{% for p in projects %}<a class="btn{% if p == project %} ball{% endif %}" href="/board?project={{ p }}" title="{{ titles.get(p, p) }}">{{ p }}</a>{% endfor %}</div>
 </div>
+{{ bar(chips, track, chip_base, chip_extra) }}
 <div class="board">
 {% for st, items in cols %}
   {% if items or st in ['ready','in_progress','review'] %}

@@ -18,9 +18,12 @@ _PKG_DIR = Path(__file__).resolve().parent
 
 def package_version() -> str:
     try:
+        import warnings
         from importlib.metadata import version
 
-        return version("desk") or __version__
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            return version("desk") or __version__
     except Exception:  # not installed (running from a checkout)
         return __version__
 

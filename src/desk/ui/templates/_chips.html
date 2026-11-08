@@ -1,0 +1,8 @@
+{% macro bar(chips, track, base, extra) -%}
+{% if chips %}
+<div class="row trackchips"><span class="label">Track</span>
+  <a class="chip{% if not track %} ball{% endif %}" href="{{ base }}{% if extra %}?{{ extra }}{% endif %}">All</a>
+  {% for slug, name, n in chips %}<a class="chip{% if slug == track %} ball{% endif %}" href="{{ base }}?{% if extra %}{{ extra }}&amp;{% endif %}track={{ slug }}">{{ name }} {{ n }}</a>{% endfor %}
+</div>
+{% endif %}
+{%- endmacro %}

@@ -15,7 +15,7 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from .. import ops, review as rv, style as styles, version as ver
+from .. import ops, review as rv, style as styles, tracks as trk, version as ver
 from ..config import find_home
 from ..rules import RuleError
 from ..store import Store, id_parts
@@ -97,7 +97,7 @@ def create_app(home: Path | None = None) -> FastAPI:
     templates = Jinja2Templates(directory=str(TEMPLATES))
     mermaid_src = "/static/mermaid.min.js" if (STATIC / "mermaid.min.js").exists() else MERMAID_CDN
     templates.env.globals.update(screen=screen, md=md_html, has_mermaid=has_mermaid, statuses=STATUSES,
-                                 sections=SECTIONS, mermaid_src=mermaid_src, by_project=by_project, token=tokens.issue,
+                                 sections=SECTIONS, mermaid_src=mermaid_src, by_project=by_project, token=tokens.issue, track_slug=trk.track_slug, track_of=trk.track_of,
                                  build=ver.describe())
     if STATIC.exists():
         app.mount("/static", StaticFiles(directory=str(STATIC)), name="static")
@@ -123,9 +123,12 @@ def create_app(home: Path | None = None) -> FastAPI:
                 "titles": {k: st.project_title(k) for k in st.projects()}, **kw}
 
     @app.get("/", response_class=HTMLResponse)
-    def today(request: Request, cap: str = "normal"):
+    def today(request: Request, cap: str = "normal", track: str = ""):
         s = store()
         ts = s.tickets()
+        chips = trk.track_chips(ts)
+        if track:
+            ts = [t for t in ts if trk.track_slug(trk.track_of(t)) == track and trk.track_of(t)]
         week = ops.week_ago()
         mouth = [t for t in ts if t.status in ("claimed", "in_progress")]
         feet = [t for t in ts if t.status == "review"]
@@ -140,7 +143,8 @@ def create_app(home: Path | None = None) -> FastAPI:
         combos = combos_for(ts) if s.combos else []
         return templates.TemplateResponse(request, "today.html", ctx(request, s, mouth=by_project(mouth), feet=by_project(feet + decisions),
                                                              others=by_project(others), stale=by_project(stale),
-                                                             decided=by_project(decided), cap=cap, s=s, combos=combos, review_line=review_line))
+                                                             decided=by_project(decided), cap=cap, s=s, combos=combos, review_line=review_line,
+                                                             chips=chips, track=track, chip_base="/", chip_extra=f"cap={cap}"))
 
     @app.get("/about", response_class=HTMLResponse)
     def about(request: Request):
@@ -160,25 +164,54 @@ def create_app(home: Path | None = None) -> FastAPI:
         return RedirectResponse("/settings?saved=1", status_code=303)
 
     @app.get("/board", response_class=HTMLResponse)
-    def board(request: Request, project: str | None = None):
+    def board(request: Request, project: str | None = None, track: str = ""):
         s = store()
         ts = [t for t in s.tickets() if not project or t.project == project]
+        chips = trk.track_chips(ts)
+        if track:
+            ts = [t for t in ts if trk.track_of(t) and trk.track_slug(trk.track_of(t)) == track]
         cols = [(st, by_project([t for t in ts if t.status == st])) for st in STATUSES]
-        return templates.TemplateResponse(request, "board.html", ctx(request, s, cols=cols, project=project, projects=sorted(s.projects()), s=s))
+        return templates.TemplateResponse(request, "board.html", ctx(request, s, cols=cols, project=project, projects=sorted(s.projects()), s=s,
+                                                           chips=chips, track=track, chip_base="/board", chip_extra=f"project={project}" if project else ""))
 
     @app.get("/projects", response_class=HTMLResponse)
-    def projects(request: Request):
+    def projects(request: Request, p: str = "", t: str = "", k: str = ""):
+        """Project > track > ticket > peek. What is open lives in the URL: ?p=<project>&t=<track slug>&k=<ticket id>."""
         s = store()
-        ts = s.tickets()
-        rows = []
-        for key, path in s.projects().items():
-            mine = [t for t in ts if t.project == key]
-            counts = {st: len([t for t in mine if t.status == st]) for st in STATUSES}
-            last = max((str(t.meta.get("updated", "")) for t in mine), default="")
-            rows.append({"key": key, "title": s.project_title(key), "prefix": s.key_for(key), "aliases": s.aliases_for(key),
-                         "counts": counts, "open": len([t for t in mine if t.is_open]),
-                         "blocked": len([t for t in mine if t.status == "blocked"]), "last": last})
-        return templates.TemplateResponse(request, "projects.html", ctx(request, s, rows=rows))
+        rows = trk.hierarchy(s, s.tickets())
+        peek_html = ""
+        if k:
+            try:
+                peek_html = peek_panel(s, s.get(k))
+            except KeyError:
+                pass
+        return templates.TemplateResponse(request, "projects.html", ctx(request, s, rows=rows, sel_p=p, sel_t=t, sel_k=k.upper(), peek_html=peek_html, s=s))
+
+    def peek_panel(s: Store, t) -> str:
+        """The small panel under a ticket row: summary, acceptance, the latest report line, a link to the full page."""
+        e = html.escape
+        body = (t.section("Context") or t.section("Outcome")).strip()
+        summary = re.sub(r"\s+", " ", body.split("\n\n")[0])[:320] if body else ""
+        acc = t.acceptance()
+        report = next((ln.strip() for ln in reversed(t.section("Report").splitlines()) if ln.strip()), "")
+        out = ['<div class="peek">']
+        out.append(f'<p><span class="label">Summary</span> {e(summary) if summary else "<span class=muted>No summary yet.</span>"}</p>')
+        if acc:
+            items = "".join(f'<li>{"[x]" if ok else "[ ]"} {e(txt)}</li>' for ok, txt in acc[:8])
+            more = f'<li class="muted">and {len(acc) - 8} more</li>' if len(acc) > 8 else ""
+            out.append(f'<div><span class="label">Acceptance ({sum(1 for ok, _ in acc if ok)} of {len(acc)} true)</span><ul>{items}{more}</ul></div>')
+        else:
+            out.append('<p><span class="label">Acceptance</span> <span class="muted">none yet</span></p>')
+        out.append(f'<p><span class="label">Latest report line</span> {e(report[:240]) if report else "<span class=muted>Not run.</span>"}</p>')
+        out.append(f'<p><a class="btn small" href="/ticket/{e(t.id)}">Open the full ticket</a></p></div>')
+        return "".join(out)
+
+    @app.get("/peek/{ticket_id}", response_class=HTMLResponse)
+    def peek(ticket_id: str):
+        try:
+            return HTMLResponse(peek_panel(store(), store().get(ticket_id)))
+        except KeyError:
+            return HTMLResponse("<p>No such ticket</p>", status_code=404)
 
     @app.get("/ticket/{ticket_id}", response_class=HTMLResponse)
     def ticket(request: Request, ticket_id: str, error: str | None = None, ok: str = "", at: str = "", dup: int = 0):

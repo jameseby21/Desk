@@ -85,6 +85,8 @@ def validate_ticket(t: Ticket, store: "Store", known_ids: set[str] | None = None
     if "tags" in m and m["tags"] not in (None, ""):
         if not (isinstance(m["tags"], list) and all(isinstance(x, str) and x.strip() for x in m["tags"])):
             errors.append(f"{where}: tags must be a list of strings")
+    if "track" in m and (not isinstance(m["track"], str) or not m["track"].strip()):
+        errors.append(f"{where}: track must be a non-empty string when present")
     for field_ in ("assignee", "cloned_from", "evidence"):
         if field_ in m and m[field_] not in (None, "") and not isinstance(m[field_], str):
             errors.append(f"{where}: {field_} must be a string")

@@ -1,23 +1,75 @@
 {% extends "base.html" %}
+{% from "_chips.html" import bar %}
 {% block title %}Desk · Projects{% endblock %}
 {% block body %}
 <h1>Projects</h1>
-<p class="muted">One row per <code>projects/&lt;key&gt;.md</code>. Counts come from the ticket files. Old keys and prefixes a project still answers to are listed as aliases.</p>
-<table>
-<tr><th>Project</th><th>Prefix</th><th>Open</th><th>Thrown</th><th>Fetching</th><th>Dropped</th><th>Stuck</th><th>Fetched</th><th>Last activity</th></tr>
+<p class="muted">Project, then track, then ticket, then a peek at the details. One row per <code>projects/&lt;key&gt;.md</code>; tracks come from each ticket's <code>track:</code> line. What is open stays in the address, so you can share it.</p>
+<div class="tree">
 {% for r in rows %}
-<tr>
-  <td><a href="/board?project={{ r.key }}">{{ r.title }}</a> <span class="chip">{{ r.key }}</span>{% if r.aliases %} <span class="muted" style="font-size:12.5px">formerly {{ r.aliases|join(', ') }}</span>{% endif %}</td>
-  <td><code>{{ r.prefix }}</code></td>
-  <td>{{ r.open }}</td>
-  <td>{{ r.counts['ready'] }}</td>
-  <td>{{ r.counts['claimed'] + r.counts['in_progress'] }}</td>
-  <td>{{ r.counts['review'] }}</td>
-  <td>{% if r.blocked %}<span class="chip red">{{ r.blocked }}</span>{% else %}0{% endif %}</td>
-  <td>{{ r.counts['done'] }}</td>
-  <td class="muted">{{ r.last or '—' }}</td>
-</tr>
+{% set brand = s.brand_for(r.key) %}
+<details class="proj" data-key="p" data-val="{{ r.key }}"{% if sel_p == r.key %} open{% endif %}>
+  <summary>
+    {% if brand and brand.mark_url %}<img src="{{ brand.mark_url }}" width="22" height="22" alt="">{% else %}<span class="initial">{{ (r.title or '?')[0]|upper }}</span>{% endif %}
+    <a class="name" href="/projects?p={{ r.key }}">{{ r.title }}</a> <span class="chip">{{ r.key }}</span> <code>{{ r.prefix }}</code>{% if r.aliases %} <span class="muted" style="font-size:12.5px">formerly {{ r.aliases|join(', ') }}</span>{% endif %}
+    {% if r.area %}<span class="muted area">{{ r.area }}</span>{% endif %}
+    <span class="counts">{{ r.open }} open · {{ r.counts['ready'] }} thrown · {{ r.counts['review'] }} dropped · {{ r.counts['blocked'] }} stuck · {{ r.done }} fetched</span>
+    <span class="pct" title="{{ r.done }} of {{ r.total }} done"><span class="barwrap"><span class="bar" style="width:{{ r.pct }}%"></span></span>{{ r.pct }}%</span>
+  </summary>
+  {% if r.tracks %}
+  <div class="tracks">
+  {% for tr in r.tracks %}
+  <details class="track" data-key="t" data-val="{{ tr.slug }}"{% if sel_p == r.key and sel_t == tr.slug %} open{% endif %}>
+    <summary>
+      <a class="name" href="/projects?p={{ r.key }}&amp;t={{ tr.slug }}">{{ tr.name }}</a>
+      {% if tr.kind %}<span class="chip">{{ tr.kind }}</span>{% endif %}
+      {% if tr.starts or tr.ends %}<span class="muted">{{ tr.starts }}{% if tr.ends %} to {{ tr.ends }}{% endif %}</span>{% endif %}
+      <span class="counts">{{ tr.open }} open of {{ tr.total }}</span>
+      <span class="pct"><span class="barwrap"><span class="bar" style="width:{{ tr.pct }}%"></span></span>{{ tr.pct }}%</span>
+    </summary>
+    {% if tr.goal %}<p class="muted goal">{{ tr.goal }}</p>{% endif %}
+    <ul class="tickets">
+    {% for row in tr.tickets %}{% set t = row.t %}
+      <li><details class="tk" data-key="k" data-val="{{ t.id }}" data-peek="/peek/{{ t.id }}"{% if sel_k == t.id %} open{% endif %}>
+        <summary>
+          <code>{{ t.id }}</code> <span class="ttl">{{ t.meta.get('title') }}</span>
+          <span class="chip {% if t.status == 'review' %}ball{% elif t.status == 'blocked' %}red{% endif %}">{{ screen(t.status) }}</span>
+          <span class="chip">{{ row.ask }}</span>
+          <span class="muted">{{ t.meta.get('owner') }}</span>
+        </summary>
+        <div class="panel">{% if sel_k == t.id %}{{ peek_html|safe }}{% else %}<span class="muted">Loading...</span> <a href="/ticket/{{ t.id }}">Open the full ticket</a>{% endif %}</div>
+      </details></li>
+    {% endfor %}
+    </ul>
+  </details>
+  {% endfor %}
+  </div>
+  {% else %}<p class="muted" style="margin:6px 0 10px 34px">No tickets yet.</p>{% endif %}
+</details>
 {% endfor %}
-</table>
+</div>
 {% if not rows %}<p class="muted">No projects yet. Add <code>projects/&lt;key&gt;.md</code> files to the store.</p>{% endif %}
+<script>
+(function () {
+  function sync() {
+    var u = new URL(location.href);
+    ["p", "t", "k"].forEach(function (k) { u.searchParams.delete(k); });
+    var proj = document.querySelector("details.proj[open]");
+    if (proj) { u.searchParams.set("p", proj.dataset.val);
+      var tr = proj.querySelector("details.track[open]");
+      if (tr) { u.searchParams.set("t", tr.dataset.val);
+        var tk = tr.querySelector("details.tk[open]");
+        if (tk) u.searchParams.set("k", tk.dataset.val); } }
+    history.replaceState(null, "", u);
+  }
+  document.querySelectorAll("details").forEach(function (d) {
+    d.addEventListener("toggle", function () {
+      if (d.open && d.dataset.peek && !d.dataset.loaded) {
+        d.dataset.loaded = "1";
+        fetch(d.dataset.peek).then(function (r) { return r.text(); }).then(function (h) { d.querySelector(".panel").innerHTML = h; });
+      }
+      sync();
+    });
+  });
+})();
+</script>
 {% endblock %}

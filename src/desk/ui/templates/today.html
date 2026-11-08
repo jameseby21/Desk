@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "_card.html" import card %}
+{% from "_chips.html" import bar %}
 {% from "_mascot.html" import empty %}
 {% block title %}Desk · Today{% endblock %}
 {% block body %}
@@ -21,6 +22,7 @@
   </div>
 </div>
 
+{{ bar(chips, track, chip_base, chip_extra) }}
 {% if review_line %}
 <p style="margin:14px 0 0"><span class="label">Ticket review</span> <a href="/ticket/{{ review_line[0].id }}">{{ review_line[0].meta.get('title') }}</a> · {{ review_line[1] }} waiting</p>
 {% endif %}
