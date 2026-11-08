@@ -1,0 +1,58 @@
+# Useful commands: Desk
+
+Every command a person or an agent runs day to day, with what it does and when. Keep it current: a command that no longer exists is a defect. Type `drew` on Windows (`desk` is the same program elsewhere).
+
+## Daily
+| Command | What it does | When |
+| --- | --- | --- |
+| `drew-ui` | starts the web UI on http://127.0.0.1:8765 (`DESK_UI_PORT` to change, `DESK_HOME` for the store) | every session |
+| `uv run --no-sync pytest -q` | runs the whole test suite | before every report |
+| `drew validate` | schema, lifecycle rules, dependencies, track values; exit 1 on errors | before every commit |
+| `drew list [--project] [--status] [--all]` | table of open tickets | start of a session |
+| `drew comment ID "text" [--as name]` | adds a dated, timed comment; an identical comment from the same author within 10 minutes is refused as a duplicate | any time |
+
+## Data and environment
+| Command | What it does | Notes |
+| --- | --- | --- |
+| `drew init [path] [--owner]` | creates a store (`desk.toml`, `tickets/`, `projects/`, `intake/`) | safe to run again |
+| `drew migrate track --dry-run [--rules tracks/rules.yaml]` | prints ticket -> track and counts per track; writes nothing | read it before applying |
+| `drew migrate track --apply [--rules ...]` | writes one `track:` line into each matched ticket; nothing else changes, `updated` included | skips tickets that already have a track |
+| `drew rename-project old new` | renames a project; ids stay, old key and prefix become aliases | |
+| `drew intake <folder-or-zip> --topic x --project key` | copies a hand-off into `intake/` and opens a ticket | refuses private files |
+| `drew index` | rebuilds `.desk/index.sqlite` | derived, gitignored |
+
+## Build, release, docs
+| Command | What it does | Notes |
+| --- | --- | --- |
+| `uv build --wheel` | builds the wheel; the build hook writes the commit into `desk/_build.py` | the footer and `drew --version` read it |
+| `drew --version` | prints `Desk <version> · <commit or "no git">` | same text as the UI footer |
+| `drew doctor [--repo PATH]` | installed version and commit, repo path and HEAD, tool path, store path, anything listening on the UI port; exit 1 when the installed code is older than the repo | run it when the UI looks out of date |
+| `drew upgrade [--repo PATH]` | refuses while a process listens on the UI port (names the PID), then runs `uv tool install --force <repo>` and prints the new version | stop the UI first |
+| `drew review new` / `drew review sync` | creates, then refreshes, this week's ticket review | weekly |
+
+## Desk
+| Command | What it does |
+| --- | --- |
+| `drew next --project <key>` | the next ready ticket for this project |
+| `drew claim <ID>` / `drew start <ID>` | take a ticket; begin work |
+| `drew report <ID> --file report.md` | hand it back with proof (moves to review) |
+| `drew decide <ID> --approve "why"` / `--changes "why"` | the owner's decision, in words |
+| `drew done <ID>` | approved to done, after the merge |
+| `drew snap <ID>` / `drew attach <ID> file` | attach a screenshot or file as evidence |
+| `drew stats`, `drew board`, `drew show <ID>` | look at the store |
+| `drew brand-check [--create]` | projects missing a brand mark |
+
+## In the UI
+| Where | What |
+| --- | --- |
+| `/projects?p=<key>&t=<track slug>&k=<ID>` | project, track, ticket and peek panel; what is open lives in the address |
+| `/board?track=<slug>`, `/?track=<slug>` | the track filter chip |
+| `/doc/<store-relative path>.md` | a store Markdown file, read-only; `glossary.md` terms get popovers and `[[Term]]` links to them |
+| `/ticket/<ID>` | the full ticket, with a Mentioned-in list |
+
+## Troubleshooting one-liners
+| Symptom | Command |
+| --- | --- |
+| port in use | `drew doctor` shows the PID; then `taskkill /PID <pid> /T /F` (Windows) or `kill <pid>` (never a broad name match) |
+| stale install | `drew doctor`, then stop the UI and `drew upgrade` |
+| "no git" in the footer | the wheel was built outside a git checkout; rebuild from the repo |

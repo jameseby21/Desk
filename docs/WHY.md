@@ -1,5 +1,7 @@
 # Why Desk
 
+Desk is a free alternative to Jira and the paid work-management tools: your tickets, in your repo, with proof.
+
 Ticket tools count cards. Desk counts proof.
 
 Nothing closes without evidence. Every fix leaves a lesson behind. Your tickets are Markdown files in your own git repo, so Desk is a lens on your work, not a landlord. And it runs your real life on the same board as your work, because the person doing both is the same person.

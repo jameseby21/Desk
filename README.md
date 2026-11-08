@@ -34,6 +34,9 @@ A store is any directory with a `desk.toml`. Desk finds it in this order: the `-
   tickets/assets/<ID>/   # attachments and screen snaps for one ticket
   projects/<key>.md      # one profile per project; a ticket's project must exist here
   intake/<date>-<topic>/ # research hand-offs, copied in by `desk intake`
+  tracks/<project>/<slug>.md  # optional track descriptions (title, kind sprint|milestone|epic|theme, starts, ends, goal)
+  tracks/rules.yaml      # ordered rules for `desk migrate track`
+  glossary.md            # one `## Term` per entry; drives popovers and [[Term]] links
   DECISIONS.md           # process decisions, dated, append-only
   .desk/index.sqlite     # derived search index, gitignored, never the source of truth
 ```
@@ -79,6 +82,7 @@ depends_on: [JRE-0041]
 docs_to_update: [docs/README.md#docs-map]
 dod: [core, code, docs]      # Definition of Done modules that apply
 tags: [docs, weekly]         # optional, free-form strings; combos need at least one
+track: Sprint 0006           # optional, non-empty string: the group inside the project (project > track > ticket)
 assignee: codex              # optional: who executes it (main, james, codex, a project key, chaz, em, ... any name)
 blocks: [JRE-0043]           # optional: ids this ticket holds up (must exist)
 related: [JRE-0040]          # optional: ids worth reading (a missing one is a warning)
@@ -203,6 +207,9 @@ Rules the CLI and the UI both enforce, and `desk validate` checks in the files:
 | `desk index` | UI, pre-commit | Rebuild `.desk/index.sqlite` from the files |
 | `desk board [--project] [--all]` | owner | The board in the terminal |
 | `desk intake <folder-or-zip> --topic "x" --project key` | main | Copy a hand-off into `intake/<date>-<topic>/` and open an `intake` ticket. Refuses packages containing `PRIVATE_CONTEXT.md` or a `jeby-private` path |
+| `desk migrate track --dry-run\|--apply [--rules tracks/rules.yaml]` | owner / main | Assign `track:` from ordered rules (first match wins). The dry run prints ticket -> track and counts; `--apply` inserts one `track:` line per ticket and changes nothing else. Tickets that already have a track are left alone |
+| `desk doctor [--repo PATH]` | anyone | Installed version and commit, repo path and HEAD, tool and store paths, anything on the UI port. Exit 1 when the installed code is older than the repo |
+| `desk upgrade [--repo PATH]` | owner | Refuses while the UI port is in use (names the PID), else `uv tool install --force <repo>` |
 | `desk home` | anyone | Print the resolved store |
 
 Refusals print a plain reason and exit 1, so an agent sees exactly why. Output is UTF-8 on every platform, including Windows consoles.
@@ -244,3 +251,10 @@ MIT, copyright JA Insights LLC.
 - Ticket ids that exist in the store (`ABC-0001`) render as links with the ticket's title on hover; files are never changed.
 - Acceptance, Prompt and Evidence checkboxes are clickable in the UI (`POST /ticket/<ID>/check`, `ops.toggle_check`). On a review-week ticket each line also gets Open, Approve and Send back.
 - A project profile may carry `brand: {mark: "assets/brand/<key>/mark.svg", accent: "#B3121A", family: "JA Insights"}`. `assets/brand/` is served at `/brand/<path>`. `drew brand-check [--create] [--assignee chaz]` lists projects with no usable brand and can open one ticket each in project `brand`; `drew validate` warns for projects without a brand block.
+
+## Doc links, glossary and backlinks
+
+- A store path such as `docs/EDITIONS.md#free-edition` (folders `docs`, `projects`, `intake`, `standards`, `tickets`, `tracks`) in a ticket body or comment becomes a link to `/doc/<path>`, which shows that Markdown file read-only inside the app. Only files inside the store are reachable; `..`, absolute paths and private files get a 404. A path to a file that does not exist stays plain text.
+- `glossary.md` at the store root, one `## Term` per entry: the first use of each term on a page gets a dotted underline and a popover; `[[Term]]` always links to `/doc/glossary.md#term`.
+- Every ticket page, and every `/doc/` page, ends with a "Mentioned in" list of the tickets whose bodies mention that ticket id or that path.
+- Forms (comment, decide, check, move) carry a one-time token and their button disables on click, so a double click cannot post twice; a reused token gets a friendly page and nothing is written.
