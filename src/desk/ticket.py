@@ -14,6 +14,7 @@ SECTIONS = [
     "Outcome",
     "Acceptance",
     "How to validate",  # written before the work starts: the steps that confirm the Outcome once the work is claimed done
+    "Tests",  # the automated test that proves it, or the exact steps a person performs and what they must see (all failures become tests)
     "Prompt",  # what an agent pastes to execute the ticket
     "Docs to update",
     "Out of scope",
@@ -291,6 +292,10 @@ class Ticket:
     def validate_steps(self) -> str:
         return validate_steps(self.section("How to validate"))
 
+    def tests_text(self) -> str:
+        """The written words of the Tests section: a hint comment and blank lines do not count."""
+        return validate_steps(self.section("Tests"))
+
     def acceptance(self) -> list[tuple[bool, str]]:
         out = []
         for line in self.section("Acceptance").splitlines():
@@ -377,4 +382,5 @@ def new_ticket(ticket_id: str, title: str, project: str, type_: str = "feature",
     t = Ticket(meta=meta, sections={s: "" for s in SECTIONS})
     hint = VALIDATE_HINTS.get(canon_type(type_), VALIDATE_HINTS["feature"])
     t.sections["How to validate"] = f"<!-- Write this before the work starts. {hint} -->" + chr(10)
+    t.sections["Tests"] = "<!-- Name the automated test (file and what it protects), or the steps a person performs and what they must see. -->" + chr(10)
     return t

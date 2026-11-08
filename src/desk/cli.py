@@ -8,7 +8,7 @@ import json
 import sys
 from pathlib import Path
 
-from . import accept_migrate, check_migrate, ops, profanity, retype, review as rv, style as styles, tracks as trk, version as ver
+from . import accept_migrate, check_migrate, ops, profanity, retype, review as rv, style as styles, tests_migrate, tracks as trk, version as ver
 from .config import HomeNotFound, find_home
 from .rules import RuleError, validate_store
 from .store import Store
@@ -510,6 +510,8 @@ def cmd_migrate(args):
         return cmd_migrate_acceptance(args)
     if args.what == "checks":
         return cmd_migrate_checks(args)
+    if args.what == "tests":
+        return cmd_migrate_tests(args)
     s = _store(args)
     rules_path = Path(args.rules) if args.rules else s.home / trk.RULES_PATH
     if not rules_path.is_absolute() and not rules_path.exists():
@@ -576,6 +578,19 @@ def cmd_migrate_acceptance(args):
     print(f"Removed {wrote} lines from {len(pairs)} tickets.")
 
 
+def cmd_migrate_tests(args):
+    s = _store(args)
+    todo = tests_migrate.plan(s.tickets())
+    for t in todo:
+        print(f"{t.id}  {str(t.meta.get('title', ''))[:60]}")
+    print(f"\n{len(todo)} ticket(s) without Tests text would get the seed; {len(s.tickets()) - len(todo)} left alone.")
+    if not args.apply:
+        print("Dry run: nothing written. Add --apply to add the section (only `## Tests` changes; updated dates are not touched).")
+        return
+    wrote = sum(tests_migrate.apply_file(t) for t in todo)
+    print(f"Added the Tests section to {wrote} ticket(s).")
+
+
 def cmd_migrate_checks(args):
     s = _store(args)
     tickets = s.tickets()
@@ -637,8 +652,8 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--repo", help="the Desk repo (else DESK_REPO, else <store>/desk)")
     sp.set_defaults(fn=cmd_upgrade)
 
-    sp = sub.add_parser("migrate", help="one-off bulk edits; `migrate track` assigns tracks from tracks/rules.yaml, `migrate type` retires the legacy slice and chore types, `migrate acceptance` strips boilerplate Acceptance lines that restate the Definition of Done, `migrate checks` rewrites inline `not accepted` lines as the quoted-reason block")
-    sp.add_argument("what", choices=["track", "type", "acceptance", "checks"])
+    sp = sub.add_parser("migrate", help="one-off bulk edits; `migrate track` assigns tracks from tracks/rules.yaml, `migrate type` retires the legacy slice and chore types, `migrate acceptance` strips boilerplate Acceptance lines that restate the Definition of Done, `migrate checks` rewrites inline `not accepted` lines as the quoted-reason block, `migrate tests` adds the Tests section to every ticket without one")
+    sp.add_argument("what", choices=["track", "type", "acceptance", "checks", "tests"])
     mode = sp.add_mutually_exclusive_group(required=True)
     mode.add_argument("--dry-run", action="store_true", help="print ticket -> track and counts; write nothing")
     mode.add_argument("--apply", action="store_true", help="write track: into each matched ticket's frontmatter")

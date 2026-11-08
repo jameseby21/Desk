@@ -86,4 +86,4 @@ def test_validate_warns_on_long_titles_and_old_reviews(store, capsys):
     except SystemExit as e:
         assert e.code == 0
     out = capsys.readouterr().out
-    assert "warning:" in out and "0 error(s), 5 warning(s)" in out  # 2 ticket warnings + 3 projects without a brand block
+    assert "warning:" in out and "0 error(s), 6 warning(s)" in out  # 3 ticket warnings (long title, old review, no Tests text on the review ticket) + 3 projects without a brand block

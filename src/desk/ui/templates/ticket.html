@@ -40,6 +40,9 @@
     <div class="card section" id="validate"><span class="label">How to validate</span>
       {% if t.validate_steps() %}<div class="md" data-check-section="How to validate">{{ render(t.validate_steps(), t, 'How to validate')|safe }}</div>{% else %}<p class="muted">Not written yet. A ticket cannot be handed over for review without it.</p>{% endif %}</div>
 
+    <div class="card section" id="tests"><span class="label">Tests</span>
+      {% if t.tests_text() %}<div class="md">{{ render(t.tests_text())|safe }}</div>{% else %}<p class="muted">No Tests text yet. Name the automated test, or the steps a person performs and what they must see.</p>{% endif %}</div>
+
     {% if t.section('Prompt') %}
     <div class="card section" id="prompt"><span class="label">Prompt (paste this to execute)</span><div class="md" data-check-section="Prompt">{{ render(t.section('Prompt'), t, 'Prompt')|safe }}</div></div>
     {% endif %}

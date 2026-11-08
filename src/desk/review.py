@@ -7,6 +7,7 @@ import re
 import statistics
 
 from .store import Store
+from .tests_migrate import is_seed
 from .ticket import Ticket
 
 GROUPS = ["Approve", "Choose", "Answer", "Provide", "Do", "Review"]
@@ -219,6 +220,7 @@ def compute(store: Store, review: Ticket, today: dt.date | None = None) -> dict:
         "median_days": statistics.median(ages) if ages else None,
         "oldest": oldest,
         "comments_open": len(cm.query(store, author=owner, unanswered=True)),
+        "seeded": sorted(t.id for t in tickets.values() if t.is_open and t.id != review.id and is_seed(t)),
         "comments_owner": owner,
     }
     return {"items": items, "initial": initial, "kpi": kpi, "added": added, "checked": newly_checked, "resolved": resolved}
@@ -235,6 +237,7 @@ def kpi_text(k: dict) -> str:
         f"- Median days in review: {med}",
         f"- Oldest waiting: {old}",
         *([f"- Comments still open: {k['comments_open']} ({k['comments_owner']})"] if "comments_open" in k else []),
+        *([f"- Tests still the seed (open tickets): {len(k['seeded'])}" + (": " + ", ".join(k["seeded"][:15]) + (f" and {len(k['seeded']) - 15} more" if len(k["seeded"]) > 15 else "") if k["seeded"] else "")] if "seeded" in k else []),
     ])
 
 

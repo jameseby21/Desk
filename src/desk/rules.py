@@ -7,7 +7,7 @@ import re
 from typing import TYPE_CHECKING
 
 from .store import id_parts
-from .ticket import CLOSED, ID_LISTS_LOOSE, ID_LISTS_STRICT, PRIORITIES, REQUIRED, LEGACY_TYPES, SIZES, STATUSES, TYPES, Ticket, canon_type, parse_checks
+from .ticket import CLOSED, ID_LISTS_LOOSE, ID_LISTS_STRICT, PRIORITIES, REQUIRED, LEGACY_TYPES, SIZES, STATUSES, TYPES, Ticket, canon_type, parse_checks, validate_steps
 
 if TYPE_CHECKING:
     from .store import Store
@@ -147,6 +147,8 @@ def validate_ticket(t: Ticket, store: "Store", known_ids: set[str] | None = None
             warnings.append(f"{where}: in review for {since} days (untouched since {str(m['updated'])[:10]}); decide or send back")
     if status == "review" and not t.validate_steps():
         warnings.append(f"{where}: in review with no How to validate (legacy ticket); write the steps")
+    if status in ("ready", "in_progress", "review") and not validate_steps(t.sections.get("Tests") or ""):
+        warnings.append(f"{where}: no Tests section text on a {status} ticket; name the automated test, or the steps a person performs and what they must see (`drew migrate tests` seeds old tickets)")
     if m["size"] == "l" and status not in ("inbox", "triage"):
         warnings.append(f"{where}: size `l` should be split before leaving triage")
     if canon_type(m["type"]) in ("feature", "upgrade") and status in ("ready", "claimed", "in_progress") and not t.acceptance():
