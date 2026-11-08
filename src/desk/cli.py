@@ -66,7 +66,7 @@ def cmd_new(args):
     s.sync_before()
     dod = [x.strip() for x in (args.dod or "core").split(",") if x.strip()]
     try:
-        t = ops.new(s, args.title, args.project, args.type, priority=args.priority, size=args.size, owner=args.owner, dod=dod, source=args.source or "")
+        t = ops.new(s, args.title, args.project, args.type, priority=args.priority, size=args.size, owner=args.owner, dod=dod, source=args.source or "", assignee=args.assignee)
     except (RuleError, ValueError) as e:
         _die(str(e))
     s.sync_after(f"desk: new {t.id}")
@@ -261,6 +261,34 @@ def cmd_intake(args):
     print(f"{dest}\n{t.path}")
 
 
+def cmd_clone(args):
+    s = _store(args)
+    s.sync_before()
+    try:
+        src = s.get(args.id)
+        t = ops.clone(s, src, args.title, project=args.project, actor=args.as_ or "main")
+    except (KeyError, RuleError, ValueError) as e:
+        _die(str(e))
+    s.sync_after(f"desk: clone {src.id} -> {t.id}")
+    print(t.path)
+
+
+def cmd_stats(args):
+    s = _store(args)
+    st = ops.stats(s, since=args.since, project=args.project)
+    if args.json:
+        print(json.dumps(st, indent=2))
+        return
+    scope = (f" since {st['since']}" if st["since"] else "") + (f" in {st['project']}" if st["project"] else "")
+    print(f"Tickets{scope}: {st['total']} total · {st['done']} done · {st['in_review']} in review (built, not yet proven)"
+          f" · {st['open']} open · {st['rejected']} let go")
+    for label, table in (("status", st["by_status"]), ("project", st["by_project"]), ("type", st["by_type"]),
+                         ("created, week of", st["created_per_week"]), ("done, week of", st["done_per_week"])):
+        print(f"\nBy {label}")
+        rows = [[str(k), str(v)] for k, v in table.items()] or [["(none)", "0"]]
+        print(_table(rows, [label, "count"]))
+
+
 def cmd_home(args):
     print(_store(args).home)
 
@@ -293,6 +321,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--owner", default="main")
     sp.add_argument("--dod", help="comma-separated Definition of Done modules (default core)")
     sp.add_argument("--source", help="path#section into intake/")
+    sp.add_argument("--assignee", help="who will execute it: main, james, codex, a project key, or any name")
     sp.set_defaults(fn=cmd_new)
 
     sp = sub.add_parser("list", help="table of tickets (open ones unless --all or --status)")
@@ -406,6 +435,19 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("id")
     sp.add_argument("--caption")
     sp.set_defaults(fn=cmd_snap)
+
+    sp = sub.add_parser("clone", help="a new ticket with the source's Context, Outcome, Acceptance and Prompt; sets cloned_from")
+    sp.add_argument("id")
+    sp.add_argument("title")
+    sp.add_argument("--project", help="put the clone in another project (default: the source's)")
+    actor(sp)
+    sp.set_defaults(fn=cmd_clone)
+
+    sp = sub.add_parser("stats", help="counts by status, project and type; created and done per week")
+    sp.add_argument("--since", metavar="YYYY-MM-DD", help="only tickets created on or after this date")
+    sp.add_argument("--project")
+    sp.add_argument("--json", action="store_true")
+    sp.set_defaults(fn=cmd_stats)
     return p
 
 

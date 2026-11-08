@@ -13,13 +13,17 @@ SECTIONS = [
     "Context",
     "Outcome",
     "Acceptance",
+    "Prompt",  # what an agent pastes to execute the ticket
     "Docs to update",
     "Out of scope",
     "Attachments",
     "Report",
+    "Evidence",  # what proves done: commands, records, commits
     "Decision",
     "Comments",
 ]
+# Sections copied by `desk clone`.
+CLONED_SECTIONS = ["Context", "Outcome", "Acceptance", "Prompt"]
 
 TYPES = ["slice", "intake", "decision", "bug", "research", "chore"]
 STATUSES = [
@@ -43,10 +47,14 @@ REQUIRED = ["id", "title", "project", "type", "status", "priority", "size", "own
 
 # Canonical frontmatter order on write.
 META_ORDER = [
-    "id", "title", "project", "type", "status", "priority", "size", "owner", "branch",
-    "depends_on", "docs_to_update", "dod", "tags", "effort_hours", "confidence", "review_by",
-    "smallest_step", "blocked_on", "blocked_from", "source", "created", "updated", "done_at",
+    "id", "title", "project", "type", "status", "priority", "size", "owner", "assignee", "branch",
+    "depends_on", "blocks", "related", "cloned_from", "docs_to_update", "dod", "tags", "effort_hours",
+    "confidence", "review_by", "smallest_step", "blocked_on", "blocked_from", "source", "evidence",
+    "created", "updated", "done_at",
 ]
+# Optional list-of-ids fields: every id must exist (errors) or should (warnings).
+ID_LISTS_STRICT = ["depends_on", "blocks"]
+ID_LISTS_LOOSE = ["related"]
 
 _FM = re.compile(r"\A---\r?\n(.*?)\r?\n---\r?\n?(.*)\Z", re.S)
 _H2 = re.compile(r"^## (.+?)\s*$", re.M)
@@ -166,7 +174,8 @@ class Ticket:
 
 
 def new_ticket(ticket_id: str, title: str, project: str, type_: str = "slice", *, priority: str = "p2",
-               size: str = "s", owner: str = "main", dod: list[str] | None = None, source: str = "") -> Ticket:
+               size: str = "s", owner: str = "main", dod: list[str] | None = None, source: str = "",
+               assignee: str | None = None) -> Ticket:
     now = today()
     meta = {
         "id": ticket_id,
@@ -184,5 +193,7 @@ def new_ticket(ticket_id: str, title: str, project: str, type_: str = "slice", *
         "created": now,
         "updated": now,
     }
+    if assignee:
+        meta["assignee"] = assignee
     t = Ticket(meta=meta, sections={s: "" for s in SECTIONS})
     return t

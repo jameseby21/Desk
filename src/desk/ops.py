@@ -13,7 +13,7 @@ from pathlib import Path
 
 from .rules import RuleError, check_transition
 from .store import Store, join_profile, split_profile
-from .ticket import Ticket, slugify, today
+from .ticket import CLONED_SECTIONS, Ticket, slugify, today
 
 PRIVATE_NAMES = {"private_context.md"}
 PRIVATE_PARTS = {"jeby-private"}
@@ -305,3 +305,68 @@ def snap(store: Store, t: Ticket, caption: str | None = None) -> Path:
     with tempfile.TemporaryDirectory(prefix="desk-snap-") as tmp:
         shot = capture_screen(Path(tmp) / f"snap-{stamp}.png")
         return attach(store, t, shot, caption or f"Screen {stamp}")
+
+
+# ---- clone and stats -----------------------------------------------------------
+
+def clone(store: Store, src: Ticket, title: str, project: str | None = None, actor: str = "main") -> Ticket:
+    """A new ticket with the source's Context, Outcome, Acceptance and Prompt, and `cloned_from` set."""
+    if not title.strip():
+        raise RuleError("A clone needs a title.")
+    project = project or src.project
+    if project not in store.projects() and store.projects():
+        raise RuleError(f"Unknown project `{project}`. Add projects/{project}.md first.")
+    m = src.meta
+    t = store.create(title.strip(), project, str(m.get("type", "slice")), priority=str(m.get("priority", "p2")),
+                     size=str(m.get("size", "s")), owner=actor, dod=list(m.get("dod") or ["core"]), source=str(m.get("source") or ""))
+    t.meta["cloned_from"] = src.id
+    for k in ("tags", "assignee", "docs_to_update", "effort_hours", "smallest_step"):
+        if m.get(k) not in (None, "", []):
+            t.meta[k] = m[k]
+    for name in CLONED_SECTIONS:
+        body = src.section(name)
+        if body:
+            t.set_section(name, re.sub(r"^(\s*[-*]\s*)\[[xX]\]", r"\1[ ]", body, flags=re.M))  # boxes start unchecked
+    store.save(t)
+    return t
+
+
+def _week(day: str) -> str:
+    try:
+        d = dt.date.fromisoformat(str(day)[:10])
+    except ValueError:
+        return "unknown"
+    monday = d - dt.timedelta(days=d.weekday())
+    return monday.isoformat()
+
+
+def stats(store: Store, since: str | None = None, project: str | None = None) -> dict:
+    """Counts James can quote: total, done, in review (built but not proven), open; by status, project, type;
+    created and done per ISO week (Monday). `since` filters on created (and done_at for the done-per-week table)."""
+    tickets = [t for t in store.tickets() if not project or t.project == project]
+    if since:
+        tickets = [t for t in tickets if str(t.meta.get("created", ""))[:10] >= since]
+    by = lambda key: dict(sorted(_count(key(t) for t in tickets).items()))  # noqa: E731
+    created_week = _count(_week(str(t.meta.get("created", ""))) for t in tickets)
+    done_week = _count(_week(str(t.meta.get("done_at") or t.meta.get("updated", ""))) for t in tickets if t.status == "done")
+    return {
+        "total": len(tickets),
+        "done": sum(t.status == "done" for t in tickets),
+        "in_review": sum(t.status == "review" for t in tickets),
+        "open": sum(t.is_open for t in tickets),
+        "rejected": sum(t.status == "rejected" for t in tickets),
+        "by_status": by(lambda t: t.status),
+        "by_project": by(lambda t: t.project),
+        "by_type": by(lambda t: str(t.meta.get("type", ""))),
+        "created_per_week": dict(sorted(created_week.items())),
+        "done_per_week": dict(sorted(done_week.items())),
+        "since": since,
+        "project": project,
+    }
+
+
+def _count(items) -> dict:
+    out: dict = {}
+    for x in items:
+        out[x] = out.get(x, 0) + 1
+    return out

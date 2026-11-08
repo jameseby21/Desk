@@ -7,7 +7,7 @@ import re
 from typing import TYPE_CHECKING
 
 from .store import id_parts
-from .ticket import CLOSED, PRIORITIES, REQUIRED, SIZES, STATUSES, TYPES, Ticket
+from .ticket import CLOSED, ID_LISTS_LOOSE, ID_LISTS_STRICT, PRIORITIES, REQUIRED, SIZES, STATUSES, TYPES, Ticket
 
 if TYPE_CHECKING:
     from .store import Store
@@ -47,11 +47,12 @@ def _date_ok(v) -> bool:
 
 
 def _datetime_ok(v) -> bool:
+    """An ISO date or an ISO timestamp."""
     try:
         dt.datetime.fromisoformat(str(v))
         return True
     except (TypeError, ValueError):
-        return False
+        return _date_ok(v) and len(str(v)) == 10
 
 
 def validate_ticket(t: Ticket, store: "Store", known_ids: set[str] | None = None) -> tuple[list[str], list[str]]:
@@ -78,14 +79,17 @@ def validate_ticket(t: Ticket, store: "Store", known_ids: set[str] | None = None
     for field_ in ("created", "updated", "review_by"):
         if m.get(field_) not in (None, "") and not _date_ok(m[field_]):
             errors.append(f"{where}: {field_} must be a YYYY-MM-DD date")
-    for field_ in ("depends_on", "docs_to_update", "dod"):
-        if field_ in m and not isinstance(m[field_], list):
+    for field_ in ("depends_on", "blocks", "related", "docs_to_update", "dod"):
+        if field_ in m and m[field_] is not None and not isinstance(m[field_], list):
             errors.append(f"{where}: {field_} must be a list")
     if "tags" in m and m["tags"] not in (None, ""):
         if not (isinstance(m["tags"], list) and all(isinstance(x, str) and x.strip() for x in m["tags"])):
             errors.append(f"{where}: tags must be a list of strings")
+    for field_ in ("assignee", "cloned_from", "evidence"):
+        if field_ in m and m[field_] not in (None, "") and not isinstance(m[field_], str):
+            errors.append(f"{where}: {field_} must be a string")
     if "done_at" in m and m["done_at"] not in (None, "") and not _datetime_ok(m["done_at"]):
-        errors.append(f"{where}: done_at must be an ISO timestamp (YYYY-MM-DDTHH:MM:SS)")
+        errors.append(f"{where}: done_at must be an ISO date or timestamp (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS)")
     if len(str(m["title"])) > TITLE_MAX:
         warnings.append(f"{where}: title is {len(str(m['title']))} characters; keep it under {TITLE_MAX}")
     if "confidence" in m and m["confidence"] not in (None, ""):
@@ -107,11 +111,18 @@ def validate_ticket(t: Ticket, store: "Store", known_ids: set[str] | None = None
         warnings.append(f"{where}: no projects/ directory yet, project `{m['project']}` unchecked")
 
     ids = known_ids if known_ids is not None else {x.id for x in store.tickets()}
-    for dep in m.get("depends_on") or []:
-        if str(dep) not in ids:
-            errors.append(f"{where}: depends_on `{dep}` does not exist")
-        elif str(dep) == t.id:
-            errors.append(f"{where}: depends on itself")
+    for field_ in ID_LISTS_STRICT:
+        for dep in (m.get(field_) or []) if isinstance(m.get(field_), list) else []:
+            if str(dep) not in ids:
+                errors.append(f"{where}: {field_} `{dep}` does not exist")
+            elif str(dep) == t.id:
+                errors.append(f"{where}: {field_} itself")
+    for field_ in ID_LISTS_LOOSE:
+        for rel in (m.get(field_) or []) if isinstance(m.get(field_), list) else []:
+            if str(rel) not in ids:
+                warnings.append(f"{where}: {field_} `{rel}` does not exist")
+    if m.get("cloned_from") and str(m["cloned_from"]) not in ids:
+        warnings.append(f"{where}: cloned_from `{m['cloned_from']}` does not exist")
 
     status = m["status"]
     if status == "review" and not t.section("Report"):

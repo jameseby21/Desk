@@ -25,11 +25,19 @@
       {% if t.meta.get('dod') %}<div class="row" style="margin-top:6px"><span class="label">DoD modules</span>{% for d in t.meta.get('dod') %}<span class="chip">{{ d }}</span>{% endfor %}</div>{% endif %}
     </div>
 
+    {% if t.section('Prompt') %}
+    <div class="card section"><span class="label">Prompt (paste this to execute)</span><div class="md">{{ md(t.section('Prompt'))|safe }}</div></div>
+    {% endif %}
+
     <div class="card section">
       <div class="row" style="justify-content:space-between"><span class="label">Proof (Report)</span>
         {% if not t.section('Report') %}<span class="chip red">Not run</span>{% endif %}</div>
       {% if t.section('Report') %}<div class="md">{{ md(t.section('Report'))|safe }}</div>{% else %}<p class="muted">No report yet. A claim with no run behind it gets a red tag, not a pass.</p>{% endif %}
     </div>
+
+    {% if t.section('Evidence') or t.meta.get('evidence') %}
+    <div class="card section"><span class="label">Evidence</span>{% if t.meta.get('evidence') %}<p style="margin:6px 0">{{ t.meta.get('evidence') }}</p>{% endif %}{% if t.section('Evidence') %}<div class="md">{{ md(t.section('Evidence'))|safe }}</div>{% endif %}</div>
+    {% endif %}
 
     {% if t.section('Attachments') %}
     <div class="card section"><span class="label">Attachments</span><div class="md attachments">{{ md(t.section('Attachments'))|safe }}</div></div>
@@ -85,6 +93,10 @@
 
     <div class="card section" style="font-size:14px;display:flex;flex-direction:column;gap:10px">
       {% if t.meta.get('effort_hours') %}<div><span class="label">Effort</span><div>{{ t.meta.get('effort_hours')[0] }} to {{ t.meta.get('effort_hours')[1] }} hours{% if t.meta.get('confidence') %}, {{ (t.meta.get('confidence')*100)|int }}% sure{% endif %}</div></div>{% endif %}
+      {% if t.meta.get('assignee') %}<div><span class="label">Assignee</span><div>{{ t.meta.get('assignee') }}</div></div>{% endif %}
+      {% if t.meta.get('cloned_from') %}<div><span class="label">Cloned from</span><div><a href="/ticket/{{ t.meta.get('cloned_from') }}"><code>{{ t.meta.get('cloned_from') }}</code></a></div></div>{% endif %}
+      {% if t.meta.get('blocks') %}<div><span class="label">Blocks</span><div>{% for d in t.meta.get('blocks') %}<a href="/ticket/{{ d }}"><code>{{ d }}</code></a> {% endfor %}</div></div>{% endif %}
+      {% if t.meta.get('related') %}<div><span class="label">Related</span><div>{% for d in t.meta.get('related') %}<a href="/ticket/{{ d }}"><code>{{ d }}</code></a> {% endfor %}</div></div>{% endif %}
       <div><span class="label">Waits on</span><div>{% if deps %}{% for d, st in deps %}<code>{{ d }}</code> ({{ screen(st) }}) {% endfor %}{% else %}Nobody.{% endif %}{% if t.meta.get('blocked_on') %}<br>Stuck on: {{ t.meta.get('blocked_on') }}{% endif %}</div></div>
       {% if t.meta.get('review_by') %}<div><span class="label">Review by</span><div>{{ t.meta.get('review_by') }}</div></div>{% endif %}
       {% if t.meta.get('smallest_step') %}<div><span class="label">Smallest step on a rough week</span><div>{{ t.meta.get('smallest_step') }}</div></div>{% endif %}

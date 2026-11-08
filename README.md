@@ -77,6 +77,11 @@ depends_on: [JRE-0041]
 docs_to_update: [docs/README.md#docs-map]
 dod: [core, code, docs]      # Definition of Done modules that apply
 tags: [docs, weekly]         # optional, free-form strings; combos need at least one
+assignee: codex              # optional: who executes it (main, james, codex, a project key, chaz, em, ... any name)
+blocks: [JRE-0043]           # optional: ids this ticket holds up (must exist)
+related: [JRE-0040]          # optional: ids worth reading (a missing one is a warning)
+cloned_from: JRE-0031        # optional: set by `desk clone`
+evidence: "commit e125efb, 36 tests"   # optional one-liner; the Evidence section holds the long form
 effort_hours: [1, 2]         # optional [low, high]
 confidence: 0.8              # optional, 0..1
 review_by: 2026-11-14        # optional
@@ -92,15 +97,17 @@ done_at: 2026-11-20T16:42:10 # written by `desk done`, local time
 ## Outcome
 ## Acceptance
 - [ ] checkboxes a test or the owner can verify
+## Prompt
 ## Docs to update
 ## Out of scope
 ## Attachments
 ## Report
+## Evidence
 ## Decision
 ## Comments
 ```
 
-Headings are fixed so the CLI and the UI can find them; `## Attachments` is new in v0.2 and may be missing from older files. The worker writes **Report** (what changed, how it was verified, the commands run). The owner writes **Decision**, through `desk decide` or the UI, and Desk records it as a dated line: `- 2026-11-07 · james · approved · "Ship it after the DNS lands."`
+Headings are fixed so the CLI and the UI can find them. `## Prompt` (the text an agent or person pastes to execute the ticket), `## Attachments` and `## Evidence` (what proves done: commands, records, commits) are new in v0.2 and may be missing from older files; a write adds them. Any other `## Heading` in a file is kept on write, after the canonical ones, so a backfilled ticket loses nothing. A ticket is a static hand-off: everything needed to do it and to prove it is in the file. The worker writes **Report** (what changed, how it was verified, the commands run). The owner writes **Decision**, through `desk decide` or the UI, and Desk records it as a dated line: `- 2026-11-07 · james · approved · "Ship it after the DNS lands."`
 
 ### Rich bodies
 
@@ -150,7 +157,7 @@ Rules the CLI and the UI both enforce, and `desk validate` checks in the files:
 - A ticket cannot be `done` while any `depends_on` ticket is not `done`. `desk done` stamps `done_at` with the local time.
 - `blocked` needs `blocked_on` (a ticket or a person) and a reason.
 - Decisions need words: approve, send back and reject all take a reason of at least four characters.
-- Dangling `depends_on`, unknown projects, bad enum values, a `tags` value that is not a list of strings and missing required fields are errors. A size `l` outside triage is a warning.
+- Dangling `depends_on` or `blocks`, unknown projects, bad enum values, a `tags` value that is not a list of strings, a bad `done_at` and missing required fields are errors. A size `l` outside triage, a `related` or `cloned_from` id that does not exist, are warnings.
 - Hygiene warnings (never errors): a title longer than 70 characters; a ticket that has sat in `review` for more than 7 days (measured from its `updated` date).
 - Stale is computed, not stored: any open ticket whose `updated` is older than `[stale].days`.
 
@@ -159,7 +166,9 @@ Rules the CLI and the UI both enforce, and `desk validate` checks in the files:
 | Command | Who | What |
 | --- | --- | --- |
 | `desk init [path] [--owner]` | owner | Create a store |
-| `desk new --project jre --type slice [--priority p1 --size s --owner main --dod core,code --source path#sec] "title"` | main | Next id for the project, from the template; prints the path |
+| `desk new --project jre --type slice [--priority p1 --size s --owner main --assignee codex --dod core,code --source path#sec] "title"` | main | Next id for the project, from the template; prints the path |
+| `desk clone ID [--project key] "new title"` | main | New ticket with the source's Context, Outcome, Acceptance (boxes cleared) and Prompt; sets `cloned_from` |
+| `desk stats [--since YYYY-MM-DD] [--project key] [--json]` | anyone | Total, done, in review (built but not proven), open; counts by status, project and type; created and done per week |
 | `desk list [--project] [--status] [--owner] [--stale] [--all]` | anyone | Table of tickets (open ones by default), grouped by project |
 | `desk next --project jre [--json]` | project session | Highest-priority, oldest ready ticket, in full. `--json` is the SessionStart hook shape (`hookSpecificOutput.additionalContext`) |
 | `desk show ID` | anyone | Print the ticket (with a `(formerly OLD)` header line when the project's prefix has changed) |
