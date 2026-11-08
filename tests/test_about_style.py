@@ -10,7 +10,10 @@ def client(store):
     return TestClient(create_app(store.home))
 
 
-def test_about_renders_why(store):
+def test_about_renders_why(store, monkeypatch):
+    from pathlib import Path
+
+    monkeypatch.setenv("DESK_REPO", str(Path(__file__).resolve().parents[1]))  # WHY.md is read from the repo, not copied
     r = client(store).get("/about")
     assert r.status_code == 200 and "Ticket tools count cards" in r.text
     assert "<title>Why Desk</title>" in r.text and 'href="/about"' in r.text
@@ -45,3 +48,11 @@ def test_css_served_with_tokens(store):
     for token in ("--paper:#F5F3EC", "--ball:#C8F03C", "--red:#D7262E", "Bricolage Grotesque", "prefers-reduced-motion"):
         assert token in r.text
     assert 'href="/static/desk.css"' in client(store).get("/").text
+
+
+def test_about_without_repo_says_where_to_look(store, monkeypatch):
+    monkeypatch.delenv("DESK_REPO", raising=False)
+    from desk.ui import app as appmod
+
+    monkeypatch.setattr(appmod, "CONTENT", store.home / "no-such-dir")
+    assert "set DESK_REPO" in client(store).get("/about").text

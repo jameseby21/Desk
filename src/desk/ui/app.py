@@ -90,6 +90,16 @@ class Tokens:
         return self._live.pop(tok or "", 0) is None
 
 
+def why_text(home: Path) -> str:
+    """WHY.md is read from where it lives: the repo's docs/WHY.md (DESK_REPO, or the store's desk/ folder). The copy packaged
+    into the wheel at build time is only a fallback for installs without the repo."""
+    repo = ver.find_repo(None, home)
+    for p in ([repo / "docs" / "WHY.md"] if repo else []) + [CONTENT / "WHY.md"]:
+        if p.is_file():
+            return p.read_text(encoding="utf-8")
+    return "WHY.md not found: set DESK_REPO to your Desk repo."
+
+
 def create_app(home: Path | None = None) -> FastAPI:
     app = FastAPI(title="Desk")
     tokens = Tokens()
@@ -99,6 +109,7 @@ def create_app(home: Path | None = None) -> FastAPI:
     templates.env.globals.update(screen=screen, md=md_html, has_mermaid=has_mermaid, statuses=STATUSES,
                                  sections=SECTIONS, mermaid_src=mermaid_src, by_project=by_project, token=tokens.issue, track_slug=trk.track_slug, track_of=trk.track_of,
                                  build=ver.describe())
+    templates.env.filters["urlencode_path"] = lambda v: quote(str(v), safe="/#")
     if STATIC.exists():
         app.mount("/static", StaticFiles(directory=str(STATIC)), name="static")
 
@@ -111,7 +122,7 @@ def create_app(home: Path | None = None) -> FastAPI:
         gloss = docsmod.glossary(st.home)
 
         def exists(rel):
-            return docsmod.resolve_doc(st.home, rel) is not None
+            return docsmod.resolve_doc(st.home, rel)  # the Path (truthy) or None
 
         def render(text, t=None, section=None, doc=False):
             """Section markdown with ticket-id links; with `t` and `section`, checkboxes are live."""
@@ -154,8 +165,9 @@ def create_app(home: Path | None = None) -> FastAPI:
 
     @app.get("/about", response_class=HTMLResponse)
     def about(request: Request):
-        text = (CONTENT / "WHY.md").read_text(encoding="utf-8")
-        return templates.TemplateResponse(request, "about.html", ctx(request, store(), body=md_html(text)))
+        s = store()
+        text = why_text(s.home)
+        return templates.TemplateResponse(request, "about.html", ctx(request, s, body=md_html(text)))
 
     @app.get("/settings", response_class=HTMLResponse)
     def settings(request: Request, saved: int = 0):
@@ -234,6 +246,7 @@ def create_app(home: Path | None = None) -> FastAPI:
         mermaid = any(has_mermaid(t.section(name)) for name in t.sections)
         return templates.TemplateResponse(request, "ticket.html", ctx(request, s, t=t, deps=deps, stale=s.is_stale(t), error=error, s=s,
                                                              formerly=s.formerly(t), mermaid=mermaid, mentions=docsmod.mentioned_in(list(by_id.values()), ticket_id=t.id),
+                                                             owning=docsmod.owning_docs(s, t), source_doc=source_doc(s, t),
                                                              notice=notice(ok, at, dup)))
 
     @app.get("/doc/{path:path}", response_class=HTMLResponse)
@@ -248,7 +261,17 @@ def create_app(home: Path | None = None) -> FastAPI:
         c = ctx(request, s)
         mentions = docsmod.mentioned_in(s.tickets(), path=rel)
         html_body = c["render"](body, doc="glossary" if rel == "glossary.md" else True)
-        return templates.TemplateResponse(request, "doc.html", {**c, "rel": rel, "body_html": html_body, "meta": meta, "mentions": mentions})
+        index = ""
+        if rel.startswith("projects/") and rel.count("/") == 1:
+            index = docsmod.doc_index(s, rel.split("/")[1][:-3])
+        return templates.TemplateResponse(request, "doc.html", {**c, "rel": rel, "body_html": html_body, "meta": meta, "mentions": mentions,
+                                                               "edit_url": docsmod.vscode_url(target), "doc_index": index})
+
+    def source_doc(s: Store, t) -> dict | None:
+        src = str(t.meta.get("source") or "").strip()
+        base = src.split("#", 1)[0]
+        target = docsmod.resolve_doc(s.home, base) if base.lower().endswith(".md") else None
+        return {"path": src, "edit_url": docsmod.vscode_url(target)} if target else None
 
     def notice(ok: str, at: str, dup: int) -> str:
         if dup:

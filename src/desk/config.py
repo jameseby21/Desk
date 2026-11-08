@@ -10,7 +10,7 @@ CONFIG_NAME = "desk.toml"
 
 DEFAULTS: dict = {
     "desk": {"owner": "james"},
-    "approval": {"delegated_types": ["chore"], "delegated_max_size": "s"},
+    "approval": {"delegated_types": ["task"], "delegated_max_size": "s"},
     "git": {"sync": False},
     "stale": {"days": 21},
     "life": {"combos": False},
@@ -20,7 +20,7 @@ DEFAULT_TOML = """[desk]
 owner = "james"            # the human who approves
 
 [approval]
-delegated_types = ["chore"]  # main may approve these ...
+delegated_types = ["task"]  # main may approve these ...
 delegated_max_size = "s"     # ... up to this size
 
 [git]

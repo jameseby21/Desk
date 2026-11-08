@@ -17,6 +17,8 @@ Every command a person or an agent runs day to day, with what it does and when. 
 | `drew init [path] [--owner]` | creates a store (`desk.toml`, `tickets/`, `projects/`, `intake/`) | safe to run again |
 | `drew migrate track --dry-run [--rules tracks/rules.yaml]` | prints ticket -> track and counts per track; writes nothing | read it before applying |
 | `drew migrate track --apply [--rules ...]` | writes one `track:` line into each matched ticket; nothing else changes, `updated` included | skips tickets that already have a track |
+| `drew migrate type --dry-run` / `--apply` | retires the legacy `slice` and `chore` types by rule; the dry run prints ticket, old -> new and counts | `--apply` rewrites only the `type:` line |
+| `drew new --project key --type feature "title"` | types: feature, upgrade, bug, task, docs, decision, research, intake, release; writes the `How to validate` heading with a hint | write the steps before the work starts |
 | `drew rename-project old new` | renames a project; ids stay, old key and prefix become aliases | |
 | `drew intake <folder-or-zip> --topic x --project key` | copies a hand-off into `intake/` and opens a ticket | refuses private files |
 | `drew index` | rebuilds `.desk/index.sqlite` | derived, gitignored |
@@ -35,7 +37,7 @@ Every command a person or an agent runs day to day, with what it does and when. 
 | --- | --- |
 | `drew next --project <key>` | the next ready ticket for this project |
 | `drew claim <ID>` / `drew start <ID>` | take a ticket; begin work |
-| `drew report <ID> --file report.md` | hand it back with proof (moves to review) |
+| `drew report <ID> --file report.md` | hand it back with proof (moves to review); refused with "Write How to validate first" when that section is empty |
 | `drew decide <ID> --approve "why"` / `--changes "why"` | the owner's decision, in words |
 | `drew done <ID>` | approved to done, after the merge |
 | `drew snap <ID>` / `drew attach <ID> file` | attach a screenshot or file as evidence |
@@ -48,7 +50,8 @@ Every command a person or an agent runs day to day, with what it does and when. 
 | `/projects?p=<key>&t=<track slug>&k=<ID>` | project, track, ticket and peek panel; what is open lives in the address |
 | `/board?track=<slug>`, `/?track=<slug>` | the track filter chip |
 | `/doc/<store-relative path>.md` | a store Markdown file, read-only; `glossary.md` terms get popovers and `[[Term]]` links to them |
-| `/ticket/<ID>` | the full ticket, with a Mentioned-in list |
+| `/ticket/<ID>` | the full ticket: How to validate, owning docs, Mentioned-in |
+| `/doc/<folder>/<file>.md` | any store folder or submodule, read-only, with an "Edit in VS Code" link |
 
 ## Troubleshooting one-liners
 | Symptom | Command |

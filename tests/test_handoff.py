@@ -41,7 +41,8 @@ def test_cli_new_accepts_assignee(store, capsys):
 
 
 def test_prompt_and_evidence_sections_and_unknown_sections_survive_a_write(store):
-    assert SECTIONS.index("Prompt") == SECTIONS.index("Acceptance") + 1
+    assert SECTIONS.index("Prompt") == SECTIONS.index("Acceptance") + 2
+    assert SECTIONS.index("How to validate") == SECTIONS.index("Acceptance") + 1
     assert SECTIONS.index("Evidence") == SECTIONS.index("Report") + 1
     t = ops.new(store, "Hand-off", "jre")
     t.set_section("Prompt", "You are in repo X. Run the tests, then fix the failing one.")

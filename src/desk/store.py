@@ -11,7 +11,7 @@ from pathlib import Path
 import yaml
 
 from .config import DEFAULT_TOML, CONFIG_NAME, load_config
-from .ticket import SIZES, Ticket, new_ticket, slugify
+from .ticket import SIZES, canon_type, Ticket, new_ticket, slugify
 
 _ID = re.compile(r"^(?P<key>[A-Z0-9][A-Z0-9-]*)-(?P<num>\d{4,})$")
 _PROFILE_FM = re.compile(r"\A---\r?\n(.*?)\r?\n---\r?\n?(.*)\Z", re.S)
@@ -112,10 +112,10 @@ class Store:
 
     def delegated(self, ticket: Ticket) -> bool:
         ap = self.config["approval"]
-        types = ap.get("delegated_types", [])
+        types = {canon_type(x) for x in ap.get("delegated_types", [])}
         max_size = ap.get("delegated_max_size", "s")
         size_ok = SIZES.index(str(ticket.meta.get("size", "l"))) <= SIZES.index(str(max_size))
-        return ticket.meta.get("type") in types and size_ok
+        return canon_type(str(ticket.meta.get("type"))) in types and size_ok
 
     # -- projects ----------------------------------------------------------
     def projects(self) -> dict[str, Path]:
@@ -229,7 +229,7 @@ class Store:
     def ticket_assets_dir(self, ticket_id: str) -> Path:
         return self.assets_dir / ticket_id.upper()
 
-    def create(self, title: str, project: str, type_: str = "slice", **kw) -> Ticket:
+    def create(self, title: str, project: str, type_: str = "feature", **kw) -> Ticket:
         t = new_ticket(self.next_id(project), title, project, type_, **kw)
         t.path = self.path_for(t)
         return t

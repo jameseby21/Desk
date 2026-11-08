@@ -117,3 +117,8 @@ button:disabled{opacity:.55;cursor:wait}
 .gloss:hover .pop,.gloss:focus .pop,.gloss:focus-within .pop{display:block}
 a.docref{font-family:var(--font-mono);font-size:.92em}a.gloss-link{border-bottom:1.5px dotted var(--ink);text-decoration:none}
 .mentions{margin:6px 0 0;padding-left:18px}.docmeta{display:grid;grid-template-columns:max-content 1fr;gap:2px 14px;font-size:14px;margin:0 0 14px}.docmeta dt{color:var(--muted)}.docmeta dd{margin:0}
+a.vsc{font:11px var(--font-mono);color:var(--muted);margin-left:4px;text-decoration:none;border:1px solid var(--line);border-radius:999px;padding:1px 6px}a.vsc:hover{color:var(--ink);border-color:var(--ink)}
+.chip.ty{color:#141414;border-color:transparent;font-weight:500}
+.ty-feature{background:#C8F03C}.ty-upgrade{background:#7FD6C2}.ty-bug{background:#F4A3A6}.ty-task{background:#F2D98B}
+.ty-docs{background:#A9C7F2}.ty-decision{background:#D9B3F2}.ty-research{background:#BFE3F0}.ty-intake{background:#E2DFD5}
+.ty-release{background:#F5B27A}.ty-slice,.ty-chore{background:var(--card);color:var(--muted);border:1px dashed var(--muted)}

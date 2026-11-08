@@ -39,7 +39,7 @@ def create(store: Store, assignee: str = "chaz") -> tuple[list[str], list[str]]:
         if title in open_titles:
             skipped.append(open_titles[title])
             continue
-        t = ops.new(store, title, BRAND_PROJECT, "chore", owner="main", assignee=assignee)
+        t = ops.new(store, title, BRAND_PROJECT, "task", owner="main", assignee=assignee)
         t.set_section("Context", f"Project `{key}` has {reason}. Cards and ticket pages show the project's mark and accent.")
         t.set_section("Acceptance", f"- [ ] Mark file at assets/brand/{key}/mark.svg\n"
                                     f"- [ ] Accent colour (hex) and font family chosen\n"

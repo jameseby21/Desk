@@ -8,3 +8,4 @@ build/
 .desk/
 jeby-private/
 src/desk/_build.py
+src/desk/ui/content/

@@ -6,11 +6,12 @@ from __future__ import annotations
 
 import html
 import re
+from urllib.parse import quote, unquote
 
 from markdown_it import MarkdownIt
 from markdown_it.token import Token
 
-from ..docs import DOC_FULL, DOC_RE, slug
+from ..docs import DOC_FULL, DOC_RE, slug, vscode_url
 from mdit_py_plugins.tasklists import tasklists_plugin
 
 _md = MarkdownIt("commonmark", {"html": False, "linkify": False, "typographer": False})
@@ -66,11 +67,21 @@ def _link(href: str, label: str, cls: str, **attrs) -> list[Token]:
     return [lo, _text(label), Token("link_close", "a", -1)]
 
 
-def _term_html(shown: str, term: str, definition: str) -> Token:
+def _edit_link(env: dict, rel: str) -> list[Token]:
+    """The second affordance next to every doc link: open the same file in VS Code."""
+    path = env["docs"](rel.split("#", 1)[0])
+    if not path:
+        return []
+    t = Token("html_inline", "", 0)
+    t.content = f'<a class="vsc" href="{html.escape(vscode_url(path))}" title="Edit in VS Code">Edit in VS Code</a>'
+    return [_text(" "), t]
+
+
+def _term_html(shown: str, term: str, definition: str, target: str = "") -> Token:
     e = html.escape
     t = Token("html_inline", "", 0)
     t.content = (f'<span class="gloss" tabindex="0">{e(shown)}<span class="pop" role="tooltip"><b>{e(term)}</b> {e(definition)} '
-                 f'<a href="/doc/glossary.md#{slug(term)}">More</a></span></span>')
+                 f'<a href="{html.escape(target or "/doc/glossary.md#" + slug(term))}">More</a></span></span>')
     return t
 
 
@@ -89,17 +100,25 @@ def _autolink(state):
     for block in state.tokens:
         if block.type != "inline" or not block.children:
             continue
-        out, in_link = [], 0
+        out, in_link, edits = [], 0, []
         for tok in block.children:
             if tok.type == "link_open":
                 in_link += 1
-                href = tok.attrGet("href") or ""
+                href = unquote(tok.attrGet("href") or "")
                 if env.get("docs") and DOC_FULL.fullmatch(href) and env["docs"](href.split("#", 1)[0]):
-                    tok.attrSet("href", "/doc/" + href)
+                    tok.attrSet("href", "/doc/" + quote(href, safe="/#"))
+                    edits.append(href)
+                else:
+                    edits.append("")
             elif tok.type == "link_close":
                 in_link -= 1
+                out.append(tok)
+                last = edits.pop() if edits else ""
+                if last:
+                    out += _edit_link(env, last)
+                continue
             if tok.type == "code_inline" and not in_link and env.get("docs") and DOC_FULL.fullmatch(tok.content)                     and env["docs"](tok.content.split("#", 1)[0]):
-                out += _link("/doc/" + tok.content, tok.content, "docref")
+                out += _link("/doc/" + quote(tok.content, safe="/#"), tok.content, "docref") + _edit_link(env, tok.content)
                 continue
             if tok.type != "text" or in_link:
                 out.append(tok)
@@ -117,12 +136,14 @@ def _autolink(state):
                     info = env["known"][data]
                     out += _link(f"/ticket/{data}", str(data), "tid", title=str(info[0]), **{"data-status": str(info[1])})
                 elif kind == "doc":
-                    out += _link("/doc/" + str(data), str(data), "docref")
+                    out += _link("/doc/" + quote(str(data), safe="/#"), str(data), "docref") + _edit_link(env, str(data))
                 elif kind == "wiki":
-                    out += _link(f"/doc/glossary.md#{slug(str(data))}", str(data), "gloss-link")
+                    entry = gl.get(str(data).lower())
+                    href = entry[2] if entry and len(entry) > 2 and entry[2] else f"/doc/glossary.md#{slug(str(data))}"
+                    out += _link(href, str(data), "gloss-link")
                 else:
-                    term, definition = gl[str(data).lower()]
-                    out.append(_term_html(str(data), term, definition))
+                    term, definition, *rest = gl[str(data).lower()]
+                    out.append(_term_html(str(data), term, definition, rest[0] if rest else ""))
                 pos = end
             if pos < len(tok.content):
                 out.append(_text(tok.content[pos:]))

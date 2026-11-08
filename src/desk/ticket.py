@@ -13,6 +13,7 @@ SECTIONS = [
     "Context",
     "Outcome",
     "Acceptance",
+    "How to validate",  # written before the work starts: the steps that confirm the Outcome once the work is claimed done
     "Prompt",  # what an agent pastes to execute the ticket
     "Docs to update",
     "Out of scope",
@@ -25,7 +26,39 @@ SECTIONS = [
 # Sections copied by `desk clone`.
 CLONED_SECTIONS = ["Context", "Outcome", "Acceptance", "Prompt"]
 
-TYPES = ["slice", "intake", "decision", "bug", "research", "chore"]
+TYPES = ["feature", "upgrade", "bug", "task", "docs", "decision", "research", "intake", "release"]
+# Old types still read and validate (with a warning); `desk new` never offers them. `desk migrate type` retires them.
+LEGACY_TYPES = {"slice": "feature", "chore": "task"}
+TYPE_HELP = {
+    "feature": "a new capability", "upgrade": "an improvement to something that exists", "bug": "something broken",
+    "task": "a thing to do that is not code: paperwork, accounts, a call", "docs": "documentation only",
+    "decision": "an ask of a person: approve, choose, answer, direction, provide", "research": "find something out",
+    "intake": "material handed in from outside", "release": "ship a version",
+}
+
+
+VALIDATE_HINTS = {
+    "feature": "Run it and look: the command or URL, and what you should see.",
+    "upgrade": "Run it and look: the command or URL, and what is better than before.",
+    "bug": "Reproduce the bug first, then confirm it is gone: the steps and what you should see.",
+    "task": "The artifact to open (the account, the form, the note of the call) and what it must show.",
+    "decision": "The recorded line to find in Decision, and what it must say.",
+    "docs": "The page to read on a clean clone, and what a reader should be able to do after.",
+    "research": "The finding to open and what it must answer.",
+    "intake": "The intake folder to open and what it must contain.",
+    "release": "The version to install or fetch and the command that shows it.",
+}
+_ONE_COMMENT = re.compile(r"^\s*<!--.*-->\s*$")
+
+
+def validate_steps(text: str) -> str:
+    """The written steps of a How to validate section: hint comments and blank lines do not count."""
+    return chr(10).join(ln for ln in (text or "").splitlines() if ln.strip() and not _ONE_COMMENT.match(ln)).strip()
+
+
+def canon_type(t: str) -> str:
+    """Legacy types count as their modern equivalent (chore = task, slice = feature) wherever behaviour depends on type."""
+    return LEGACY_TYPES.get(t, t)
 STATUSES = [
     "inbox",
     "triage",
@@ -135,6 +168,9 @@ class Ticket:
         v = self.meta.get("tags")
         return [str(x) for x in v] if isinstance(v, list) else []
 
+    def validate_steps(self) -> str:
+        return validate_steps(self.section("How to validate"))
+
     def acceptance(self) -> list[tuple[bool, str]]:
         out = []
         for line in self.section("Acceptance").splitlines():
@@ -189,7 +225,7 @@ class Ticket:
         return p
 
 
-def new_ticket(ticket_id: str, title: str, project: str, type_: str = "slice", *, priority: str = "p2",
+def new_ticket(ticket_id: str, title: str, project: str, type_: str = "feature", *, priority: str = "p2",
                size: str = "s", owner: str = "main", dod: list[str] | None = None, source: str = "",
                assignee: str | None = None) -> Ticket:
     now = today()
@@ -212,4 +248,6 @@ def new_ticket(ticket_id: str, title: str, project: str, type_: str = "slice", *
     if assignee:
         meta["assignee"] = assignee
     t = Ticket(meta=meta, sections={s: "" for s in SECTIONS})
+    hint = VALIDATE_HINTS.get(canon_type(type_), VALIDATE_HINTS["feature"])
+    t.sections["How to validate"] = f"<!-- Write this before the work starts. {hint} -->" + chr(10)
     return t

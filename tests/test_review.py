@@ -38,7 +38,7 @@ def test_new_groups_and_refuses_second(rstore, capsys):
     rt = next(t for t in rstore.tickets() if rv.is_review_ticket(t))
     m = rv.monday_of(dt.date.today())
     assert rt.meta["title"] == rv.title_for(m) and rt.meta["title"].startswith("Ticket review: week of ")
-    assert (rt.meta["type"], rt.status, rt.meta["priority"], rt.meta["size"], rt.meta["owner"], rt.meta["assignee"]) == ("chore", "ready", "p1", "s", "james", "james")
+    assert (rt.meta["type"], rt.status, rt.meta["priority"], rt.meta["size"], rt.meta["owner"], rt.meta["assignee"]) == ("task", "ready", "p1", "s", "james", "james")
     assert rt.meta["review_by"] == (m + dt.timedelta(days=4)).isoformat()
     acc = rt.section("Acceptance")
     assert "**Choose**" in acc and "**Approve**" in acc and "**Review**" in acc

@@ -105,7 +105,9 @@ def _sort_key(t: Ticket):
 
 def _rest(t: Ticket) -> str:
     by = f" · by {_md(t.meta['review_by'])}" if t.meta.get("review_by") else ""
-    return f"{t.meta.get('title')}{by}"
+    steps = t.validate_steps()
+    check = f" · validate: {steps.splitlines()[0].strip()[:120]}" if steps else ""
+    return f"{t.meta.get('title')}{by}{check}"
 
 
 def _days(t: Ticket, today: dt.date) -> int:
@@ -236,7 +238,7 @@ def create(store: Store, day: dt.date | None = None, project: str = "management"
     old = find(store, monday)
     if old:
         raise ReviewError(f"{old.id} is already the ticket review for the week of {_md(monday)}.")
-    t = store.create(title_for(monday), project, "chore", priority="p1", size="s", owner=owner, assignee=owner)
+    t = store.create(title_for(monday), project, "task", priority="p1", size="s", owner=owner, assignee=owner)
     t.meta.update(status="ready", tags=["management", TAG], review_by=(monday + dt.timedelta(days=4)).isoformat())
     store.save(t)
     res = apply(store, t)

@@ -7,7 +7,7 @@
 {% set brand = s.brand_for(t.project) if s is defined else None %}
 <div class="row"{% if brand and brand.accent %} style="border-left:6px solid {{ brand.accent }};padding-left:10px"{% endif %}>
   {% if brand and brand.mark_url %}<img src="{{ brand.mark_url }}" width="24" height="24" alt="{{ titles.get(t.project, t.project) }}">{% else %}<span class="initial" title="{{ titles.get(t.project, t.project) }}">{{ (titles.get(t.project, t.project) or '?')[0]|upper }}</span>{% endif %}
-  <span class="chip">{{ t.id }}</span>{% if formerly %}<span class="muted formerly">(formerly {{ formerly }})</span>{% endif %}<span class="chip" title="{{ titles.get(t.project, t.project) }}">{{ t.project }}</span><span class="chip">{{ t.meta.get('type') }}</span>
+  <span class="chip">{{ t.id }}</span>{% if formerly %}<span class="muted formerly">(formerly {{ formerly }})</span>{% endif %}<span class="chip" title="{{ titles.get(t.project, t.project) }}">{{ t.project }}</span><span class="chip ty ty-{{ t.meta.get('type') }}">{{ t.meta.get('type') }}</span>
   <span class="chip {% if t.status=='review' %}ball{% elif t.status=='blocked' %}red{% endif %}">{{ screen(t.status) }} · {{ t.status }}</span>
   {% if stale %}<span class="chip red">{{ screen('stale') }}</span>{% endif %}
   {% for tag in t.tags %}<span class="tag">#{{ tag }}</span>{% endfor %}
@@ -27,6 +27,9 @@
       {% if t.section('Acceptance') %}<div class="md">{{ render(t.section('Acceptance'), t, 'Acceptance')|safe }}</div>{% else %}<p class="muted">No acceptance lines yet.</p>{% endif %}
       {% if t.meta.get('dod') %}<div class="row" style="margin-top:6px"><span class="label">DoD modules</span>{% for d in t.meta.get('dod') %}<span class="chip">{{ d }}</span>{% endfor %}</div>{% endif %}
     </div>
+
+    <div class="card section"><span class="label">How to validate</span>
+      {% if t.validate_steps() %}<div class="md">{{ render(t.validate_steps())|safe }}</div>{% else %}<p class="muted">Not written yet. A ticket cannot be handed over for review without it.</p>{% endif %}</div>
 
     {% if t.section('Prompt') %}
     <div class="card section"><span class="label">Prompt (paste this to execute)</span><div class="md">{{ render(t.section('Prompt'), t, 'Prompt')|safe }}</div></div>
@@ -53,6 +56,9 @@
     {% for name in t.sections %}{% if name not in sections and t.section(name) %}
     <div class="card section"><span class="label">{{ name }}</span><div class="md">{{ render(t.section(name))|safe }}</div></div>
     {% endif %}{% endfor %}
+
+    {% if owning %}<div class="card section"><span class="label">Owning docs</span>
+      <ul class="mentions">{% for o in owning %}<li><code>{{ o.path }}</code> &rarr; {% if o.exists %}<a class="docref" href="/doc/{{ o.doc|urlencode_path }}">{{ o.doc }}</a>{% else %}<span class="chip red">missing</span> {{ o.doc }}{% endif %}</li>{% endfor %}</ul></div>{% endif %}
 
     <div class="card section"><span class="label">Mentioned in</span>
       {% if mentions %}<ul class="mentions">{% for m in mentions %}<li><a class="tid" href="/ticket/{{ m.id }}" data-status="{{ m.status }}">{{ m.id }}</a> {{ m.meta.get('title') }}</li>{% endfor %}</ul>{% else %}<p class="muted">No other ticket mentions {{ t.id }}.</p>{% endif %}</div>
@@ -109,7 +115,7 @@
       <div><span class="label">Waits on</span><div>{% if deps %}{% for d, st in deps %}<code>{{ d }}</code> ({{ screen(st) }}) {% endfor %}{% else %}Nobody.{% endif %}{% if t.meta.get('blocked_on') %}<br>Stuck on: {{ t.meta.get('blocked_on') }}{% endif %}</div></div>
       {% if t.meta.get('review_by') %}<div><span class="label">Review by</span><div>{{ t.meta.get('review_by') }}</div></div>{% endif %}
       {% if t.meta.get('smallest_step') %}<div><span class="label">Smallest step on a rough week</span><div>{{ t.meta.get('smallest_step') }}</div></div>{% endif %}
-      {% if t.meta.get('source') %}<div><span class="label">Source</span><div><code>{{ t.meta.get('source') }}</code></div></div>{% endif %}
+      {% if t.meta.get('source') %}<div><span class="label">Source</span><div>{% if source_doc %}<a class="docref" href="/doc/{{ source_doc.path|urlencode_path }}">{{ source_doc.path }}</a> <a class="vsc" href="{{ source_doc.edit_url }}">Edit in VS Code</a>{% else %}<code>{{ t.meta.get('source') }}</code>{% endif %}</div></div>{% endif %}
       {% if t.meta.get('docs_to_update') %}<div><span class="label">Docs to update</span><div>{% for d in t.meta.get('docs_to_update') %}<code>{{ d }}</code> {% endfor %}</div></div>{% endif %}
       <div><span class="label">Project</span><div>{{ titles.get(t.project, t.project) }} <span class="chip">{{ t.project }}</span>{% if formerly %}<br><span class="muted">This ticket kept its original id; the project's prefix was {{ formerly }}.</span>{% endif %}</div></div>
       <div><span class="label">File</span><div><code>{{ t.path.name if t.path else '' }}</code></div></div>

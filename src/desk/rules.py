@@ -7,7 +7,7 @@ import re
 from typing import TYPE_CHECKING
 
 from .store import id_parts
-from .ticket import CLOSED, ID_LISTS_LOOSE, ID_LISTS_STRICT, PRIORITIES, REQUIRED, SIZES, STATUSES, TYPES, Ticket
+from .ticket import CLOSED, ID_LISTS_LOOSE, ID_LISTS_STRICT, PRIORITIES, REQUIRED, LEGACY_TYPES, SIZES, STATUSES, TYPES, Ticket, canon_type
 
 if TYPE_CHECKING:
     from .store import Store
@@ -73,7 +73,9 @@ def validate_ticket(t: Ticket, store: "Store", known_ids: set[str] | None = None
         errors.append(f"{where}: id must look like KEY-0001")
     elif parts[0] not in store.prefixes_for(str(m["project"])):
         errors.append(f"{where}: id prefix {parts[0]} does not match project `{m['project']}` (prefix or aliases)")
-    for field_, allowed in (("type", TYPES), ("status", STATUSES), ("priority", PRIORITIES), ("size", SIZES)):
+    if m["type"] in LEGACY_TYPES:
+        warnings.append(f"{where}: legacy type `{m['type']}`; run drew migrate type")
+    for field_, allowed in (("type", TYPES + list(LEGACY_TYPES)), ("status", STATUSES), ("priority", PRIORITIES), ("size", SIZES)):
         if m[field_] not in allowed:
             errors.append(f"{where}: {field_} `{m[field_]}` is not one of {', '.join(allowed)}")
     for field_ in ("created", "updated", "review_by"):
@@ -141,10 +143,12 @@ def validate_ticket(t: Ticket, store: "Store", known_ids: set[str] | None = None
         since = (dt.date.today() - dt.date.fromisoformat(str(m["updated"])[:10])).days
         if since > REVIEW_MAX_DAYS:
             warnings.append(f"{where}: in review for {since} days (untouched since {str(m['updated'])[:10]}); decide or send back")
+    if status == "review" and not t.validate_steps():
+        warnings.append(f"{where}: in review with no How to validate (legacy ticket); write the steps")
     if m["size"] == "l" and status not in ("inbox", "triage"):
         warnings.append(f"{where}: size `l` should be split before leaving triage")
-    if m["type"] == "slice" and status in ("ready", "claimed", "in_progress") and not t.acceptance():
-        warnings.append(f"{where}: a ready slice should have Acceptance checkboxes")
+    if canon_type(m["type"]) in ("feature", "upgrade") and status in ("ready", "claimed", "in_progress") and not t.acceptance():
+        warnings.append(f"{where}: a ready {m['type']} should have Acceptance checkboxes")
     return errors, warnings
 
 
@@ -169,6 +173,10 @@ def validate_store(store: "Store") -> tuple[list[str], list[str]]:
         e, w = validate_ticket(t, store, known)
         errors += e
         warnings += w
+        from .docs import dead_links  # local import: docs depends on ticket only, keep rules import-light
+
+        for link in dead_links(store, t):
+            warnings.append(f"{t.id}: doc link `{link}` points at a file that does not exist (drift)")
         if t.status == "done":
             for dep in t.meta.get("depends_on") or []:
                 d = by_id.get(str(dep))
@@ -211,6 +219,8 @@ def check_transition(t: Ticket, new: str, store: "Store", *, actor: str | None =
             raise RuleError("A project session claims a ticket, not main or the owner. Pass --owner <project or name>.")
     if new == "review" and not t.section("Report"):
         raise RuleError("`review` needs a non-empty Report. Use `desk report`.")
+    if new == "review" and not t.validate_steps():
+        raise RuleError("Write How to validate first: the steps that confirm the Outcome, before the work is handed over.")
     if new in ("approved", "changes_requested"):
         _words(reason)
         if new == "approved":

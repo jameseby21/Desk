@@ -50,7 +50,7 @@ Create one with `desk init [path] [--owner name]`.
 owner = "james"              # the human who approves
 
 [approval]
-delegated_types = ["chore"]  # main may approve these ...
+delegated_types = ["task"]  # main may approve these ...
 delegated_max_size = "s"     # ... up to this size
 
 [git]
@@ -72,7 +72,7 @@ combos = false               # when true: the Today page celebrates two tagged t
 id: JRE-0042
 title: Add the doc-ownership map and owners check
 project: jre                 # must match projects/jre.md
-type: slice                  # slice | intake | decision | bug | research | chore
+type: feature                # feature | upgrade | bug | task | docs | decision | research | intake | release
 status: ready                # see lifecycle
 priority: p1                 # p0 | p1 | p2 | p3
 size: s                      # xs | s | m | l  (an l is split before it leaves triage)
@@ -102,6 +102,7 @@ done_at: 2026-11-20T16:42:10 # written by `desk done`, local time
 ## Context
 ## Outcome
 ## Acceptance
+## How to validate
 - [ ] checkboxes a test or the owner can verify
 ## Prompt
 ## Docs to update
@@ -122,6 +123,26 @@ Every section is Markdown and the UI renders it with [markdown-it-py](https://gi
 - **Attachments** live in `tickets/assets/<ID>/` and the UI serves them at `/assets/<ID>/<file>` (ids and file names are checked; nothing outside the ticket's folder is reachable). `desk attach ID path [--caption "text"]` copies the file in and appends `![caption](assets/ID/file)` (a plain link for non-images) to the ticket's Attachments. A second file with the same name gets a `-2` suffix; nothing is overwritten.
 - **Screen snaps**: `desk snap ID [--caption "text"]` captures the whole screen to `snap-<timestamp>.png` and attaches it. Windows uses PowerShell (`System.Drawing` `CopyFromScreen`), macOS `screencapture -x`, Linux ImageMagick `import` or `gnome-screenshot`; anything else is refused with a plain message.
 - **Mermaid**: a fenced ```` ```mermaid ```` block is drawn in the browser. `mermaid.min.js` 11.4.1 is vendored in `src/desk/ui/static/` (packaged with the wheel) and loaded only on ticket pages that contain a diagram; if the file is ever missing the page falls back to the same version on cdn.jsdelivr.net.
+
+### Ticket types
+
+| Type | Means |
+| --- | --- |
+| `feature` | a new capability |
+| `upgrade` | an improvement to something that exists |
+| `bug` | something broken |
+| `task` | a thing to do that is not code: paperwork, accounts, a call |
+| `docs` | documentation only |
+| `decision` | an ask of a person: approve, choose, answer, direction, provide |
+| `research` | find something out |
+| `intake` | material handed in from outside |
+| `release` | ship a version |
+
+The old `slice` (now `feature`) and `chore` (now `task`) still read and validate, with the warning "legacy type; run drew migrate type"; `desk new` never offers them. `desk migrate type --dry-run|--apply` retires them by rule (first match wins; only legacy tickets move; `--apply` rewrites the one `type:` line and bumps nothing): Approve:/Choose:/Answer:/Provide:/Direction: titles become `decision`; `Docs:` titles or tags `docs`/`quickstart` become `docs`; tag `release` or a title starting `Release` becomes `release`; `Do:` titles and all other chores become `task`; slices titled `200% motion`, `200% look`, `200% feature`, `Brand:`, `Style pass`, `Readability` or tagged `upgrade` become `upgrade`; a slice with `Bug` in the title becomes `bug`; every other slice becomes `feature`. The UI shows the type as a short colour-coded chip.
+
+### How to validate
+
+`## How to validate` sits right after Acceptance. It is written before the work starts, as part of planning: the steps a person or agent runs to confirm the Outcome once the work is claimed done (commands with expected output, URLs with what to look for, files with what they must contain). It is not Acceptance (what must be true) and not Evidence (what was observed). `desk new` writes the heading with a one-line hint comment fitted to the type; the hint does not count as steps. `desk report` and the UI hand-over refuse to move a ticket to `review` while the section is empty ("Write How to validate first"); `desk validate` warns about tickets already in review without one. The ticket page shows it beside Acceptance, and the review-week lines end with ` · validate: <first line>`.
 
 ## Projects, prefixes and renames
 
@@ -185,7 +206,7 @@ Rules the CLI and the UI both enforce, and `desk validate` checks in the files:
 | `desk new --project jre --type slice [--priority p1 --size s --owner main --assignee codex --dod core,code --source path#sec] "title"` | main | Next id for the project, from the template; prints the path |
 | `desk clone ID [--project key] "new title"` | main | New ticket with the source's Context, Outcome, Acceptance (boxes cleared) and Prompt; sets `cloned_from` |
 | `desk stats [--since YYYY-MM-DD] [--project key] [--json]` | anyone | Total, done, in review (built but not proven), open; counts by status, project and type; created and done per week; a Decisions-per-week table (last 8 weeks) and `Review weeks: N created, M closed` |
-| `desk review new [--week YYYY-MM-DD] [--project management] [--owner james]` | owner / main | Create the week's **Ticket review** ticket (one per ISO week; chore, ready, p1, `review_by` Friday, tags `management, review-week`). Acceptance is generated: one checkbox per ticket waiting on the owner, grouped by ask (Approve, Choose, Answer, Provide, Do, Review). Refuses a second one for the same week, or a store without a `management` profile |
+| `desk review new [--week YYYY-MM-DD] [--project management] [--owner james]` | owner / main | Create the week's **Ticket review** ticket (one per ISO week; task, ready, p1, `review_by` Friday, tags `management, review-week`). Acceptance is generated: one checkbox per ticket waiting on the owner, grouped by ask (Approve, Choose, Answer, Provide, Do, Review). Refuses a second one for the same week, or a store without a `management` profile |
 | `desk review sync [ID]` | owner / main | Regenerate the list between `<!-- review:start -->` and `<!-- review:end -->` (hand-written lines outside survive): decided tickets become `[x]`, new ones are added, vanished ones are kept as `(resolved)`. Writes the weekly KPI between `<!-- kpi:start -->` and `<!-- kpi:end -->` in Report: waiting at creation, added, decided this week, still waiting, median days in review, oldest waiting. Idempotent. The Today page links this week's review with "N waiting" |
 | `desk list [--project] [--status] [--owner] [--stale] [--all]` | anyone | Table of tickets (open ones by default), grouped by project |
 | `desk next --project jre [--json]` | project session | Highest-priority, oldest ready ticket, in full. `--json` is the SessionStart hook shape (`hookSpecificOutput.additionalContext`) |
@@ -256,5 +277,10 @@ MIT, copyright JA Insights LLC.
 
 - A store path such as `docs/EDITIONS.md#free-edition` (folders `docs`, `projects`, `intake`, `standards`, `tickets`, `tracks`) in a ticket body or comment becomes a link to `/doc/<path>`, which shows that Markdown file read-only inside the app. Only files inside the store are reachable; `..`, absolute paths and private files get a 404. A path to a file that does not exist stays plain text.
 - `glossary.md` at the store root, one `## Term` per entry: the first use of each term on a page gets a dotted underline and a popover; `[[Term]]` always links to `/doc/glossary.md#term`.
+- `/doc/<path>` reads the file from where it lives, at request time, from any top-level folder of the store, including submodule folders such as `jeby Real Estate/docs/README.md` or `desk/docs/WHY.md`. Nothing is copied into Desk or the store. Every doc link shows two affordances: the in-app read-only view, and "Edit in VS Code" (`vscode://file/<absolute path>`).
+- When a project's profile names its repo folder (a `repo:` field or a `| Repo |` table row) and that repo has `docs/doc-ownership.yaml`, the ticket page lists the owning doc of every `docs_to_update` path and every code path in the body, links the `source:` field, and the project's `/doc/projects/<key>.md` page links its documentation index (`docs/README.md`, else `README.md#documentation-tree`). Desk reads these files; it never generates an index.
+- `desk validate` warns on a doc link (in a body or `source:`) whose file does not exist.
+- A glossary entry that points at a project's own document (`See [text](jeby Real Estate/docs/x.md#lot)`) makes the popover and `[[Term]]` go there instead of defining the term twice.
+- The About page reads `docs/WHY.md` from the repo (`DESK_REPO`, or the store's `desk/` folder). The wheel carries a build-time copy only as a fallback; the source tree has no second copy.
 - Every ticket page, and every `/doc/` page, ends with a "Mentioned in" list of the tickets whose bodies mention that ticket id or that path.
 - Forms (comment, decide, check, move) carry a one-time token and their button disables on click, so a double click cannot post twice; a reused token gets a friendly page and nothing is written.

@@ -94,7 +94,7 @@ def test_brand_check_creates_once(store, capsys):
     again, skipped = brand.create(store)
     assert again == [] and len(skipped) == len(keys)
     t = store.get(created[0])
-    assert t.project == "brand" and t.meta["type"] == "chore" and t.meta["owner"] == "main" and t.meta["assignee"] == "chaz"
+    assert t.project == "brand" and t.meta["type"] == "task" and t.meta["owner"] == "main" and t.meta["assignee"] == "chaz"
     assert t.meta["title"].startswith("Provide: mark and accent for ") and len(t.meta["title"]) <= 60
     with pytest.raises(SystemExit):
         run(store, "validate")

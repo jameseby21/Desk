@@ -84,3 +84,66 @@ def test_mentioned_in_lists_the_right_tickets(doc_store):
     proj = client.get("/doc/projects/jre.md").text.split("Mentioned in")[1]
     assert d.id in proj and b.id not in proj
     assert d.id in client.get("/doc/docs/EDITIONS.md").text.split("Mentioned in")[1]
+
+
+@pytest.fixture
+def repo_store(doc_store):
+    """A store with a project repo folder (spaces in its name, like a submodule) and its own doc-ownership map."""
+    repo = doc_store.home / "jeby Real Estate"
+    (repo / "docs").mkdir(parents=True)
+    (repo / "docs" / "README.md").write_text("# Docs\n\n## Documentation tree\nx\n", encoding="utf-8")
+    (repo / "docs" / "ARCH.md").write_text("# Arch\n\n## Layers\nx\n\n## Lot\nA lot is a parcel.\n", encoding="utf-8")
+    (repo / "docs" / "doc-ownership.yaml").write_text(
+        '- {glob: "backend/**/*.py", doc: "docs/ARCH.md#layers", primary: true}\n- {glob: "backend/api/{a,b}.py", doc: "docs/README.md", primary: true}\n', encoding="utf-8")
+    prof = doc_store.projects_dir / "jre.md"
+    prof.write_text("---\nkey: jre\n---\n# jRE\n\n| | |\n| --- | --- |\n| Repo | jeby Real Estate/ → github.com/x/y |\n", encoding="utf-8")
+    return doc_store
+
+
+def test_any_store_folder_and_edit_in_vscode(repo_store):
+    t = ops.new(repo_store, "Spaced", "jre")
+    t.set_section("Context", "Read [arch](<jeby Real Estate/docs/ARCH.md#layers>) and `jeby Real Estate/docs/ARCH.md`.")
+    repo_store.save(t)
+    c = _client(repo_store)
+    page = c.get(f"/ticket/{t.id}").text
+    assert 'href="/doc/jeby%20Real%20Estate/docs/ARCH.md#layers"' in page
+    assert page.count("Edit in VS Code") >= 2 and 'href="vscode://file/' in page and "jeby%20Real%20Estate/docs/ARCH.md" in page
+    r = c.get("/doc/jeby Real Estate/docs/ARCH.md")
+    assert r.status_code == 200 and "A lot is a parcel." in r.text and "vscode://file/" in r.text
+    assert c.get("/doc/jeby Real Estate/../secret.md").status_code == 404
+
+
+def test_owning_doc_and_documentation_index(repo_store):
+    t = ops.new(repo_store, "Owned", "jre")
+    t.meta["docs_to_update"] = ["backend/app/x.py", "docs/ARCH.md#layers"]
+    t.meta["source"] = "jeby Real Estate/docs/README.md#documentation-tree"
+    t.set_section("Context", "Touches backend/api/a.py too.")
+    repo_store.save(t)
+    c = _client(repo_store)
+    page = c.get(f"/ticket/{t.id}").text
+    assert "Owning docs" in page and "jeby%20Real%20Estate/docs/ARCH.md#layers" in page and "jeby%20Real%20Estate/docs/README.md" in page
+    assert 'class="docref" href="/doc/jeby%20Real%20Estate/docs/README.md#documentation-tree"' in page  # source linked
+    prof = c.get("/doc/projects/jre.md").text
+    assert "Documentation index" in prof and "jeby%20Real%20Estate/docs/README.md" in prof
+
+
+def test_validate_warns_on_dead_doc_link(repo_store):
+    from desk.rules import validate_store
+
+    t = ops.new(repo_store, "Dead", "jre")
+    t.set_section("Context", "See docs/EDITIONS.md, docs/GONE.md, and projects/<key>.md.")
+    t.meta["source"] = "docs/ALSO_GONE.md#x"
+    repo_store.save(t)
+    _, warnings = validate_store(repo_store)
+    joined = "\n".join(warnings)
+    assert "docs/GONE.md" in joined and "docs/ALSO_GONE.md#x" in joined and "docs/EDITIONS.md" not in joined and "<key>" not in joined
+
+
+def test_project_term_links_to_project_doc(repo_store):
+    (repo_store.home / "glossary.md").write_text(
+        "# Glossary\n\n## Ask\nWhat a ticket wants.\n\n## Lot\nSee [jRE architecture](jeby Real Estate/docs/ARCH.md#lot).\n", encoding="utf-8")
+    t = ops.new(repo_store, "Lots", "jre")
+    t.set_section("Context", "Each lot is checked. See [[Lot]].")
+    repo_store.save(t)
+    page = _client(repo_store).get(f"/ticket/{t.id}").text
+    assert page.count("jeby%20Real%20Estate/docs/ARCH.md#lot") >= 2 and "/doc/glossary.md#lot" not in page

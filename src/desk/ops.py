@@ -48,7 +48,7 @@ def move(store: Store, t: Ticket, new: str, *, actor: str | None = None, reason:
     return t
 
 
-def new(store: Store, title: str, project: str, type_: str = "slice", **kw) -> Ticket:
+def new(store: Store, title: str, project: str, type_: str = "feature", **kw) -> Ticket:
     if project not in store.projects() and store.projects():
         raise RuleError(f"Unknown project `{project}`. Add projects/{project}.md first.")
     t = store.create(title, project, type_, **kw)

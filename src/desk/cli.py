@@ -8,7 +8,7 @@ import json
 import sys
 from pathlib import Path
 
-from . import ops, review as rv, tracks as trk, version as ver
+from . import ops, retype, review as rv, tracks as trk, version as ver
 from .config import HomeNotFound, find_home
 from .rules import RuleError, validate_store
 from .store import Store
@@ -401,6 +401,8 @@ def cmd_upgrade(args):
 
 
 def cmd_migrate(args):
+    if args.what == "type":
+        return cmd_migrate_type(args)
     s = _store(args)
     rules_path = Path(args.rules) if args.rules else s.home / trk.RULES_PATH
     if not rules_path.is_absolute() and not rules_path.exists():
@@ -424,6 +426,24 @@ def cmd_migrate(args):
         return
     wrote = sum(1 for t, name in pairs if trk.write_track(t, name))
     print(f"Wrote track: to {wrote} tickets. updated dates were not changed.")
+
+
+def cmd_migrate_type(args):
+    s = _store(args)
+    tickets = s.tickets()
+    pairs = retype.plan(tickets)
+    rows = [[t.id, str(t.meta.get("title", ""))[:56], f"{t.meta.get('type')} -> {new}"] for t, new in pairs]
+    if rows:
+        print(_table(rows, ["ticket", "title", "type"]))
+        print()
+    print(_table([[n, str(c)] for n, c in retype.counts(pairs)], ["new type", "tickets"]))
+    print()
+    print(f"{len(pairs)} legacy tickets to retype; {len(tickets) - len(pairs)} left alone.")
+    if not args.apply:
+        print("Dry run: nothing written. Add --apply to rewrite the type: lines.")
+        return
+    wrote = sum(1 for t, new in pairs if retype.write_type(t, new))
+    print(f"Retyped {wrote} tickets. updated dates were not changed.")
 
 
 def cmd_home(args):
@@ -454,8 +474,8 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--repo", help="the Desk repo (else DESK_REPO, else <store>/desk)")
     sp.set_defaults(fn=cmd_upgrade)
 
-    sp = sub.add_parser("migrate", help="one-off bulk edits; `migrate track` assigns tracks from tracks/rules.yaml (dry run by default)")
-    sp.add_argument("what", choices=["track"])
+    sp = sub.add_parser("migrate", help="one-off bulk edits; `migrate track` assigns tracks from tracks/rules.yaml, `migrate type` retires the legacy slice and chore types")
+    sp.add_argument("what", choices=["track", "type"])
     mode = sp.add_mutually_exclusive_group(required=True)
     mode.add_argument("--dry-run", action="store_true", help="print ticket -> track and counts; write nothing")
     mode.add_argument("--apply", action="store_true", help="write track: into each matched ticket's frontmatter")
@@ -468,7 +488,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp = sub.add_parser("new", help="create a ticket from the template (next id for the project)")
     sp.add_argument("title")
     sp.add_argument("--project", required=True)
-    sp.add_argument("--type", default="slice", choices=TYPES)
+    sp.add_argument("--type", default="feature", choices=TYPES)
     sp.add_argument("--priority", default="p2", choices=PRIORITIES)
     sp.add_argument("--size", default="s", choices=SIZES)
     sp.add_argument("--owner", default="main")

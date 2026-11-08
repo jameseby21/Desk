@@ -14,7 +14,7 @@
     <h3><span>{{ screen(st) }} <span class="muted" style="font-weight:400">{{ st }}</span></span><span>{{ items|length }}</span></h3>
     {% for t in items %}
     <a href="/ticket/{{ t.id }}" style="text-decoration:none"><div class="card">
-      <span class="chip">{{ t.id }}</span>{% if s.formerly(t) %} <span class="muted formerly">(formerly {{ s.formerly(t) }})</span>{% endif %} <span class="chip">{{ t.meta.get('priority') }}</span>{% if s.is_stale(t) %} <span class="chip red">{{ screen('stale') }}</span>{% endif %}
+      <span class="chip">{{ t.id }}</span>{% if s.formerly(t) %} <span class="muted formerly">(formerly {{ s.formerly(t) }})</span>{% endif %} <span class="chip">{{ t.meta.get('priority') }}</span> <span class="chip ty ty-{{ t.meta.get('type') }}">{{ t.meta.get('type') }}</span>{% if s.is_stale(t) %} <span class="chip red">{{ screen('stale') }}</span>{% endif %}
       <div style="font-weight:600;margin-top:6px">{{ t.meta.get('title') }}</div>
       <div class="muted" style="font-size:12.5px" title="{{ titles.get(t.project, t.project) }}">{{ t.project }} · {{ t.meta.get('owner') }}</div>
     </div></a>

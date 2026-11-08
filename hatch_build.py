@@ -18,3 +18,7 @@ class CustomBuildHook(BuildHookInterface):
         out = Path(tempfile.mkdtemp()) / "_build.py"
         out.write_text(f'COMMIT = "{commit or "no git"}"\n', encoding="utf-8")
         build_data["force_include"][str(out)] = "desk/_build.py"
+        # The About page's fallback text is the repo's own docs/WHY.md, copied into the wheel here, never committed twice.
+        why = Path(self.root) / "docs" / "WHY.md"
+        if why.is_file():
+            build_data["force_include"][str(why)] = "desk/ui/content/WHY.md"
