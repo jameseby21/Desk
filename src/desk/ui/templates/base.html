@@ -10,7 +10,8 @@
 <link rel="icon" href="data:image/svg+xml,{{ favicon }}">
 </head>
 <body>
-<header>
+{% if build_stale %}<div class="stale-bar" role="status">{{ stale_text }}</div>
+{% endif %}<header>
   <a class="mark" href="/"><i></i>Desk</a>
   <nav><a href="/">Today</a><a href="/board">Board</a><a href="/projects">Projects</a><a href="/about">About</a><a href="/settings">Settings</a></nav>
   <span class="home">{{ home }} · owner {{ owner }}</span>

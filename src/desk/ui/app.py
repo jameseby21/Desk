@@ -8,6 +8,7 @@ import os
 import re
 import secrets
 import tempfile
+import traceback
 from collections import OrderedDict
 from pathlib import Path
 
@@ -16,7 +17,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from .. import docs as docsmod, ops, profanity, review as rv, style as styles, tracks as trk, version as ver
+from .. import buildstamp as bs, docs as docsmod, ops, profanity, review as rv, style as styles, tracks as trk, version as ver
 from ..config import find_home
 from ..rules import RuleError
 from ..store import Store, id_parts, split_profile
@@ -30,6 +31,7 @@ from . import events as ev
 from .markdown import has_mermaid, render as md_html
 
 TEMPLATES = Path(__file__).parent / "templates"
+STAMP_DIR = TEMPLATES  # where .build-stamp sits; looked up at request time
 STATIC = Path(__file__).parent / "static"
 CONTENT = Path(__file__).parent / "content"
 _MARK = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><style>.b{fill:#141414}'
@@ -159,8 +161,75 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         done_kind = qp.get("done") or qp.get("ok") or ""
         events_url, events_since = kw.pop("events_url", ""), kw.pop("events_since", "")
         events = {"url": events_url, "since": events_since} if events_url and styles.load(st.home)["autorefresh"] else None
-        return {"events": events, "notice": notice(done_kind, qp.get("at", ""), int(qp.get("dup") or 0) if str(qp.get("dup") or "0").isdigit() else 0), "render": render, "request": request, "owner": st.owner, "style": styles.load(st.home), "favicon": FAVICON, "home": str(st.home), "today": dt.date.today().isoformat(),
+        return {"build_stale": bs.stale(STAMP_DIR), "stale_text": bs.STALE_TEXT, "events": events, "notice": notice(done_kind, qp.get("at", ""), int(qp.get("dup") or 0) if str(qp.get("dup") or "0").isdigit() else 0), "render": render, "request": request, "owner": st.owner, "style": styles.load(st.home), "favicon": FAVICON, "home": str(st.home), "today": dt.date.today().isoformat(),
                 "titles": {k: st.project_title(k) for k in st.projects()}, **kw}
+
+    held: OrderedDict[str, dict] = OrderedDict()  # unhandled errors a person may file as a bug, by one-time id
+    app.state.errors = held
+    desk_dir = Path(__file__).resolve().parent.parent
+
+    def error_info(request: Request, exc: BaseException) -> dict:
+        frames = traceback.extract_tb(exc.__traceback__)
+        mine = [f for f in frames if Path(f.filename).resolve().is_relative_to(desk_dir)]
+        first = (mine or frames or [None])[0]
+        where = f"{Path(first.filename).name}:{first.lineno} in {first.name}" if first else "unknown"
+        summary = "\n".join(f"{Path(f.filename).name}:{f.lineno} in {f.name}" for f in (mine or frames)[-8:])
+        return {"type": type(exc).__name__, "message": str(exc)[:500], "route": request.url.path, "method": request.method,
+                "frame": where, "summary": summary}
+
+    def error_page(body: str, status: int) -> HTMLResponse:
+        return HTMLResponse(
+            "<!doctype html><meta charset=utf-8><meta name=viewport content='width=device-width,initial-scale=1'><title>Desk hit a bug</title>"
+            "<body style=\"font:16px system-ui;max-width:46em;margin:0 auto;padding:0 1em 3em\">" + body + "</body>", status_code=status)
+
+    @app.exception_handler(Exception)
+    async def on_error(request: Request, exc: Exception):
+        e = html.escape
+        if bs.stale(STAMP_DIR):  # new files on disk, old code in memory: say so instead of a bug report
+            return error_page(f'<div style="background:#F2D98B;color:#141414;padding:10px 14px;margin:0 -1em 1.5em;font-weight:600" role="status">{e(bs.STALE_TEXT)}</div>'
+                              '<h1>Restart needed</h1><p>The page could not load because Desk was updated while it was running.</p>', 503)
+        info = error_info(request, exc)
+        eid = secrets.token_urlsafe(12)
+        held[eid] = info
+        while len(held) > 50:
+            held.popitem(last=False)
+        return error_page(
+            f'<h1>Desk hit a bug</h1><p><b>{e(info["type"])}</b>: {e(info["message"])}</p>'
+            f'<p>On <code>{e(info["method"])} {e(info["route"])}</code></p><p>First frame: <code>{e(info["frame"])}</code></p>'
+            f'<form method="post" action="/bugs/file"><input type="hidden" name="eid" value="{e(eid)}">'
+            '<button type="submit" style="font:inherit;padding:8px 16px">File as a bug</button></form>'
+            '<p><a href="/">Back to Today</a></p>', 500)
+
+    @app.post("/bugs/file")
+    def file_bug(eid: str = Form("")):
+        """Turn a held UI error into a Desk ticket (project desk, type bug). The same exception type on the same route within 24 hours
+        adds a Comments line to the ticket already filed instead of a second ticket."""
+        info = held.get(eid)
+        if info is None:
+            return error_page("<h1>That error is no longer held</h1><p>Reload the page that failed, then file it again.</p><p><a href=\"/\">Back to Today</a></p>", 410)
+        s = store()
+        now = dt.datetime.now()
+        key = f"{info['type']} | {info['route']}"
+        stamp_re = re.compile(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}")
+        s.sync_before()
+        for t in s.tickets():
+            if "ui-error" not in t.tags or f"Key: {key}" not in t.section("Context"):
+                continue
+            seen = [dt.datetime.strptime(m, "%Y-%m-%d %H:%M") for m in stamp_re.findall(t.section("Context").split("\n\n")[0] + " " + t.section("Comments"))]
+            if seen and now - max(seen) < dt.timedelta(hours=24):
+                t.append_line("Comments", ops._stamp("desk-ui", f"seen again: {info['type']}: {info['message'][:120]}", at_time=True))
+                s.save(t)
+                s.sync_after(f"desk: ui error again {t.id}")
+                return RedirectResponse(f"/ticket/{t.id}", status_code=303)
+        title = f"UI error: {info['type']} on {info['route']}"[:60]
+        t = ops.new(s, title, "desk", "bug", owner="main")
+        t.meta["tags"] = ["ui-error"]
+        t.set_section("Context", f"Filed: {now.strftime('%Y-%m-%d %H:%M')}\nKey: {key}\nRoute: {info['method']} {info['route']}\n"
+                                  f"Exception: {info['type']}: {info['message']}\nFirst frame: {info['frame']}\n\nTraceback summary (desk frames, oldest first):\n\n```\n{info['summary']}\n```")
+        t.set_section("How to validate", f"open {info['route']}; no error")
+        s.save(t)
+        s.sync_after(f"desk: file {t.id}")
+        return RedirectResponse(f"/ticket/{t.id}", status_code=303)
 
     @app.get("/", response_class=HTMLResponse)
     def today(request: Request, cap: str = "normal", track: str = ""):
