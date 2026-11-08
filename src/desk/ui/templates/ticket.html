@@ -70,9 +70,44 @@
       {% if t.section('Comments') %}<div class="md">{{ render(t.section('Comments'))|safe }}</div>{% else %}<p class="muted">No comments.</p>{% endif %}
       <form class="post-once" method="post" action="/ticket/{{ t.id }}/comment" style="margin-top:10px;display:flex;flex-direction:column;gap:8px">
         <input type="hidden" name="token" value="{{ token() }}">
-        <label>Comment<textarea name="text" rows="2"></textarea></label>
+        <label>Comment<textarea name="text" rows="2" id="comment-text" data-attach="/ticket/{{ t.id }}/attach" data-token="{{ token() }}" placeholder="Paste or drop a screenshot here to attach it"></textarea></label>
+        <div class="attach-note" id="attach-note" role="status"></div>
         <div class="row"><input type="text" name="who" placeholder="who (default {{ owner }})" style="max-width:200px"><button class="btn" type="submit">Add comment</button></div>
       </form>
+      <form class="post-once attach-form" method="post" action="/ticket/{{ t.id }}/attach" enctype="multipart/form-data">
+        <input type="hidden" name="token" value="{{ token() }}">
+        <label class="muted" style="font-size:13px">Or attach an image <input type="file" name="file" accept="image/png,image/jpeg,image/gif,image/webp" required></label>
+        <button class="btn small" type="submit">Attach</button>
+      </form>
+      <script>
+(function () {
+  var ta = document.getElementById("comment-text"), note = document.getElementById("attach-note");
+  if (!ta || !window.fetch) return;
+  function say(msg, bad) { note.textContent = msg; note.className = "attach-note" + (bad ? " err" : ""); }
+  function insert(md) {
+    var s = ta.selectionStart || ta.value.length, e = ta.selectionEnd || s, pre = ta.value.slice(0, s);
+    var lead = pre && !/\s$/.test(pre) ? " " : "";
+    ta.value = pre + lead + md + " " + ta.value.slice(e);
+    ta.focus();
+  }
+  function upload(file) {
+    var fd = new FormData(); fd.append("file", file, file.name || "image.png"); fd.append("token", ta.getAttribute("data-token"));
+    say("Uploading " + (file.name || "image") + "...", false);
+    fetch(ta.getAttribute("data-attach"), { method: "POST", body: fd, headers: { "Accept": "application/json" } })
+      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+      .then(function (x) {
+        if (x.j.token) ta.setAttribute("data-token", x.j.token);
+        if (x.ok) { insert(x.j.markdown); say("Attached " + x.j.name + ". Post the comment to show it.", false); }
+        else { say(x.j.error || "Upload failed", true); }
+      })
+      .catch(function () { say("Upload failed: could not reach Desk", true); });
+  }
+  function images(dt) { return Array.prototype.filter.call((dt && dt.files) || [], function (f) { return /^image\//.test(f.type); }); }
+  ta.addEventListener("paste", function (e) { var f = images(e.clipboardData); if (f.length) { e.preventDefault(); f.forEach(upload); } });
+  ta.addEventListener("dragover", function (e) { if (images(e.dataTransfer).length || (e.dataTransfer && e.dataTransfer.types.indexOf("Files") >= 0)) e.preventDefault(); });
+  ta.addEventListener("drop", function (e) { var f = images(e.dataTransfer); if (e.dataTransfer && e.dataTransfer.files.length) { e.preventDefault(); (f.length ? f : Array.prototype.slice.call(e.dataTransfer.files)).forEach(upload); } });
+})();
+      </script>
     </div>
   </div>
 

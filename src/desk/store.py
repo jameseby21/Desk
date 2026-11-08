@@ -110,6 +110,13 @@ class Store:
     def combos(self) -> bool:
         return bool(self.config.get("life", {}).get("combos", False))
 
+    @property
+    def max_attach_mb(self) -> float:
+        try:
+            return float(self.config.get("attachments", {}).get("max_mb", 8))
+        except (TypeError, ValueError):
+            return 8.0
+
     def delegated(self, ticket: Ticket) -> bool:
         ap = self.config["approval"]
         types = {canon_type(x) for x in ap.get("delegated_types", [])}

@@ -14,6 +14,7 @@ DEFAULTS: dict = {
     "git": {"sync": False},
     "stale": {"days": 21},
     "life": {"combos": False},
+    "attachments": {"max_mb": 8},
 }
 
 DEFAULT_TOML = """[desk]
@@ -31,6 +32,9 @@ days = 21
 
 [life]
 combos = false             # when true: the Today page celebrates two tagged tickets done within 30 minutes
+
+[attachments]
+max_mb = 8                 # largest image the UI accepts when you paste or drop one into a comment
 """
 
 

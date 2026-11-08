@@ -7,11 +7,12 @@ import html
 import os
 import re
 import secrets
+import tempfile
 from collections import OrderedDict
 from pathlib import Path
 
-from fastapi import FastAPI, Form, Request
-from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+from fastapi import FastAPI, File, Form, Request, UploadFile
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -401,6 +402,64 @@ def create_app(home: Path | None = None) -> FastAPI:
         except (KeyError, RuleError, ValueError) as e:
             return _back(ticket_id, str(e))
         return _back(ticket_id, ok="comment", dup=not res.added)
+
+    def sniff_image(head: bytes) -> str | None:
+        """The extension for a real image by its first bytes (png, jpg, gif, webp); anything else is not accepted."""
+        if head.startswith(bytes.fromhex("89504e470d0a1a0a")):
+            return ".png"
+        if head.startswith(bytes.fromhex("ffd8ff")):
+            return ".jpg"
+        if head[:6] in (b"GIF87a", b"GIF89a"):
+            return ".gif"
+        if head[:4] == b"RIFF" and head[8:12] == b"WEBP":
+            return ".webp"
+        return None
+
+    @app.post("/ticket/{ticket_id}/attach")
+    async def post_attach(request: Request, ticket_id: str, file: UploadFile = File(...), token: str = Form("")):
+        """Paste or drop a screenshot: images only, size-limited (desk.toml [attachments] max_mb). The file lands in
+        tickets/assets/<ID>/ through ops.attach. With `Accept: application/json` the reply carries the Markdown to insert into the
+        comment; a plain form post redirects back with a confirmation line."""
+        wants_json = "application/json" in request.headers.get("accept", "")
+
+        def fail(msg: str, code: int = 400):
+            if wants_json:
+                return JSONResponse({"error": msg, "token": tokens.issue()}, status_code=code)
+            return _back(ticket_id, msg)
+
+        if not tokens.use(token):
+            return JSONResponse({"error": "That form was already sent; reload the page.", "token": tokens.issue()}, status_code=409) if wants_json else _spent(ticket_id)
+        s = store()
+        try:
+            t = s.get(ticket_id)
+        except KeyError:
+            return fail(f"No ticket {ticket_id}", 404)
+        limit_mb = s.max_attach_mb
+        limit = int(limit_mb * 1024 * 1024)
+        data = bytearray()
+        while chunk := await file.read(1024 * 1024):
+            data += chunk
+            if len(data) > limit:
+                mb = f"{limit_mb:g}"
+                return fail(f"Image is larger than the {mb} MB limit (desk.toml [attachments] max_mb = {mb}).", 413)
+        ext = sniff_image(bytes(data[:16]))
+        if not ext:
+            return fail("Images only: png, jpg, gif or webp.", 415)
+        stem = re.sub(r"[^A-Za-z0-9_-]+", "-", Path(file.filename or "").stem).strip("-")
+        if stem.lower() in ("", "image", "blob", "unnamed", "screenshot"):  # what a clipboard paste is called
+            stem = "screenshot-" + dt.datetime.now().strftime("%Y%m%d-%H%M%S")
+        with tempfile.TemporaryDirectory(prefix="desk-attach-") as tmp:
+            src = Path(tmp) / f"{stem[:60]}{ext}"
+            src.write_bytes(bytes(data))
+            try:
+                s.sync_before()
+                dest = ops.attach(s, s.get(ticket_id), src, caption=stem[:60], actor=s.owner)
+                s.sync_after(f"desk: attach {t.id}")
+            except (KeyError, RuleError, ValueError, OSError) as e:
+                return fail(str(e))
+        if wants_json:
+            return JSONResponse({"markdown": f"![{dest.stem}](assets/{t.id}/{dest.name})", "name": dest.name, "url": f"/assets/{t.id}/{dest.name}", "token": tokens.issue()})
+        return _back(ticket_id, ok="attach")
 
     @app.post("/ticket/{ticket_id}/move")
     def post_move(ticket_id: str, to: str = Form(...), reason: str = Form(""), token: str = Form("")):

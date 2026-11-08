@@ -204,7 +204,29 @@ def _censor_text(state):
                     tok.content = fn(tok.content)
 
 
+def _thumb_links(state):
+    """Core rule: an uploaded image (assets/<ID>/<file>) that is not already inside a link opens its full size on click."""
+    for block in state.tokens:
+        if block.type != "inline" or not block.children:
+            continue
+        out, depth = [], 0
+        for tok in block.children:
+            if tok.type == "link_open":
+                depth += 1
+            elif tok.type == "link_close":
+                depth -= 1
+            if tok.type == "image" and not depth and (tok.attrGet("src") or "").startswith("assets/"):
+                a = Token("link_open", "a", 1)
+                a.attrSet("href", tok.attrGet("src"))
+                a.attrSet("class", "thumb")
+                out += [a, tok, Token("link_close", "a", -1)]
+            else:
+                out.append(tok)
+        block.children = out
+
+
 _md.core.ruler.push("ticket_autolink", _autolink)
+_md.core.ruler.push("thumb_links", _thumb_links)
 _md.core.ruler.push("censor_text", _censor_text)
 _md.add_render_rule("link_open", _render_link_open)
 _md.add_render_rule("image", _render_image)

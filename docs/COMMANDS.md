@@ -50,7 +50,7 @@ Every command a person or an agent runs day to day, with what it does and when. 
 | `/projects?p=<key>&t=<track slug>&k=<ID>` | project, track, ticket and peek panel; what is open lives in the address |
 | `/board?track=<slug>`, `/?track=<slug>` | the track filter chip |
 | `/doc/<store-relative path>.md` | a store Markdown file, read-only; `glossary.md` terms get popovers and `[[Term]]` links to them |
-| `/ticket/<ID>` | the full ticket: How to validate, owning docs, Mentioned-in |
+| `/ticket/<ID>` | the full ticket: How to validate, owning docs, Mentioned-in; paste or drop an image into the comment box to attach it (`[attachments] max_mb`, default 8) |
 | `/doc/<folder>/<file>.md` | any store folder or submodule, read-only, with an "Edit in VS Code" link |
 
 ## Troubleshooting one-liners
