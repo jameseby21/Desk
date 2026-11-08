@@ -8,10 +8,14 @@ import sqlite3
 import subprocess
 from pathlib import Path
 
+import yaml
+
 from .config import DEFAULT_TOML, CONFIG_NAME, load_config
 from .ticket import SIZES, Ticket, new_ticket, slugify
 
 _ID = re.compile(r"^(?P<key>[A-Z0-9][A-Z0-9-]*)-(?P<num>\d{4,})$")
+_PROFILE_FM = re.compile(r"\A---\r?\n(.*?)\r?\n---\r?\n?(.*)\Z", re.S)
+_KV = re.compile(r"^([A-Za-z_][\w-]*):\s?(.*)$")
 
 
 def id_parts(ticket_id: str) -> tuple[str, int] | None:
@@ -21,6 +25,46 @@ def id_parts(ticket_id: str) -> tuple[str, int] | None:
     return m.group("key"), int(m.group("num"))
 
 
+def _loose_frontmatter(block: str) -> dict:
+    """Profiles are written by hand: `name: Algo (a repo): notes` is not valid YAML but people mean it.
+    One `key: value` per line; a `[a, b]` value is a list; everything else is a string."""
+    out: dict = {}
+    for line in block.splitlines():
+        mm = _KV.match(line)
+        if not mm:
+            continue
+        key, raw = mm.group(1), mm.group(2).strip()
+        if raw.startswith("[") and raw.endswith("]"):
+            try:
+                val = yaml.safe_load(raw)
+            except yaml.YAMLError:
+                val = [x.strip().strip("'\"") for x in raw[1:-1].split(",")]
+            out[key] = [str(x) for x in val if str(x).strip()] if isinstance(val, list) else []
+        else:
+            out[key] = raw.strip("'\"") if len(raw) > 1 and raw[0] == raw[-1] and raw[0] in "'\"" else raw
+    return out
+
+
+def split_profile(text: str) -> tuple[dict, str]:
+    """Split a project profile into (frontmatter mapping, markdown body)."""
+    m = _PROFILE_FM.match(text)
+    if not m:
+        return {}, text
+    try:
+        meta = yaml.safe_load(m.group(1))
+    except yaml.YAMLError:
+        meta = None
+    if not isinstance(meta, dict):
+        meta = _loose_frontmatter(m.group(1))
+    return meta, m.group(2)
+
+
+def join_profile(meta: dict, body: str) -> str:
+    fm = yaml.safe_dump(meta, sort_keys=False, allow_unicode=True, default_flow_style=None, width=1000).rstrip("\n")
+    fm = re.sub(r"^(\w+): '(\d{4}-\d{2}-\d{2})'$", r"\1: \2", fm, flags=re.M)
+    return f"---\n{fm}\n---\n{body.lstrip(chr(10))}"
+
+
 class Store:
     def __init__(self, home: Path):
         self.home = Path(home)
@@ -28,6 +72,7 @@ class Store:
         self.tickets_dir = self.home / "tickets"
         self.projects_dir = self.home / "projects"
         self.intake_dir = self.home / "intake"
+        self.assets_dir = self.tickets_dir / "assets"
         self.index_path = self.home / ".desk" / "index.sqlite"
 
     # -- setup -------------------------------------------------------------
@@ -60,6 +105,10 @@ class Store:
     def stale_days(self) -> int:
         return int(self.config["stale"]["days"])
 
+    @property
+    def combos(self) -> bool:
+        return bool(self.config.get("life", {}).get("combos", False))
+
     def delegated(self, ticket: Ticket) -> bool:
         ap = self.config["approval"]
         types = ap.get("delegated_types", [])
@@ -73,14 +122,48 @@ class Store:
             return {}
         return {p.stem: p for p in sorted(self.projects_dir.glob("*.md"))}
 
+    def project_profile(self, key: str) -> tuple[dict, str]:
+        """(frontmatter mapping, body) of projects/<key>.md; ({}, "") when there is no profile."""
+        path = self.projects().get(key)
+        if not path:
+            return {}, ""
+        return split_profile(path.read_text(encoding="utf-8"))
+
     def project_title(self, key: str) -> str:
-        p = self.projects().get(key)
-        if not p:
-            return key
-        for line in p.read_text(encoding="utf-8").splitlines():
+        meta, body = self.project_profile(key)
+        for line in body.splitlines():
             if line.startswith("# "):
                 return line[2:].strip()
+        if meta.get("name"):
+            return str(meta["name"])
         return key
+
+    def key_for(self, project: str) -> str:
+        """The ticket-id prefix for a project: its profile's `prefix:` frontmatter field, else the key uppercased."""
+        meta, _ = self.project_profile(project)
+        val = str(meta.get("prefix") or "").strip()
+        return val.upper() if val else project.upper()
+
+    def aliases_for(self, project: str) -> list[str]:
+        """Old keys and old prefixes a project answers to (`aliases:` in its profile)."""
+        meta, _ = self.project_profile(project)
+        v = meta.get("aliases")
+        if isinstance(v, str):
+            v = [v]
+        if not isinstance(v, list):
+            return []
+        return [str(x).strip() for x in v if str(x).strip()]
+
+    def prefixes_for(self, project: str) -> set[str]:
+        """Every id prefix that is valid for a project: the current prefix plus every alias, uppercased."""
+        return {self.key_for(project), *(a.upper() for a in self.aliases_for(project))}
+
+    def formerly(self, ticket: Ticket) -> str | None:
+        """The ticket's id prefix when it differs from its project's current prefix (a renamed project), else None."""
+        parts = id_parts(ticket.id)
+        if not parts:
+            return None
+        return parts[0] if parts[0] != self.key_for(ticket.project) else None
 
     # -- tickets -----------------------------------------------------------
     def ticket_paths(self) -> list[Path]:
@@ -111,20 +194,6 @@ class Store:
                 return t
         raise KeyError(f"No ticket {ticket_id}")
 
-    def key_for(self, project: str) -> str:
-        """The ticket-id prefix for a project: its profile's `prefix:` frontmatter field, else the key uppercased."""
-        path = self.projects().get(project)
-        if path:
-            text = path.read_text(encoding="utf-8")
-            if text.startswith("---"):
-                head = text.split("---", 2)[1]
-                for line in head.splitlines():
-                    if line.strip().startswith("prefix:"):
-                        val = line.split(":", 1)[1].strip().strip('"').strip("'")
-                        if val:
-                            return val.upper()
-        return project.upper()
-
     def next_id(self, project: str) -> str:
         key = self.key_for(project)
         n = 0
@@ -136,6 +205,9 @@ class Store:
 
     def path_for(self, ticket: Ticket) -> Path:
         return self.tickets_dir / f"{ticket.id}-{slugify(str(ticket.meta.get('title', '')))}.md"
+
+    def ticket_assets_dir(self, ticket_id: str) -> Path:
+        return self.assets_dir / ticket_id.upper()
 
     def create(self, title: str, project: str, type_: str = "slice", **kw) -> Ticket:
         t = new_ticket(self.next_id(project), title, project, type_, **kw)

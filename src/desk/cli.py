@@ -43,6 +43,16 @@ def _print_ticket(t) -> None:
     print(t.render(), end="")
 
 
+def _id_label(s: Store, t) -> str:
+    """The id, plus `(formerly OLD)` when the project's prefix has changed since the ticket was made."""
+    old = s.formerly(t)
+    return f"{t.id} (formerly {old})" if old else t.id
+
+
+def _by_project(tickets):
+    return sorted(tickets, key=lambda t: (t.project, t.id))
+
+
 # ---- commands --------------------------------------------------------------
 
 def cmd_init(args):
@@ -66,7 +76,7 @@ def cmd_new(args):
 def cmd_list(args):
     s = _store(args)
     rows = []
-    for t in s.tickets():
+    for t in _by_project(s.tickets()):
         stale = s.is_stale(t)
         if args.project and t.project != args.project:
             continue
@@ -78,7 +88,7 @@ def cmd_list(args):
             continue
         if not args.all and not t.is_open and not args.status:
             continue
-        rows.append([t.id, t.project, t.meta.get("type", ""), t.status + (" (stale)" if stale else ""), t.meta.get("priority", ""),
+        rows.append([_id_label(s, t), t.project, t.meta.get("type", ""), t.status + (" (stale)" if stale else ""), t.meta.get("priority", ""),
                      t.meta.get("size", ""), str(t.meta.get("owner", "")), str(t.meta.get("title", ""))[:60]])
     if not rows:
         print("No tickets match.")
@@ -102,9 +112,12 @@ def cmd_next(args):
 def cmd_show(args):
     s = _store(args)
     try:
-        _print_ticket(s.get(args.id))
+        t = s.get(args.id)
     except KeyError as e:
         _die(str(e))
+    if s.formerly(t):  # a renamed project: say so before the file, which keeps its original id
+        print(f"# {_id_label(s, t)} · project {t.project} · {s.project_title(t.project)}\n")
+    _print_ticket(t)
 
 
 def _write_cmd(args, fn, label):
@@ -186,7 +199,9 @@ def cmd_index(args):
 def cmd_board(args):
     s = _store(args)
     cols = [st for st in STATUSES if st not in ("done", "rejected")] + (["done"] if args.all else [])
-    tickets = [t for t in s.tickets() if not args.project or t.project == args.project]
+    tickets = _by_project([t for t in s.tickets() if not args.project or t.project == args.project])
+    if args.project:
+        print(f"\n{s.project_title(args.project)} ({args.project}, prefix {s.key_for(args.project)})")
     for st in cols:
         items = [t for t in tickets if t.status == st]
         if not items and st not in ("ready", "in_progress", "review"):
@@ -194,8 +209,45 @@ def cmd_board(args):
         print(f"\n{screen(st)} ({st}) · {len(items)}")
         for t in items:
             flag = " · chewed back" if s.is_stale(t) else ""
-            print(f"  {t.id}  {t.meta.get('priority')}  {t.meta.get('size')}  {t.meta.get('owner')}  {t.meta.get('title')}{flag}")
+            proj = "" if args.project else f"  [{t.project}]"
+            print(f"  {_id_label(s, t)}{proj}  {t.meta.get('priority')}  {t.meta.get('size')}  {t.meta.get('owner')}  {t.meta.get('title')}{flag}")
     print()
+
+
+def cmd_rename_project(args):
+    s = _store(args)
+    s.sync_before()
+    try:
+        path, changed = ops.rename_project(s, args.old, args.new, prefix=args.prefix, name=args.name)
+    except (RuleError, ValueError) as e:
+        _die(str(e))
+    s.sync_after(f"desk: rename project {args.old} -> {args.new}")
+    print(f"{path}\n{len(changed)} ticket(s) now say project: {args.new}; ids unchanged, prefix {s.key_for(args.new)}"
+          + (f", formerly {', '.join(sorted(s.prefixes_for(args.new) - {s.key_for(args.new)}))}" if changed else ""))
+
+
+def cmd_attach(args):
+    s = _store(args)
+    s.sync_before()
+    try:
+        t = s.get(args.id)
+        dest = ops.attach(s, t, Path(args.file), caption=args.caption)
+    except (KeyError, RuleError, ValueError) as e:
+        _die(str(e))
+    s.sync_after(f"desk: attach {t.id}")
+    print(dest)
+
+
+def cmd_snap(args):
+    s = _store(args)
+    s.sync_before()
+    try:
+        t = s.get(args.id)
+        dest = ops.snap(s, t, caption=args.caption)
+    except (KeyError, RuleError, ValueError) as e:
+        _die(str(e))
+    s.sync_after(f"desk: snap {t.id}")
+    print(dest)
 
 
 def cmd_intake(args):
@@ -336,6 +388,24 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--project", required=True)
     actor(sp)
     sp.set_defaults(fn=cmd_intake)
+
+    sp = sub.add_parser("rename-project", help="rename projects/<old>.md to <new>.md; tickets keep their ids, the old key and prefix become aliases")
+    sp.add_argument("old")
+    sp.add_argument("new")
+    sp.add_argument("--prefix", help="a new ticket-id prefix for new tickets (old ids stay valid)")
+    sp.add_argument("--name", help="a new display name (the profile's title line)")
+    sp.set_defaults(fn=cmd_rename_project)
+
+    sp = sub.add_parser("attach", help="copy a file into tickets/assets/<ID>/ and list it under Attachments")
+    sp.add_argument("id")
+    sp.add_argument("file")
+    sp.add_argument("--caption")
+    sp.set_defaults(fn=cmd_attach)
+
+    sp = sub.add_parser("snap", help="capture the screen to a PNG and attach it")
+    sp.add_argument("id")
+    sp.add_argument("--caption")
+    sp.set_defaults(fn=cmd_snap)
     return p
 
 

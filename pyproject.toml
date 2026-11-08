@@ -1,6 +1,6 @@
 [project]
 name = "desk"
-version = "0.1.0"
+version = "0.2.0"
 description = "Desk: tickets as markdown files in your own git repo. A CLI for agents, a small web UI for the owner. Done means proof."
 readme = "README.md"
 license = { text = "MIT" }
@@ -12,6 +12,8 @@ dependencies = [
     "uvicorn>=0.30",
     "jinja2>=3.1",
     "python-multipart>=0.0.9",
+    "markdown-it-py>=3.0",
+    "mdit-py-plugins>=0.4",
 ]
 
 [project.scripts]

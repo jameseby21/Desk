@@ -13,6 +13,7 @@ DEFAULTS: dict = {
     "approval": {"delegated_types": ["chore"], "delegated_max_size": "s"},
     "git": {"sync": False},
     "stale": {"days": 21},
+    "life": {"combos": False},
 }
 
 DEFAULT_TOML = """[desk]
@@ -27,6 +28,9 @@ sync = false               # when true: pull before and push after every write c
 
 [stale]
 days = 21
+
+[life]
+combos = false             # when true: the Today page celebrates two tagged tickets done within 30 minutes
 """
 
 

@@ -15,6 +15,7 @@ SECTIONS = [
     "Acceptance",
     "Docs to update",
     "Out of scope",
+    "Attachments",
     "Report",
     "Decision",
     "Comments",
@@ -43,8 +44,8 @@ REQUIRED = ["id", "title", "project", "type", "status", "priority", "size", "own
 # Canonical frontmatter order on write.
 META_ORDER = [
     "id", "title", "project", "type", "status", "priority", "size", "owner", "branch",
-    "depends_on", "docs_to_update", "dod", "effort_hours", "confidence", "review_by",
-    "smallest_step", "blocked_on", "blocked_from", "source", "created", "updated",
+    "depends_on", "docs_to_update", "dod", "tags", "effort_hours", "confidence", "review_by",
+    "smallest_step", "blocked_on", "blocked_from", "source", "created", "updated", "done_at",
 ]
 
 _FM = re.compile(r"\A---\r?\n(.*?)\r?\n---\r?\n?(.*)\Z", re.S)
@@ -56,7 +57,9 @@ def today() -> str:
 
 
 def _plain(v):
-    if isinstance(v, (dt.date, dt.datetime)):
+    if isinstance(v, dt.datetime):  # done_at keeps its time
+        return v.replace(microsecond=0).isoformat()
+    if isinstance(v, dt.date):
         return v.isoformat()[:10]
     if isinstance(v, list):
         return [_plain(x) for x in v]
@@ -103,6 +106,11 @@ class Ticket:
         cur = self.section(name)
         self.sections[name] = (cur + "\n" if cur else "") + line.rstrip() + "\n"
 
+    @property
+    def tags(self) -> list[str]:
+        v = self.meta.get("tags")
+        return [str(x) for x in v] if isinstance(v, list) else []
+
     def acceptance(self) -> list[tuple[bool, str]]:
         out = []
         for line in self.section("Acceptance").splitlines():
@@ -135,7 +143,7 @@ class Ticket:
             if k not in ordered:
                 ordered[k] = v
         fm = yaml.safe_dump(_plain(ordered), sort_keys=False, allow_unicode=True, default_flow_style=None, width=1000).rstrip("\n")
-        fm = re.sub(r"^(\w+): '(\d{4}-\d{2}-\d{2})'$", r"\1: \2", fm, flags=re.M)  # dates unquoted, as people write them
+        fm = re.sub(r"^(\w+): '(\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}:\d{2})?)'$", r"\1: \2", fm, flags=re.M)  # dates unquoted, as people write them
         parts = [f"---\n{fm}\n---\n"]
         names = list(SECTIONS) + [s for s in self.sections if s not in SECTIONS]
         for name in names:

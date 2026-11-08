@@ -14,6 +14,8 @@ if TYPE_CHECKING:
 
 OWNER_ROLES = {"main", "james"}  # the roles that may throw a ticket into `ready`
 MIN_WORDS = 4
+TITLE_MAX = 70  # longer titles get a warning from `desk validate`
+REVIEW_MAX_DAYS = 7  # a ticket untouched in review this long gets a warning
 
 
 class RuleError(Exception):
@@ -44,6 +46,14 @@ def _date_ok(v) -> bool:
         return False
 
 
+def _datetime_ok(v) -> bool:
+    try:
+        dt.datetime.fromisoformat(str(v))
+        return True
+    except (TypeError, ValueError):
+        return False
+
+
 def validate_ticket(t: Ticket, store: "Store", known_ids: set[str] | None = None) -> tuple[list[str], list[str]]:
     """Return (errors, warnings) for one ticket's frontmatter and section invariants."""
     errors: list[str] = []
@@ -60,8 +70,8 @@ def validate_ticket(t: Ticket, store: "Store", known_ids: set[str] | None = None
     parts = id_parts(str(m["id"]))
     if not parts:
         errors.append(f"{where}: id must look like KEY-0001")
-    elif parts[0] != store.key_for(str(m["project"])):
-        errors.append(f"{where}: id prefix {parts[0]} does not match project `{m['project']}`")
+    elif parts[0] not in store.prefixes_for(str(m["project"])):
+        errors.append(f"{where}: id prefix {parts[0]} does not match project `{m['project']}` (prefix or aliases)")
     for field_, allowed in (("type", TYPES), ("status", STATUSES), ("priority", PRIORITIES), ("size", SIZES)):
         if m[field_] not in allowed:
             errors.append(f"{where}: {field_} `{m[field_]}` is not one of {', '.join(allowed)}")
@@ -71,6 +81,13 @@ def validate_ticket(t: Ticket, store: "Store", known_ids: set[str] | None = None
     for field_ in ("depends_on", "docs_to_update", "dod"):
         if field_ in m and not isinstance(m[field_], list):
             errors.append(f"{where}: {field_} must be a list")
+    if "tags" in m and m["tags"] not in (None, ""):
+        if not (isinstance(m["tags"], list) and all(isinstance(x, str) and x.strip() for x in m["tags"])):
+            errors.append(f"{where}: tags must be a list of strings")
+    if "done_at" in m and m["done_at"] not in (None, "") and not _datetime_ok(m["done_at"]):
+        errors.append(f"{where}: done_at must be an ISO timestamp (YYYY-MM-DDTHH:MM:SS)")
+    if len(str(m["title"])) > TITLE_MAX:
+        warnings.append(f"{where}: title is {len(str(m['title']))} characters; keep it under {TITLE_MAX}")
     if "confidence" in m and m["confidence"] not in (None, ""):
         try:
             c = float(m["confidence"])
@@ -107,6 +124,10 @@ def validate_ticket(t: Ticket, store: "Store", known_ids: set[str] | None = None
         errors.append(f"{where}: status `blocked` needs `blocked_on`")
     if status == "rejected" and not t.section("Decision"):
         errors.append(f"{where}: status `rejected` needs a reason in Decision")
+    if status == "review" and _date_ok(m.get("updated")):
+        since = (dt.date.today() - dt.date.fromisoformat(str(m["updated"])[:10])).days
+        if since > REVIEW_MAX_DAYS:
+            warnings.append(f"{where}: in review for {since} days (untouched since {str(m['updated'])[:10]}); decide or send back")
     if m["size"] == "l" and status not in ("inbox", "triage"):
         warnings.append(f"{where}: size `l` should be split before leaving triage")
     if m["type"] == "slice" and status in ("ready", "claimed", "in_progress") and not t.acceptance():
