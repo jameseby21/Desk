@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_chips.html" import bar, abar, sbar %}
+{% from "_filters.html" import dropdown %}
 {% from "_bcols.html" import columns with context %}
 {% macro counts_line(c, n_open) -%}
 {{ n_open }} open{% if c['ready'] %} · {{ c['ready'] }} thrown{% endif %}{% if c['in_progress'] or c['claimed'] %} · {{ c['in_progress'] + c['claimed'] }} fetching{% endif %}{% if c['review'] %} · {{ c['review'] }} dropped{% endif %}{% if c['blocked'] %} · {{ c['blocked'] }} stuck{% endif %}
@@ -8,16 +8,20 @@
 {% block title %}Desk · Board{% endblock %}
 {% block body %}
 <div class="row" style="justify-content:space-between">
-  <h1>The board{% if project %} · {{ titles.get(project, project) }} <span class="chip">{{ project }}</span>{% endif %}</h1>
+  <div><h1 style="margin:0">Board</h1>
+    <p class="muted" style="margin:2px 0 0">{{ total }} ticket{{ 's' if total != 1 }} match{{ '' if total != 1 else 'es' }}{% if tokens %} the filter{% endif %} · {{ open_n }} open</p></div>
   <div class="row"><span class="label">Group by</span>
     <a class="btn{% if by == 'track' %} ball{% endif %}" href="{{ links.track }}">Tracks</a><a class="btn{% if by == 'sprint' %} ball{% endif %}" href="{{ links.sprint }}">Sprints</a>
-    <a class="btn" href="{{ links.expand }}">Expand all</a><a class="btn" href="{{ links.collapse }}">Collapse all</a>{% if project %}<a class="btn" href="{{ links.all_projects }}">All projects</a>{% endif %}</div>
+    <a class="btn" href="{{ links.expand }}">Expand all</a><a class="btn" href="{{ links.collapse }}">Collapse all</a></div>
+</div>
+<div class="row filters" id="filters">
+  {% for name, label, plural in (('project', 'Project', 'projects'), ('assignee', 'Assignee', 'people'), ('track', 'Track', 'tracks'), ('sprint', 'Sprint', 'sprints')) %}{% if show[name] or name in ('project','assignee','track') %}
+  {{ dropdown(label, name, opts[name], plural, tokens|selectattr('facet', 'equalto', name)|map(attribute='label')|list, fhidden, clear[name]) }}{% endif %}{% endfor %}
+  {% for tk in tokens %}<a class="tok" href="{{ tk.href }}" title="Remove {{ tk.label }}">{{ tk.label }} <span aria-hidden="true">&times;</span><span class="vh"> remove</span></a>{% endfor %}
+  <span class="views">Views: <a href="{{ mine_url }}">Mine</a>{% if tokens %} <a href="{{ '/board' ~ ('?by=sprint' if by == 'sprint' else '') }}">Clear all</a>{% endif %}</span>
 </div>
 <p class="muted" style="margin:2px 0 10px">Projects first. Open a project to see its {{ 'tracks' if by == 'track' else 'sprints' }}, open one of those to see its tickets. Close what you do not need; what is open stays in the address.</p>
-{{ abar(achips, assignee, abase, aextra) }}
-{{ bar(chips, track, chip_base, chip_extra) }}
-{{ sbar(schips, sprint, sbase, sextra) }}
-<div class="bboard" id="bboard" data-by="{{ by }}" data-assignee="{{ assignee }}">
+<div class="bboard" id="bboard" data-by="{{ by }}" data-filters="{{ filter_q }}">
 {% for r in rows %}
 {% set brand = s.brand_for(r.key) %}
 <details class="bproj" data-key="open" data-val="{{ r.key }}"{% if r.is_open %} open{% endif %}>
@@ -37,9 +41,10 @@
   {% endfor %}
   </div>
 </details>
-{% else %}<p class="muted">No tickets match. {% if project or track or assignee %}<a href="/board">Clear the filters</a>.{% endif %}</p>
+{% else %}<p class="muted">No tickets match. {% if tokens %}<a href="/board">Clear the filters</a>.{% endif %}</p>
 {% endfor %}
 </div>
+<script src="/static/board-filter.js" defer></script>
 <script>
 (function () {
   /* What is open lives in the address (open= for projects, g= for groups as project:slug) so a view can be shared and reopened.
@@ -60,8 +65,8 @@
       var body = d.querySelector(".gbody");
       if (d.open && !body.firstElementChild && !body.dataset.loading) {
         body.dataset.loading = "1"; body.innerHTML = '<p class="muted">Loading...</p>';
-        var q = new URLSearchParams({ project: d.dataset.project, slug: d.dataset.slug, by: board.dataset.by, assignee: board.dataset.assignee || "" });
-        fetch("/board/group?" + q).then(function (r) { return r.text(); }).then(function (h) { body.innerHTML = h; delete body.dataset.loading; })
+        var q = new URLSearchParams({ project: d.dataset.project, slug: d.dataset.slug, by: board.dataset.by });
+        fetch("/board/group?" + q + (board.dataset.filters ? "&" + board.dataset.filters : "")).then(function (r) { return r.text(); }).then(function (h) { body.innerHTML = h; delete body.dataset.loading; })
           .catch(function () { body.innerHTML = '<p class="muted">Could not load these tickets. Reload the page.</p>'; delete body.dataset.loading; });
       }
       sync();

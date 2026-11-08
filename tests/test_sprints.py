@@ -91,8 +91,8 @@ def test_board_and_today_filter_by_sprint_and_show_the_chip(store, capsys):
     _mk(store, "Outside", status="in_progress")
     c = TestClient(create_app(store.home))
     board = c.get("/board?sprint=sprint-6-2026").text
-    assert "Inside" in board and "Outside" not in board and "sprint=sprint-6-2026" in board
-    assert "Outside" in c.get("/board?open=*&g=*").text and "sprint=sprint-6-2026" in c.get("/board?open=*&g=*").text  # the chip is offered
+    assert "Inside" in board and "Outside" not in board and 'name="sprint" value="sprint-6-2026"' in board
+    assert "Outside" in c.get("/board?open=*&g=*").text and 'name="sprint" value="sprint-6-2026"' in c.get("/board?open=*&g=*").text  # the dropdown offers it
     today = c.get("/?sprint=sprint-6-2026").text
     assert "Inside" in today and "Outside" not in today
     assert f'href="/sprint/sprint-6-2026"' in c.get(f"/ticket/{a.id}").text

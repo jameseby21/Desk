@@ -14,13 +14,13 @@ import traceback
 from collections import OrderedDict
 from pathlib import Path
 
-from fastapi import FastAPI, File, Form, Request, UploadFile
+from fastapi import FastAPI, File, Form, Query, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from .. import timing
-from .. import asks, boardview as bv, identity as idmod, sprints as sprintmod, todayview as tv, people as peoplemod, search as srch, nav as navmod, buildstamp as bs, comments as cm, docs as docsmod, ops, profanity, review as rv, style as styles, tracks as trk, version as ver
+from .. import asks, boardfilter as bf, boardview as bv, identity as idmod, sprints as sprintmod, todayview as tv, people as peoplemod, search as srch, nav as navmod, buildstamp as bs, comments as cm, docs as docsmod, ops, profanity, review as rv, style as styles, tracks as trk, version as ver
 from ..config import find_home
 from ..rules import RuleError
 from ..store import Store, id_parts, split_profile
@@ -418,43 +418,43 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         return RedirectResponse("/settings?saved=1", status_code=303)
 
     def board_url(**kw) -> str:
-        q = "&".join(f"{k}={quote(str(v), safe=',:*')}" for k, v in kw.items() if v)
+        q = "&".join(f"{k}={quote(','.join(v) if isinstance(v, list) else str(v), safe=',:*')}" for k, v in kw.items() if v)
         return "/board" + ("?" + q if q else "")
 
+    def board_sel(project, assignee, track, sprint) -> dict:
+        return {"project": bf.split(project), "assignee": bf.split(assignee), "track": bf.split(track), "sprint": bf.split(sprint)}
+
     @app.get("/board", response_class=HTMLResponse)
-    def board(request: Request, project: str | None = None, track: str = "", assignee: str = "", by: str = "track", open: str = "", g: str = "", sprint: str = ""):
+    def board(request: Request, project: list[str] = Query([]), track: list[str] = Query([]), assignee: list[str] = Query([]), sprint: list[str] = Query([]),
+              by: str = "track", open: str = "", g: str = ""):
         """The broad-context board (DESK-0084): projects, then tracks or sprints with counts and the top priority, then (when opened) the
-        tickets. `open` lists the projects drawn open, `g` the groups as `project:slug` (`*` for all). A filter (project, track, assignee)
-        narrows the board and opens what is left, since asking for it means wanting to see the tickets."""
+        tickets. `open` lists the projects drawn open, `g` the groups as `project:slug` (`*` for all). The four dropdowns (DESK-0034)
+        hold their values in the address; a filter narrows the board and opens what is left, since asking for it means wanting to see
+        the tickets."""
         s = store()
         by = by if by in bv.BY else "track"
-        ts = [t for t in s.tickets() if not project or t.project == project]
-        achips = assignee_chips(ts)
-        if assignee:
-            ts = [t for t in ts if ops.assignee_of(t).lower() == assignee.lower()]
-        chips = trk.track_chips(ts)
-        schips = sprint_chips(ts)
-        if track:
-            ts = [t for t in ts if trk.track_of(t) and trk.track_slug(trk.track_of(t)) == track]
-        if sprint:
-            ts = [t for t in ts if in_sprint(t, sprint)]
-        rows = bv.build(s, ts, by, open, g, expand_all=bool(project or track or assignee or sprint))
-        keep = {"project": project or "", "assignee": assignee, "by": by if by != "track" else "", "sprint": sprint}
+        sel = board_sel(project, assignee, track, sprint)
+        every = s.tickets()
+        ts = bf.apply(every, sel)
+        rows = bv.build(s, ts, by, open, g, expand_all=any(sel.values()))
+        opts = bf.options(s, every, sel, peoplemod.load(s.home))
+        by_extra = {"by": by} if by != "track" else {}
+        keep = {**sel, **by_extra}
         links = {"track": board_url(**{**keep, "by": ""}), "sprint": board_url(**{**keep, "by": "sprint"}), "expand": board_url(**keep, open="*", g="*"),
-                 "collapse": board_url(**keep, open="-"), "all_projects": board_url(assignee=assignee, by=keep["by"])}
-        return templates.TemplateResponse(request, "board.html", ctx(request, s, rows=rows, by=by, links=links, project=project, projects=sorted(s.projects()), s=s,
-                                                           chips=chips, track=track, chip_base="/board", chip_extra="&".join(x for x in (f"project={project}" if project else "", f"assignee={quote(assignee)}" if assignee else "", f"by={by}" if by != "track" else "", f"sprint={sprint}" if sprint else "") if x),
-                                                           schips=schips, sprint=sprint, sbase="/board", sextra="&".join(x for x in (f"project={project}" if project else "", f"assignee={quote(assignee)}" if assignee else "", f"track={track}" if track else "", f"by={by}" if by != "track" else "") if x),
-                                                           achips=achips, assignee=assignee, abase="/board", aextra="&".join(x for x in (f"project={project}" if project else "", f"by={by}" if by != "track" else "", f"sprint={sprint}" if sprint else "") if x), events_url="/events", events_since=ev.tickets_stamp(s)))
+                 "collapse": board_url(**keep, open="-"), "all_projects": board_url(**{**sel, "project": [], **by_extra})}
+        mine = peoplemod.load(s.home).get(s.owner)
+        clear = {f: board_url(**{**sel, f: [], **by_extra}) for f in bf.FACETS}
+        return templates.TemplateResponse(request, "board.html", ctx(request, s, rows=rows, by=by, links=links, s=s, sel=sel, opts=opts, tokens=bf.tokens(sel, opts, by_extra),
+                                                           show={f: any(g for _h, g in opts[f]) for f in bf.FACETS}, hidden=by_extra, fhidden={**sel, **by_extra}, clear=clear, filter_q=bf.query({**sel, "project": []}), total=len(ts), open_n=sum(1 for t in ts if t.is_open),
+                                                           mine_url=board_url(assignee=[mine.key if mine else s.owner], **by_extra), events_url="/events", events_since=ev.tickets_stamp(s)))
 
     @app.get("/board/group", response_class=HTMLResponse)
-    def board_group(request: Request, project: str, slug: str, by: str = "track", assignee: str = ""):
+    def board_group(request: Request, project: str, slug: str, by: str = "track", track: list[str] = Query([]), assignee: list[str] = Query([]), sprint: list[str] = Query([])):
         """The status columns of one group, for the board to load when a group is opened."""
         s = store()
         by = by if by in bv.BY else "track"
-        ts = [t for t in s.tickets() if t.project == project and trk.track_slug(bv.group_name(t, by) if bv.group_name(t, by) not in (bv.UNTRACKED, bv.NO_SPRINT) else "") == slug]
-        if assignee:
-            ts = [t for t in ts if ops.assignee_of(t).lower() == assignee.lower()]
+        sel = board_sel([], assignee, track, sprint)
+        ts = [t for t in bf.apply(s.tickets(), sel) if t.project == project and trk.track_slug(bv.group_name(t, by) if bv.group_name(t, by) not in (bv.UNTRACKED, bv.NO_SPRINT) else "") == slug]
         return templates.TemplateResponse(request, "_bcols_frag.html", ctx(request, s, tickets=sorted(ts, key=lambda t: t.id), s=s))
 
     @app.get("/sprint", response_class=HTMLResponse)

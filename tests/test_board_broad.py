@@ -91,7 +91,7 @@ def test_group_by_sprint_uses_the_sprint_field_and_a_sprint_track(store):
 def test_filters_still_narrow_and_open(store):
     a, b, c, d, cl = _fx(store)
     page = cl.get("/board?track=second").text
-    assert _cards(page) == ["Gamma in second"] and "track=first-real-use" in page
+    assert _cards(page) == ["Gamma in second"] and 'name="track" value="first-real-use"' in page
     assert _cards(cl.get("/board?project=jre").text) == ["Delta untracked"]
 
 

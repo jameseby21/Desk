@@ -309,3 +309,17 @@ header .actas select{font:inherit;padding:3px 6px}
 .fold{margin:10px 0}.fold>summary{cursor:pointer;color:var(--muted);padding:6px 0}.fold>summary b{color:var(--ink)}
 .t-sec .asked{margin-top:12px}
 @media (max-width:700px){.trow{grid-template-columns:minmax(0,1fr);gap:2px}.tr-title{white-space:normal}}
+/* Board filters as three searchable dropdowns (DESK-0034) */
+.filters{gap:10px;align-items:center;margin:12px 0 4px;position:relative}
+details.dd{position:relative}details.dd>summary{list-style:none;cursor:pointer;display:inline-flex;gap:8px;align-items:center;padding:7px 14px;border:1.5px solid var(--ink);border-radius:999px;background:var(--card);font-size:14px;max-width:26ch;white-space:nowrap;overflow:hidden}
+details.dd>summary::-webkit-details-marker{display:none}details.dd>summary::after{content:"\25BE"}
+.dd-sel{color:var(--muted);overflow:hidden;text-overflow:ellipsis;min-width:0}
+.dd-panel{position:absolute;z-index:30;top:calc(100% + 6px);left:0;width:min(320px,86vw);background:var(--card);border:1.5px solid var(--ink);border-radius:14px;padding:10px;box-shadow:6px 6px 0 var(--ball)}
+.dd-q{width:100%;font:inherit;padding:7px 10px;border:1px solid var(--line);border-radius:8px;background:var(--paper);color:var(--ink)}
+.dd-list{list-style:none;margin:8px 0 0;padding:0;max-height:300px;overflow:auto}.dd-list li[hidden]{display:none}
+.dd-head{font:500 11px var(--font-mono);letter-spacing:.12em;text-transform:uppercase;color:var(--muted);padding:8px 4px 2px}
+.dd-list label{display:flex;align-items:center;gap:8px;padding:5px 4px;border-radius:6px;cursor:pointer}.dd-list label:hover{background:var(--paper)}.dd-list label span{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}.dd-list label i{font:normal 12.5px var(--font-mono);color:var(--muted)}
+.dd-foot{display:flex;gap:12px;align-items:center;margin-top:8px;font-size:14px}
+a.tok{display:inline-flex;gap:6px;align-items:center;padding:6px 12px;border-radius:999px;background:var(--ink);color:var(--on-ink);text-decoration:none;font-weight:600;font-size:14px}a.tok:hover{color:var(--on-ink);background:var(--red)}
+.views{margin-left:auto;font-size:14px;color:var(--muted)}.views a{margin-left:8px;font-weight:600}
+.vh{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
