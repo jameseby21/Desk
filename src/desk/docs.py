@@ -8,7 +8,7 @@ import re
 from pathlib import Path
 from urllib.parse import quote
 
-import yaml
+from . import yamlio
 
 from .ticket import Ticket
 
@@ -222,8 +222,8 @@ def ownership_rules(store, project: str) -> tuple[str, list[dict]]:
     if not f.is_file():
         return repo, []
     try:
-        data = yaml.safe_load(f.read_text(encoding="utf-8"))
-    except yaml.YAMLError:
+        data = yamlio.load(f.read_text(encoding="utf-8"))
+    except yamlio.YAMLError:
         return repo, []
     rules = []
     for r in data if isinstance(data, list) else []:

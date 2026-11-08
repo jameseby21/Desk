@@ -31,7 +31,7 @@ Every command a person or an agent runs day to day, with what it does and when. 
 | --- | --- | --- |
 | `uv build --wheel` | builds the wheel; the build hook writes the commit into `desk/_build.py` | the footer and `drew --version` read it |
 | `drew --version` | prints `Desk <version> · <commit or "no git">` | same text as the UI footer |
-| `drew doctor [--repo PATH]` | installed version and commit, repo path and HEAD, tool path, store path, anything listening on the UI port; exit 1 when the installed code is older than the repo | run it when the UI looks out of date |
+| `drew doctor [--repo PATH]` | installed version and commit, repo path and HEAD, the active YAML loader (libyaml or pure Python), tool path, store path, anything listening on the UI port; exit 1 when the installed code is older than the repo | run it when the UI looks out of date |
 | `drew upgrade [--repo PATH]` | refuses while a process listens on the UI port (names the PID), then runs `uv tool install --force <repo>` and prints the new version | stop the UI first |
 | `drew review new` / `drew review sync` | creates, then refreshes, this week's ticket review | weekly |
 

@@ -8,7 +8,7 @@ import sqlite3
 import subprocess
 from pathlib import Path
 
-import yaml
+from . import yamlio
 
 from .timing import timed_db
 from .config import DEFAULT_TOML, CONFIG_NAME, load_config
@@ -37,8 +37,8 @@ def _loose_frontmatter(block: str) -> dict:
         key, raw = mm.group(1), mm.group(2).strip()
         if raw.startswith("[") and raw.endswith("]"):
             try:
-                val = yaml.safe_load(raw)
-            except yaml.YAMLError:
+                val = yamlio.load(raw)
+            except yamlio.YAMLError:
                 val = [x.strip().strip("'\"") for x in raw[1:-1].split(",")]
             out[key] = [str(x) for x in val if str(x).strip()] if isinstance(val, list) else []
         else:
@@ -52,8 +52,8 @@ def split_profile(text: str) -> tuple[dict, str]:
     if not m:
         return {}, text
     try:
-        meta = yaml.safe_load(m.group(1))
-    except yaml.YAMLError:
+        meta = yamlio.load(m.group(1))
+    except yamlio.YAMLError:
         meta = None
     if not isinstance(meta, dict):
         meta = _loose_frontmatter(m.group(1))
@@ -61,7 +61,7 @@ def split_profile(text: str) -> tuple[dict, str]:
 
 
 def join_profile(meta: dict, body: str) -> str:
-    fm = yaml.safe_dump(meta, sort_keys=False, allow_unicode=True, default_flow_style=None, width=1000).rstrip("\n")
+    fm = yamlio.dump(meta, sort_keys=False, allow_unicode=True, default_flow_style=None, width=1000).rstrip("\n")
     fm = re.sub(r"^(\w+): '(\d{4}-\d{2}-\d{2})'$", r"\1: \2", fm, flags=re.M)
     return f"---\n{fm}\n---\n{body.lstrip(chr(10))}"
 
@@ -146,8 +146,8 @@ class Store:
         b = meta.get("brand")
         if isinstance(b, str):
             try:
-                b = yaml.safe_load(b)
-            except yaml.YAMLError:
+                b = yamlio.load(b)
+            except yamlio.YAMLError:
                 b = None
         if not isinstance(b, dict):
             return None

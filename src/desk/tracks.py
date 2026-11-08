@@ -10,7 +10,7 @@ import re
 from collections import Counter
 from pathlib import Path
 
-import yaml
+from . import yamlio
 
 from .store import Store, split_profile
 from .ticket import Ticket, slugify
@@ -41,8 +41,8 @@ def load_rules(path: Path) -> list[dict]:
     if not path.is_file():
         raise RulesError(f"No rules file at {path}")
     try:
-        data = yaml.safe_load(path.read_text(encoding="utf-8"))
-    except yaml.YAMLError as e:
+        data = yamlio.load(path.read_text(encoding="utf-8"))
+    except yamlio.YAMLError as e:
         raise RulesError(f"{path}: not valid YAML ({e})") from e
     rules = data.get("rules") if isinstance(data, dict) else data
     if not isinstance(rules, list):
@@ -101,7 +101,7 @@ def counts(pairs: list[tuple[Ticket, str]]) -> list[tuple[str, int]]:
 
 
 def _yaml_value(name: str) -> str:
-    return yaml.safe_dump({"track": name}, allow_unicode=True, width=10000, default_flow_style=False).rstrip("\n")
+    return yamlio.dump({"track": name}, allow_unicode=True, width=10000, default_flow_style=False).rstrip("\n")
 
 
 def write_track(t: Ticket, name: str) -> bool:

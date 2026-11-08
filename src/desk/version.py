@@ -9,7 +9,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from . import __version__
+from . import __version__, yamlio
 
 NO_GIT = "no git"
 DEFAULT_PORT = 8765
@@ -154,6 +154,7 @@ def doctor_report(home: Path | None, repo_arg: str | None = None, *, pids: list[
                                               "unknown": "unknown (repo has no git HEAD)"}[state])
     else:
         lines.append("repo path:         not found (set DESK_REPO, or keep the repo at <store>/desk)")
+    lines.append(f"YAML loader:       {yamlio.LOADER}")
     lines.append(f"tool path:         {shutil.which('drew') or sys.argv[0]}")
     lines.append(f"store path:        {home if home else 'not found'}")
     port = ui_port()

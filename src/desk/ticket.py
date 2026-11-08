@@ -7,7 +7,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-import yaml
+from . import yamlio
 
 SECTIONS = [
     "Context",
@@ -206,7 +206,7 @@ class Ticket:
         m = _FM.match(text)
         if not m:
             raise ValueError(f"{path or 'ticket'}: no YAML frontmatter")
-        meta = yaml.safe_load(m.group(1)) or {}
+        meta = yamlio.load(m.group(1)) or {}
         if not isinstance(meta, dict):
             raise ValueError(f"{path or 'ticket'}: frontmatter is not a mapping")
         meta = {k: _plain(v) for k, v in meta.items()}
@@ -223,7 +223,7 @@ class Ticket:
         for k, v in self.meta.items():
             if k not in ordered:
                 ordered[k] = v
-        fm = yaml.safe_dump(_plain(ordered), sort_keys=False, allow_unicode=True, default_flow_style=None, width=1000).rstrip("\n")
+        fm = yamlio.dump(_plain(ordered), sort_keys=False, allow_unicode=True, default_flow_style=None, width=1000).rstrip("\n")
         fm = re.sub(r"^(\w+): '(\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}:\d{2})?)'$", r"\1: \2", fm, flags=re.M)  # dates unquoted, as people write them
         parts = [f"---\n{fm}\n---\n"]
         names = list(SECTIONS) + [s for s in self.sections if s not in SECTIONS]
