@@ -281,3 +281,9 @@ details.more>summary{cursor:pointer;color:var(--muted);padding:6px;font-size:13p
 /* people (DESK-0044): an owner or assignee is a colour dot and a display name */
 .who{display:inline-flex;align-items:center;gap:5px;white-space:nowrap}
 .wdot{width:9px;height:9px;border-radius:50%;display:inline-block;border:1px solid rgba(0,0,0,.35)}
+
+/* refine and split under Acceptance (DESK-0145) */
+details.refine-split{margin-top:10px;border-top:1px solid var(--line);padding-top:8px}
+details.refine-split>summary{cursor:pointer;font-weight:600}
+.rs-form{display:flex;flex-direction:column;gap:8px;margin:10px 0;padding:10px;border:1px solid var(--line);border-radius:10px}
+.rs-form label{display:flex;flex-direction:column;gap:3px;font-size:13.5px}

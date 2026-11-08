@@ -186,6 +186,89 @@ def unassign(store: Store, t: Ticket, actor: str | None = None) -> Ticket:
     return t
 
 
+# ---- refine and split (DESK-0145) ------------------------------------------------------------
+
+def refine(store: Store, t: Ticket, line: str, actor: str | None = None, review_by: str | None = None, reason: str = "") -> Ticket:
+    """A refinement of the requirements, tracked: a dated Acceptance line `- [ ] 2026-11-08 refinement: ...` and a Comments line. A refinement
+    may cost time, so `review_by` may move, but only with a reason, and the slip is written down. A change of scope is not a refinement:
+    that goes through `split`."""
+    line = " ".join((line or "").split())
+    if not line:
+        raise RuleError("A refinement needs words: what is being made clearer, in a line.")
+    if t.status in ("done", "rejected"):
+        raise RuleError(f"{t.id} is {t.status}; a closed ticket is not refined. Open a new ticket.")
+    t.append_line("Acceptance", f"- [ ] {today()} refinement: {line}")
+    note = f"refinement: {line}"
+    if review_by:
+        try:
+            new = dt.date.fromisoformat(review_by[:10]).isoformat()
+        except ValueError:
+            raise RuleError(f"`{review_by}` is not a date (use YYYY-MM-DD).") from None
+        why = " ".join((reason or "").split())
+        if not why:
+            raise RuleError("Moving review_by needs a reason: say why the refinement costs time.")
+        old = str(t.meta.get("review_by") or "none")[:10]
+        t.meta["review_by"] = new
+        note += f" (review_by moved from {old} to {new}: {why})"
+    t.append_line("Comments", _stamp(actor or "desk", note, at_time=True))
+    store.save(t)
+    return t
+
+
+def split(store: Store, t: Ticket, title: str, size: str = "s", due: str | None = None, details: str = "", outcome: str = "",
+          acceptance: "list[str] | None" = None, actor: str | None = None) -> Ticket:
+    """A change of scope does not edit the ticket: it becomes a new ticket with its details and timeline, linked both ways (the new ticket
+    depends_on the old one, the old one lists it under blocks), and the old ticket carries a prompt for the completion decision: done as scoped, or closed in
+    favour of the new one. Returns the new ticket."""
+    title = " ".join((title or "").split())
+    if not title:
+        raise RuleError("A split needs a title for the new ticket.")
+    if size not in ("xs", "s", "m"):
+        raise RuleError("The new ticket's size is xs, s or m (a larger one is split again before it starts).")
+    if t.status in ("done", "rejected"):
+        raise RuleError(f"{t.id} is {t.status}; a closed ticket is not split. Open a new ticket.")
+    if due:
+        try:
+            due = dt.date.fromisoformat(due[:10]).isoformat()
+        except ValueError:
+            raise RuleError(f"`{due}` is not a date (use YYYY-MM-DD).") from None
+    m = t.meta
+    new = store.create(title, t.project, str(m.get("type", "feature")), priority=str(m.get("priority", "p2")), size=size,
+                       owner=actor or str(m.get("owner") or "main"), dod=list(m.get("dod") or ["core"]), source=str(m.get("source") or ""))
+    for k in ("tags", "assignee", "track", "sprint"):
+        if m.get(k) not in (None, "", []):
+            new.meta[k] = m[k]
+    new.meta["split_from"] = t.id
+    new.meta["depends_on"] = [t.id]
+    if due:
+        new.meta["review_by"] = due
+    new.set_section("Context", f"Split from {t.id} on {today()}: scope that did not belong in its Outcome. It depends on {t.id}, which lists it under blocks." + ("\n\n" + details.strip() if details.strip() else ""))
+    new.set_section("Outcome", outcome.strip() or "(state the outcome of this part of the scope)")
+    new.set_section("Acceptance", "\n".join(f"- [ ] {a.strip()}" for a in (acceptance or []) if a.strip()) or "- [ ] (write the acceptance before it is thrown)")
+    store.save(new)
+    blocks = [str(x) for x in (t.meta.get("blocks") or [])]
+    if new.id not in blocks:
+        t.meta["blocks"] = blocks + [new.id]
+    t.append_line("Comments", _stamp(actor or "desk", f"scope split out to {new.id}: {title}" + (f" (due {due})" if due else ""), at_time=True))
+    t.append_line("Decision", _stamp("desk", f"split to {new.id}: completion decision needed. Close this ticket as scoped (it blocks {new.id}), or close it in favour of {new.id} (drew reject {t.id} with a reason)"))
+    store.save(t)
+    return new
+
+
+def edit_outcome(store: Store, t: Ticket, text: str, actor: str | None = None) -> Ticket:
+    """The Outcome is the ticket's promise. It can be rewritten freely until the ticket is thrown (inbox, triage); after that a different
+    Outcome is a change of scope and goes through `split`."""
+    text = (text or "").strip()
+    if t.status not in ("inbox", "triage"):
+        if " ".join(text.split()) == " ".join(t.section("Outcome").split()):
+            return t
+        raise RuleError(f"{t.id} is {t.status}: its Outcome is the promise made, so changing it is a change of scope. Use Split to make a new ticket with the details and a timeline, and decide how to complete this one.")
+    t.set_section("Outcome", text)
+    t.append_line("Comments", _stamp(actor or "desk", "outcome rewritten before the ticket was thrown", at_time=True))
+    store.save(t)
+    return t
+
+
 def assignee_of(t: Ticket) -> str:
     return " ".join(str(t.meta.get("assignee") or "").split())
 

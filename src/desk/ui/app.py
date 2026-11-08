@@ -787,6 +787,55 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
             return JSONResponse({"ok": True, "message": f"Assigned to {who_now}." if who_now else "Back to not assigned.", "stamp": str(ev.ticket_stamp(s, t.id))})
         return _back(ticket_id, ok="assign", anchor="assignee")
 
+    @app.post("/ticket/{ticket_id}/refine")
+    def post_refine(request: Request, ticket_id: str, line: str = Form(""), review_by: str = Form(""), reason: str = Form(""), token: str = Form("")):
+        """Refine the requirements (DESK-0145): a dated Acceptance line; review_by may move with a reason."""
+        js = wants_json(request)
+        if not tokens.use(token):
+            return refused("That form was already sent; reload the page.", 409) if js else _spent(ticket_id)
+        s = store()
+        try:
+            s.sync_before()
+            t = ops.refine(s, s.get(ticket_id), line, actor=s.owner, review_by=review_by.strip() or None, reason=reason)
+            s.sync_after(f"desk: refine {t.id}")
+        except (KeyError, RuleError, ValueError) as e:
+            return refused(e) if js else _back(ticket_id, str(e), anchor="acceptance")
+        if js:
+            return JSONResponse({"ok": True, "message": "Refinement added to Acceptance." + (f" Review-by is now {t.meta['review_by']}." if review_by.strip() else ""), "stamp": str(ev.ticket_stamp(s, t.id))})
+        return _back(ticket_id, None, anchor="acceptance")
+
+    @app.post("/ticket/{ticket_id}/split")
+    def post_split(request: Request, ticket_id: str, title: str = Form(""), size: str = Form("s"), due: str = Form(""), details: str = Form(""), token: str = Form("")):
+        """A change of scope (DESK-0145): a new ticket linked both ways, and the completion decision asked on this one."""
+        js = wants_json(request)
+        if not tokens.use(token):
+            return refused("That form was already sent; reload the page.", 409) if js else _spent(ticket_id)
+        s = store()
+        try:
+            s.sync_before()
+            new = ops.split(s, s.get(ticket_id), title, size=size, due=due.strip() or None, details=details, actor=s.owner)
+            s.sync_after(f"desk: split {ticket_id} -> {new.id}")
+        except (KeyError, RuleError, ValueError) as e:
+            return refused(e) if js else _back(ticket_id, str(e), anchor="acceptance")
+        if js:
+            return JSONResponse({"ok": True, "message": f"Split into {new.id}. This ticket now lists it under blocks and asks for the completion decision.", "new": new.id, "stamp": str(ev.ticket_stamp(s, ticket_id))})
+        return RedirectResponse(f"/ticket/{new.id}", status_code=303)
+
+    @app.post("/ticket/{ticket_id}/outcome")
+    def post_outcome(request: Request, ticket_id: str, text: str = Form(""), token: str = Form("")):
+        """The only way the UI changes an Outcome. After the ticket is thrown it is refused with a pointer to Split (DESK-0145)."""
+        js = wants_json(request)
+        if not tokens.use(token):
+            return refused("That form was already sent; reload the page.", 409) if js else _spent(ticket_id)
+        s = store()
+        try:
+            t = ops.edit_outcome(s, s.get(ticket_id), text, actor=s.owner)
+        except (KeyError, RuleError, ValueError) as e:
+            return refused(e, 409) if js else _back(ticket_id, str(e), anchor="acceptance")
+        if js:
+            return JSONResponse({"ok": True, "message": "Outcome saved.", "stamp": str(ev.ticket_stamp(s, t.id))})
+        return _back(ticket_id, None, anchor="acceptance")
+
     posted: OrderedDict[str, tuple[str, int, "int | None"]] = OrderedDict()  # a post's key -> (ticket id, comment index, Acceptance line it put evidence on)
     post_lock = threading.Lock()
 

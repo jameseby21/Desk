@@ -504,6 +504,32 @@ def cmd_repeats(args):
         s.sync_after("desk: repeats --apply")
 
 
+def cmd_refine(args):
+    """DESK-0145: tracked refinement of the requirements: a dated Acceptance line and a Comments note; review_by may move with a reason."""
+    s = _store(args)
+    s.sync_before()
+    try:
+        t = ops.refine(s, s.get(args.id), args.line, actor=args.as_, review_by=args.review_by, reason=args.reason or "")
+    except (KeyError, RuleError, ValueError) as e:
+        _die(str(e))
+    s.sync_after(f"desk: refine {t.id}")
+    print(f"{t.id}: refinement added to Acceptance" + (f"; review_by is now {t.meta['review_by']}" if args.review_by else ""))
+
+
+def cmd_split(args):
+    """DESK-0145: a change of scope is a new ticket, linked both ways, with a completion decision asked on the old one."""
+    s = _store(args)
+    s.sync_before()
+    try:
+        old = s.get(args.id)
+        new = ops.split(s, old, args.title, size=args.size, due=args.due, details=args.details or "", outcome=args.outcome or "", acceptance=args.acceptance, actor=args.as_)
+    except (KeyError, RuleError, ValueError) as e:
+        _die(str(e))
+    s.sync_after(f"desk: split {old.id} -> {new.id}")
+    print(f"{new.id} created from {old.id}: depends_on {old.id}; {old.id} lists it under blocks and asks for the completion decision (done as scoped, or closed in favour)")
+    print(new.path)
+
+
 def cmd_index(args):
     s = _store(args)
     print(s.index())
@@ -1029,6 +1055,25 @@ def build_parser() -> argparse.ArgumentParser:
     sp = sub.add_parser("repeats", help="repeated asks (the owner asked for the same thing twice on a ticket within 7 days) and stale hand-offs (blocked_on names the owner, unchanged across two sweeps); --apply makes the repeated-ask tickets p0 with the tag emergency")
     sp.add_argument("--apply", action="store_true")
     sp.set_defaults(fn=cmd_repeats)
+
+    sp = sub.add_parser("refine", help="a tracked refinement: adds `- [ ] <date> refinement: LINE` to Acceptance and a note to Comments; --review-by DATE --reason TEXT moves review_by and writes the slip down. A change of scope is not a refinement: use `split`")
+    sp.add_argument("id")
+    sp.add_argument("line")
+    sp.add_argument("--review-by", metavar="YYYY-MM-DD")
+    sp.add_argument("--reason", help="why the refinement costs time (required with --review-by)")
+    actor(sp)
+    sp.set_defaults(fn=cmd_refine)
+
+    sp = sub.add_parser("split", help="a change of scope becomes a new ticket with details and a timeline: it depends_on ID, ID lists it under blocks and asks for the completion decision (done as scoped, or closed in favour)")
+    sp.add_argument("id")
+    sp.add_argument("--title", required=True)
+    sp.add_argument("--size", default="s", choices=["xs", "s", "m"])
+    sp.add_argument("--due", metavar="YYYY-MM-DD", help="the new ticket's review_by")
+    sp.add_argument("--details", help="what the new ticket is for")
+    sp.add_argument("--outcome")
+    sp.add_argument("--acceptance", action="append", help="an Acceptance line (repeat for more)")
+    actor(sp)
+    sp.set_defaults(fn=cmd_split)
 
     sp = sub.add_parser("stop", help="stop the Desk UI: end whatever listens on the UI port (DESK_UI_PORT, default 8765) by PID and say which; exit 0 when nothing listens")
     sp.add_argument("--port", type=int, help="the port (default: the UI port)")

@@ -37,6 +37,25 @@
       <div class="row" style="justify-content:space-between"><span class="label">Acceptance (this ticket's outcome)</span></div>
       {% set summary = check_summary(t.section('Acceptance')) %}{% if summary %}<div id="chk-summary" class="chk-summary" role="status" aria-live="polite">{{ summary }}</div>{% endif %}
       {% if t.section('Acceptance') %}<div class="md" data-check-section="Acceptance">{{ render(t.section('Acceptance'), t, 'Acceptance')|safe }}</div>{% else %}<p class="muted">No acceptance lines yet.</p>{% endif %}
+      {% if t.is_open %}
+      <details class="refine-split" id="refine"><summary>Refine or split</summary>
+        <form class="post-once rs-form" method="post" action="/ticket/{{ t.id }}/refine" data-inplace="refresh" data-progress="Sending,Saving,Done">
+          <input type="hidden" name="token" value="{{ token() }}">
+          <b>Refine</b> <span class="muted">making the requirement clearer; it is written down, dated, under Acceptance</span>
+          <label>The refinement<input type="text" name="line" required minlength="3" placeholder="The list also shows closed tickets when asked"></label>
+          <div class="row"><label>New review-by (only if it costs time)<input type="date" name="review_by"></label><label>Why it costs time<input type="text" name="reason" placeholder="needed before the date can move"></label></div>
+          <button class="btn small" type="submit">Add the refinement</button><span class="dp-slot"></span>
+        </form>
+        <form class="post-once rs-form" method="post" action="/ticket/{{ t.id }}/split" data-inplace="refresh" data-progress="Sending,Saving,Done">
+          <input type="hidden" name="token" value="{{ token() }}">
+          <b>Split</b> <span class="muted">a change of scope becomes a new ticket; this one keeps its Outcome and asks for the completion decision</span>
+          <label>Title of the new ticket<input type="text" name="title" required minlength="3"></label>
+          <label>What it is for<textarea name="details" rows="2"></textarea></label>
+          <div class="row"><label>Size<select name="size"><option>xs</option><option selected>s</option><option>m</option></select></label><label>Due (review-by)<input type="date" name="due"></label></div>
+          <button class="btn small" type="submit">Split into a new ticket</button><span class="dp-slot"></span>
+        </form>
+      </details>
+      {% endif %}
     </div>
 
     <div class="card section" id="done-means">

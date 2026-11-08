@@ -82,7 +82,7 @@ REQUIRED = ["id", "title", "project", "type", "status", "priority", "size", "own
 # Canonical frontmatter order on write.
 META_ORDER = [
     "id", "title", "project", "type", "status", "priority", "size", "owner", "assignee", "assigned_at", "assigned_by", "handoff", "branch",
-    "depends_on", "blocks", "related", "cloned_from", "docs_to_update", "dod", "tags", "effort_hours",
+    "depends_on", "blocks", "related", "cloned_from", "split_from", "docs_to_update", "dod", "tags", "effort_hours",
     "confidence", "review_by", "smallest_step", "blocked_on", "blocked_from", "source", "evidence", "track", "sprint",
     "created", "updated", "done_at",
 ]

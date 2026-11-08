@@ -92,7 +92,7 @@ def validate_ticket(t: Ticket, store: "Store", known_ids: set[str] | None = None
         errors.append(f"{where}: track must be a non-empty string when present")
     if "sprint" in m and (not isinstance(m["sprint"], str) or not m["sprint"].strip()):
         errors.append(f"{where}: sprint must be a non-empty string when present")
-    for field_ in ("assignee", "assigned_by", "handoff", "cloned_from", "evidence"):
+    for field_ in ("assignee", "assigned_by", "handoff", "cloned_from", "split_from", "evidence"):
         if field_ in m and m[field_] not in (None, "") and not isinstance(m[field_], str):
             errors.append(f"{where}: {field_} must be a string")
     if "assigned_at" in m and m["assigned_at"] not in (None, "") and not _datetime_ok(m["assigned_at"]):
