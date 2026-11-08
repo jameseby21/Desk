@@ -57,6 +57,7 @@ Every command a person or an agent runs day to day, with what it does and when. 
 | `/board?track=<slug>`, `/?track=<slug>` | the track filter chip |
 | `/doc/<store-relative path>.md` | a store Markdown file, read-only; `glossary.md` terms get popovers and `[[Term]]` links to them |
 | `/ticket/<ID>` | the full ticket: How to validate, owning docs, Mentioned-in; paste or drop an image into the comment box to attach it (`[attachments] max_mb`, default 8) |
+| `/ticket/<ID>` check boxes | each Acceptance line has a Done and a Not accepted box in a fixed right-hand column; click to set, click again to clear, setting one clears the other. Keys with focus on a line (Tab to it): `D` Done, `N` Not accepted (opens the reason panel, or clears it), `Esc` closes the panel |
 | `/doc/<folder>/<file>.md` | any store folder or submodule, read-only, with an "Edit in VS Code" link |
 
 ## Troubleshooting one-liners

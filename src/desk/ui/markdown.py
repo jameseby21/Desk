@@ -259,6 +259,7 @@ def render(text: str, *, known: dict | None = None, check: dict | None = None, a
     actions: optional fn(id, status) -> html appended to a checkbox line that links to a known ticket (review weeks).
     """
     text = text or ""
+    from ..ops import press
     from ..ticket import check_states, split_reason
 
     states = check_states(text)
@@ -304,17 +305,17 @@ def render(text: str, *, known: dict | None = None, check: dict | None = None, a
         tok = lambda: check["token"]() if check.get("token") else ""  # noqa: E731
         head = (f'<form class="chk post-once" method="post" action="/ticket/{tid}/check"><input type="hidden" name="token" value="{tok()}">'
                 f'<input type="hidden" name="section" value="{sec}"><input type="hidden" name="index" value="{i}">')
-        done = (f'{head}<input type="hidden" name="state" value="{" " if st == "x" else "x"}"><button type="submit" class="hit" data-act="done" '
+        done = (f'{head}<input type="hidden" name="state" value="{press(st, "done")[0]}"><button type="submit" class="hit" data-act="done" '
                 f'aria-pressed="{"true" if st == "x" else "false"}" aria-label="Done: {what}"><span class="box{" on-done" if st == "x" else ""}">{_TICK}</span></button></form>')
         if st == "!":
-            na = (f'{head}<input type="hidden" name="state" value=" "><button type="submit" class="hit" data-act="no" aria-pressed="true" '
+            na = (f'{head}<input type="hidden" name="state" value="{press(st, "no")[0]}"><button type="submit" class="hit" data-act="no" aria-pressed="true" '
                   f'aria-label="Not accepted: {what}"><span class="box on-no">{_CROSS}</span></button></form>')
         else:
             na = (f'<button type="button" class="hit" data-act="no" aria-pressed="false" aria-label="Not accepted: {what}" aria-expanded="false">'
                   f'<span class="box">{_CROSS}</span></button>')
             panel = (f'{head}<label>Why isn&#39;t this accepted?<textarea name="reason" rows="2" required minlength="3" placeholder="Say what is missing or wrong."></textarea></label>'
                      f'<div class="row"><span style="margin-left:auto" class="row"><button type="button" class="btn small" data-act="cancel">Cancel</button>'
-                     f'<button type="submit" class="btn small ink" name="state" value="!">Save reason</button></span></div></form>')
+                     f'<button type="submit" class="btn small ink" name="state" value="{press(st, "no")[0]}">Save reason</button></span></div></form>')
             under = f'<div class="nr-panel" hidden data-line="{i}">{panel}</div>'
         mark = f"@@NR{i}@@"
         pending[mark] = under
@@ -331,6 +332,8 @@ def render(text: str, *, known: dict | None = None, check: dict | None = None, a
             extra = actions(ids[0], known[ids[0]][1]) if ids and ids[0] in known else ""
             return m.group(0)[:-5] + extra + "</li>"
         out = re.sub(r'<li class="task-list-item">.*?</li>', li, out, flags=re.S)
+    if check:  # a line can be tabbed to; D, N and Esc act on it (static/checks.js)
+        out = out.replace('<li class="task-list-item">', '<li class="task-list-item" tabindex="0">')
     return out
 
 

@@ -3,19 +3,13 @@
 Playwright is not installed here, so the alignment is proven two ways: server-rendered structure plus the stylesheet rules
 (always run), and a real layout measurement in headless Edge or Chrome when one is installed (skipped otherwise)."""
 
-import json
 import re
-import shutil
-import subprocess
-import sys
-import tempfile
-import time
-from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
 from desk import ops
+from browser_harness import browser, run_in_browser
 from desk.ui.app import STATIC, create_app
 
 LONG = "The README documents every command and says what each one prints, " * 3  # about 200 characters
@@ -78,16 +72,6 @@ def test_stylesheet_fixes_the_column_and_never_moves_it_on_a_phone():
         assert ".chk2" not in media, "the column must stay at the right edge on a phone"
 
 
-# ---- real layout, when a browser is installed -------------------------------------------------------------------------------
-
-def _browser() -> str | None:
-    for p in (shutil.which("msedge"), shutil.which("chrome"), r"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe",
-              r"C:\Program Files\Google\Chrome\Application\chrome.exe"):
-        if p and Path(p).is_file():
-            return p
-    return None
-
-
 MEASURE = """<script>addEventListener('load',function(){var o=[];
 function r(e){var x=e.getBoundingClientRect();return [Math.round(x.left*10)/10,Math.round(x.width),Math.round(x.height)];}
 document.querySelectorAll('.chk2').forEach(function(c){var b=c.querySelectorAll('.hit');o.push([r(b[0]),r(b[1])]);});
@@ -95,73 +79,7 @@ var hs=[];document.querySelectorAll('.chk-head span').forEach(function(s){hs.pus
 fetch('/m',{method:'POST',body:JSON.stringify({boxes:o,heads:hs,scroll:document.documentElement.scrollWidth,inner:innerWidth})});});</script>"""
 
 
-def _stop_browser(proc, profile_root: Path) -> None:
-    """Stop the browser this test started: the PID returned by Popen and its tree, then any leftover process whose command line
-    carries this test's own throw-away profile folder (Edge can re-launch itself under another PID). Nothing else is touched."""
-    if sys.platform == "win32":
-        subprocess.run(["taskkill", "/PID", str(proc.pid), "/T", "/F"], capture_output=True)
-        subprocess.run(["powershell", "-NoProfile", "-NonInteractive", "-Command",
-                        f"Get-CimInstance Win32_Process | Where-Object {{ $_.CommandLine -like '*{profile_root.name}*' }} | "
-                        "ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }"], capture_output=True)
-    else:
-        proc.kill()
-    try:
-        proc.wait(10)
-    except subprocess.TimeoutExpired:
-        pass
-
-
-def measure_in_browser(html: str, width: int, timeout: float = 60) -> dict:
-    """Serve `html` on an ephemeral localhost port, open it in a headless browser with a throw-away profile, wait for the page's
-    measuring script to POST its numbers back, then stop the browser by the PID started here and delete the profile."""
-    import http.server
-    import threading
-
-    got, ev = {}, threading.Event()
-
-    class H(http.server.BaseHTTPRequestHandler):
-        def do_GET(self):
-            # the page sits in an iframe of exactly `width` px, because a browser window will not shrink below about 500 px
-            body = (html if self.path.startswith("/page.html") else
-                    f'<!doctype html><body style="margin:0"><iframe src="/page.html" style="width:{width}px;height:1400px;border:0"></iframe>').encode("utf-8")
-            self.send_response(200)
-            self.send_header("Content-Type", "text/html; charset=utf-8")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
-
-        def do_POST(self):
-            got.update(json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}"))
-            self.send_response(204)
-            self.end_headers()
-            ev.set()
-
-        def log_message(self, *a):
-            pass
-
-    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), H)
-    threading.Thread(target=srv.serve_forever, daemon=True).start()
-    tmp = Path(tempfile.mkdtemp(prefix="desk-col-"))
-    proc = None
-    try:
-        proc = subprocess.Popen([_browser(), "--headless=new", "--disable-gpu", "--no-first-run", "--disable-extensions", f"--user-data-dir={tmp / 'profile'}",
-                                 "--window-size=1400,1500", f"http://127.0.0.1:{srv.server_address[1]}/frame.html"],
-                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        assert ev.wait(timeout), "the browser did not run the measuring script"
-    finally:
-        if proc is not None:
-            _stop_browser(proc, tmp)
-        srv.shutdown()
-        srv.server_close()
-        for _ in range(20):  # the browser releases its profile a moment after it is killed
-            shutil.rmtree(tmp, ignore_errors=True)
-            if not tmp.exists():
-                break
-            time.sleep(0.25)
-    return got
-
-
-@pytest.mark.skipif(_browser() is None, reason="no Edge or Chrome installed")
+@pytest.mark.skipif(browser() is None, reason="no Edge or Chrome installed")
 @pytest.mark.parametrize("width", [1280, 390])
 def test_check_column_alignment(store, width):
     """Protects: at 1280 px and 390 px both boxes of every line share one x position (+-1 px), a 200 character line wraps without
@@ -172,7 +90,7 @@ def test_check_column_alignment(store, width):
     html = re.sub(r'<link rel="stylesheet" href="/static/desk.css">', lambda m: f"<style>{css}</style>", html)
     html = re.sub(r'<link rel="stylesheet" href="https://fonts[^>]*>|<link rel="preconnect"[^>]*>', "", html)
     html = html.replace("</body>", MEASURE + "</body>")
-    data = measure_in_browser(html, width)
+    data = run_in_browser(html, width)
     boxes = data["boxes"]
     assert len(boxes) == len(LINES)
     for k in (0, 1):

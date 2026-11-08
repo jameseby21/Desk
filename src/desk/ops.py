@@ -91,6 +91,17 @@ def decide(store: Store, t: Ticket, approve: bool, reason: str, actor: str | Non
 CHECK_SECTIONS = ("Acceptance", "How to validate", "Prompt", "Evidence")
 
 
+def press(cur: str, which: str) -> tuple[str, bool]:
+    """What a click on a box does: (new state char, needs a reason). `cur` is ' ' open, 'x' done or '!' not accepted; `which` is
+    'done' or 'no' (the Not accepted box). A box that is on clears; a box that is off sets itself and so clears the other.
+    The six moves: open > done, done > open, open > not accepted, not accepted > open, done > not accepted, not accepted > done."""
+    if which == "done":
+        return (" " if cur == "x" else "x"), False
+    if which == "no":
+        return (" ", False) if cur == "!" else ("!", True)
+    raise ValueError(f"A box is 'done' or 'no', not {which!r}.")
+
+
 def toggle_check(store: Store, ticket_id: str, section: str, index: int, checked: "bool | str | None" = None, actor: str | None = None,
                  reason: str = "") -> Ticket:
     """Set the `index`-th checkbox line of `section`; only that line changes.
