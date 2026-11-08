@@ -70,8 +70,25 @@ def cmd_new(args):
         t = ops.new(s, args.title, args.project, args.type, priority=args.priority, size=args.size, owner=args.owner, dod=dod, source=args.source or "", assignee=args.assignee)
     except (RuleError, ValueError) as e:
         _die(str(e))
+    if not args.assignee:
+        _fill_from_rules(s, t)
     s.sync_after(f"desk: new {t.id}")
     print(t.path)
+
+
+def _fill_from_rules(s: Store, t) -> None:
+    """DESK-0168: a new ticket with no assignee gets one when assign.yaml (or the built-in table) names exactly one person."""
+    from . import assign_rules
+
+    try:
+        out = assign_rules.apply_new(s, t)
+    except assign_rules.RulesError as e:
+        print(f"warning: {e}", file=sys.stderr)
+        return
+    if out.state == "filled":
+        print(f"{t.id}: assignee {out.assignee} (rule {out.rule})", file=sys.stderr)
+    elif out.state == "conflict":
+        print(f"warning: {t.id}: {out.warning}", file=sys.stderr)
 
 
 def cmd_list(args):
@@ -418,6 +435,7 @@ def cmd_intake(args):
         t, dest = ops.intake(s, Path(args.path), args.topic, args.project, actor=args.as_ or "main")
     except (RuleError, ValueError) as e:
         _die(str(e))
+    _fill_from_rules(s, t)
     s.sync_after(f"desk: intake {t.id}")
     print(f"{dest}\n{t.path}")
 
@@ -584,6 +602,8 @@ def cmd_migrate(args):
         return cmd_migrate_checks(args)
     if args.what == "tests":
         return cmd_migrate_tests(args)
+    if args.what == "assignee":
+        return cmd_migrate_assignee(args)
     s = _store(args)
     rules_path = Path(args.rules) if args.rules else s.home / trk.RULES_PATH
     if not rules_path.is_absolute() and not rules_path.exists():
@@ -607,6 +627,57 @@ def cmd_migrate(args):
         return
     wrote = sum(1 for t, name in pairs if trk.write_track(t, name))
     print(f"Wrote track: to {wrote} tickets. updated dates were not changed.")
+
+
+def cmd_migrate_assignee(args):
+    """DESK-0168: fill blank assignees from the rules. Blank is James's "not yet scanned" marker, so --apply is run only when he says."""
+    from . import assign_rules as ar, people
+
+    s = _store(args)
+    try:
+        rules, source = ar.load(s.home)
+    except ar.RulesError as e:
+        _die(str(e))
+    pairs = ar.plan(s.tickets(), rules, people.load(s.home), include_closed=args.include_closed)
+    fill = [(t, o) for t, o in pairs if o.state == "filled"]
+    rows = [[t.id, str(t.meta.get("title", ""))[:50], o.assignee, o.rule] for t, o in fill]
+    if rows:
+        print(_table(rows, ["ticket", "title", "assignee", "rule"]))
+        print()
+    by_rule: dict = {}
+    for _, o in fill:
+        by_rule[(o.assignee, o.rule)] = by_rule.get((o.assignee, o.rule), 0) + 1
+    print(_table([[a, r, str(n)] for (a, r), n in sorted(by_rule.items(), key=lambda kv: (-kv[1], kv[0]))] or [["(none)", "", "0"]], ["assignee", "rule", "tickets"]))
+    conflict = [t.id for t, o in pairs if o.state == "conflict"]
+    print()
+    print(f"{len(fill)} blank assignee(s) to fill; {len(conflict)} left blank because two rules disagree; {len(pairs) - len(fill) - len(conflict)} left blank because no rule matches; "
+          f"tickets that already have an assignee are never changed; rules: {source}")
+    if conflict:
+        print("disagree: " + ", ".join(conflict[:12]) + (" ..." if len(conflict) > 12 else ""))
+    if not args.apply:
+        print("Dry run: nothing written. --apply writes `assignee:` and `assigned_by: rule:<name>` into the blank tickets (updated dates are not changed). Run it only when James says: blank is his not-yet-scanned marker.")
+        return
+    wrote = sum(ar.write_assignee(t, o.assignee, o.rule) for t, o in fill)
+    print(f"Filled {wrote} ticket(s). updated dates were not changed.")
+
+
+def cmd_assign_rules(args):
+    from . import assign_rules as ar
+
+    s = _store(args)
+    if args.action == "init":
+        try:
+            print(ar.write_seed(s.home, force=args.force))
+        except FileExistsError as e:
+            _die(str(e))
+        return
+    try:
+        rules, source = ar.load(s.home)
+    except ar.RulesError as e:
+        _die(str(e))
+    print(f"assignment rules from {source}")
+    for r in rules:
+        print(f"  {r.name:<26} -> {r.assign:<14} {'(fallback) ' if r.fallback else ''}when {r.when}")
 
 
 def cmd_migrate_type(args):
@@ -725,8 +796,9 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--repo", help="the Desk repo (else DESK_REPO, else <store>/desk)")
     sp.set_defaults(fn=cmd_upgrade)
 
-    sp = sub.add_parser("migrate", help="one-off bulk edits; `migrate track` assigns tracks from tracks/rules.yaml, `migrate type` retires the legacy slice and chore types, `migrate acceptance` strips boilerplate Acceptance lines that restate the Definition of Done, `migrate checks` rewrites inline `not accepted` lines as the quoted-reason block, `migrate tests` adds the Tests section to every ticket without one")
-    sp.add_argument("what", choices=["track", "type", "acceptance", "checks", "tests"])
+    sp = sub.add_parser("migrate", help="one-off bulk edits; `migrate track` assigns tracks from tracks/rules.yaml, `migrate type` retires the legacy slice and chore types, `migrate acceptance` strips boilerplate Acceptance lines that restate the Definition of Done, `migrate checks` rewrites inline `not accepted` lines as the quoted-reason block, `migrate tests` adds the Tests section to every ticket without one, `migrate assignee` fills blank assignees from assign.yaml (never overrides one)")
+    sp.add_argument("what", choices=["track", "type", "acceptance", "checks", "tests", "assignee"])
+    sp.add_argument("--include-closed", action="store_true", help="assignee: also fill closed tickets (default: open tickets only)")
     mode = sp.add_mutually_exclusive_group(required=True)
     mode.add_argument("--dry-run", action="store_true", help="print ticket -> track and counts; write nothing")
     mode.add_argument("--apply", action="store_true", help="write track: into each matched ticket's frontmatter")
@@ -861,6 +933,11 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--json", action="store_true")
     sp.add_argument("--limit", type=int, default=12, help="most tickets shown per project (default 12)")
     sp.set_defaults(fn=cmd_search)
+
+    sp = sub.add_parser("assign-rules", help="show the auto-assignment rules (assign.yaml, or the built-in table); `assign-rules init` writes assign.yaml")
+    sp.add_argument("action", nargs="?", choices=["list", "init"], default="list")
+    sp.add_argument("--force", action="store_true", help="init: replace an existing assign.yaml")
+    sp.set_defaults(fn=cmd_assign_rules)
 
     sp = sub.add_parser("people", help="list the people owners and assignees can be (people.yaml, the built-in team when there is none, plus the private file); `people init` writes people.yaml")
     sp.add_argument("action", nargs="?", choices=["list", "init"], default="list")
