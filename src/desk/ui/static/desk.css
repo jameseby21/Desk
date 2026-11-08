@@ -250,3 +250,30 @@ header .search-open input{width:100%;font:inherit;padding:6px 10px;border:1px so
 .pal-list mark,.card mark{background:var(--ball);color:#141414;border-radius:3px}
 .pal-none{padding:12px 4px}
 body.pal-open{overflow:hidden}
+
+/* the broad-context board (DESK-0084): rows never wrap, cards stay calm (DESK-0034, DESK-0035) */
+.bboard{display:flex;flex-direction:column;gap:8px}
+.bproj,.bgroup{background:var(--card);border:1px solid var(--line);border-radius:12px}
+.bproj>summary,.bgroup>summary{display:flex;align-items:center;gap:10px;padding:10px 14px;cursor:pointer;white-space:nowrap;overflow:hidden;min-height:44px}
+.bproj>summary{font-size:15px}
+.bname{overflow:hidden;text-overflow:ellipsis;flex:0 1 26ch;min-width:8ch}
+.bcounts{color:var(--muted);font:12.5px var(--font-mono);overflow:hidden;text-overflow:ellipsis;flex:1 1 auto;min-width:0}
+.btop{font:500 12px var(--font-mono)}
+.bgn{font-size:12.5px;margin-left:auto;flex:none}
+.bgroups{padding:0 10px 10px 28px;display:flex;flex-direction:column;gap:6px}
+.bgroup{background:var(--paper)}
+.gbody{padding:0 10px 10px}
+.board.scroll{display:flex;gap:12px;overflow-x:auto;scroll-snap-type:x proximity;align-items:flex-start;padding-bottom:6px;max-height:70vh}
+.board.scroll .col{flex:0 0 300px;min-width:280px;max-width:340px;scroll-snap-align:start;overflow-y:auto;max-height:68vh}
+.board.scroll details.col:not([open]){flex-basis:56px;min-width:56px}
+.colhead{position:sticky;top:0;z-index:1;display:flex;justify-content:space-between;gap:8px;padding:8px 6px;background:var(--paper);cursor:pointer;font-weight:700;list-style:none}
+.ccard{background:var(--card);border:1px solid var(--line);border-left:5px solid var(--accent,var(--line));border-radius:10px;padding:8px 10px;margin:6px 0}
+.ccard.edge-red{border-left-color:var(--red)}
+.cc-top{display:flex;gap:6px;align-items:center;flex-wrap:nowrap;overflow:hidden}
+.cc-id{font:500 12px var(--font-mono)}
+.cc-title{font-weight:600;margin:4px 0;display:-webkit-box;-webkit-line-clamp:3;line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.cc-foot{display:flex;gap:10px;align-items:center;font-size:12.5px}
+.cc-owner{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:12ch}
+.dot{width:9px;height:9px;border-radius:50%;margin-left:auto;border:1.5px solid var(--muted);display:inline-block}
+.dot.ran{background:var(--ball);border-color:var(--ink)}.dot.notrun{background:var(--red);border-color:var(--red)}
+details.more>summary{cursor:pointer;color:var(--muted);padding:6px;font-size:13px}

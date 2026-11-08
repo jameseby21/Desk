@@ -19,7 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from .. import timing
-from .. import asks, search as srch, nav as navmod, buildstamp as bs, comments as cm, docs as docsmod, ops, profanity, review as rv, style as styles, tracks as trk, version as ver
+from .. import asks, boardview as bv, search as srch, nav as navmod, buildstamp as bs, comments as cm, docs as docsmod, ops, profanity, review as rv, style as styles, tracks as trk, version as ver
 from ..config import find_home
 from ..rules import RuleError
 from ..store import Store, id_parts, split_profile
@@ -134,7 +134,9 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
     mermaid_src = "/static/mermaid.min.js" if (STATIC / "mermaid.min.js").exists() else MERMAID_CDN
     templates.env.globals.update(screen=screen, md=md_html, has_mermaid=has_mermaid, statuses=STATUSES,
                                  sections=SECTIONS, mermaid_src=mermaid_src, by_project=by_project, token=tokens.issue, check_summary=lambda text: Markup(summary_html(text)), track_slug=trk.track_slug, track_of=trk.track_of,
-                                 build=ver.describe())
+                                 build=ver.describe(), who=lambda key: str(key or ""), ask_badge=lambda t: ((asks.ask_of(t) or {}).get("kind") or "").capitalize(),
+                                 card_extra=lambda t, st: [x for x in [str(t.meta.get("type") or "")] + ([screen("stale")] if st.is_stale(t) else []) + [f"#{x}" for x in t.tags] if x],
+                                 card_age=bv.age_days, card_review=bv.review_by_text, card_proof=bv.proof_dot, columns_of=bv.by_status)
     shown = {"censor": None}  # the profanity filter for the request being rendered; None when the person switched it off
 
     def finalize(v):
@@ -344,9 +346,17 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
             return JSONResponse({"ok": True, "message": "Saved. Other pages show it the next time you open them."})
         return RedirectResponse("/settings?saved=1", status_code=303)
 
+    def board_url(**kw) -> str:
+        q = "&".join(f"{k}={quote(str(v), safe=',:*')}" for k, v in kw.items() if v)
+        return "/board" + ("?" + q if q else "")
+
     @app.get("/board", response_class=HTMLResponse)
-    def board(request: Request, project: str | None = None, track: str = "", assignee: str = ""):
+    def board(request: Request, project: str | None = None, track: str = "", assignee: str = "", by: str = "track", open: str = "", g: str = ""):
+        """The broad-context board (DESK-0084): projects, then tracks or sprints with counts and the top priority, then (when opened) the
+        tickets. `open` lists the projects drawn open, `g` the groups as `project:slug` (`*` for all). A filter (project, track, assignee)
+        narrows the board and opens what is left, since asking for it means wanting to see the tickets."""
         s = store()
+        by = by if by in bv.BY else "track"
         ts = [t for t in s.tickets() if not project or t.project == project]
         achips = assignee_chips(ts)
         if assignee:
@@ -354,10 +364,23 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         chips = trk.track_chips(ts)
         if track:
             ts = [t for t in ts if trk.track_of(t) and trk.track_slug(trk.track_of(t)) == track]
-        cols = [(st, by_project([t for t in ts if t.status == st])) for st in STATUSES]
-        return templates.TemplateResponse(request, "board.html", ctx(request, s, cols=cols, project=project, projects=sorted(s.projects()), s=s,
-                                                           chips=chips, track=track, chip_base="/board", chip_extra="&".join(x for x in (f"project={project}" if project else "", f"assignee={quote(assignee)}" if assignee else "") if x),
-                                                           achips=achips, assignee=assignee, abase="/board", aextra=f"project={project}" if project else "", events_url="/events", events_since=ev.tickets_stamp(s)))
+        rows = bv.build(s, ts, by, open, g, expand_all=bool(project or track or assignee))
+        keep = {"project": project or "", "assignee": assignee, "by": by if by != "track" else ""}
+        links = {"track": board_url(**{**keep, "by": ""}), "sprint": board_url(**{**keep, "by": "sprint"}), "expand": board_url(**keep, open="*", g="*"),
+                 "collapse": board_url(**keep, open="-"), "all_projects": board_url(assignee=assignee, by=keep["by"])}
+        return templates.TemplateResponse(request, "board.html", ctx(request, s, rows=rows, by=by, links=links, project=project, projects=sorted(s.projects()), s=s,
+                                                           chips=chips, track=track, chip_base="/board", chip_extra="&".join(x for x in (f"project={project}" if project else "", f"assignee={quote(assignee)}" if assignee else "", f"by={by}" if by != "track" else "") if x),
+                                                           achips=achips, assignee=assignee, abase="/board", aextra="&".join(x for x in (f"project={project}" if project else "", f"by={by}" if by != "track" else "") if x), events_url="/events", events_since=ev.tickets_stamp(s)))
+
+    @app.get("/board/group", response_class=HTMLResponse)
+    def board_group(request: Request, project: str, slug: str, by: str = "track", assignee: str = ""):
+        """The status columns of one group, for the board to load when a group is opened."""
+        s = store()
+        by = by if by in bv.BY else "track"
+        ts = [t for t in s.tickets() if t.project == project and trk.track_slug(bv.group_name(t, by) if bv.group_name(t, by) not in (bv.UNTRACKED, bv.NO_SPRINT) else "") == slug]
+        if assignee:
+            ts = [t for t in ts if ops.assignee_of(t).lower() == assignee.lower()]
+        return templates.TemplateResponse(request, "_bcols_frag.html", ctx(request, s, tickets=sorted(ts, key=lambda t: t.id), s=s))
 
     @app.get("/projects", response_class=HTMLResponse)
     def projects(request: Request, p: str = "", t: str = "", k: str = "", assignee: str = ""):

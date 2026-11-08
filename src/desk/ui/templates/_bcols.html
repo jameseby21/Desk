@@ -1,0 +1,24 @@
+{% macro calm_card(t, s) -%}
+{% set brand = s.brand_for(t.project) %}
+{% set ask = ask_badge(t) %}
+{% set extra = card_extra(t, s) %}
+<a href="/ticket/{{ t.id }}" class="ccard-link" style="text-decoration:none"><div class="ccard{% if t.status == 'blocked' or s.is_stale(t) %} edge-red{% endif %}"{% if brand and brand.accent %} style="--accent:{{ brand.accent }}"{% endif %}>
+  <div class="cc-top"><code class="cc-id">{{ t.id }}</code>{% if s.formerly(t) %}<span class="muted formerly">(formerly {{ s.formerly(t) }})</span>{% endif %}
+    {% if ask %}<span class="chip ball">{{ ask }}</span>{% endif %}<span class="chip">{{ t.meta.get('priority') }}</span>{% if extra %}<span class="chip" title="{{ extra|join(', ') }}">+{{ extra|length }}</span>{% endif %}</div>
+  <div class="cc-title" title="{{ t.meta.get('title') }}">{{ t.meta.get('title') }}</div>
+  <div class="cc-foot muted"><span class="cc-owner">{{ who(t.meta.get('owner')) }}</span>{% set a = card_age(t) %}{% if a is not none %}<span>{{ a }} d</span>{% endif %}{% set rb = card_review(t) %}{% if rb %}<span>review {{ rb }}</span>{% endif %}<span class="dot {{ card_proof(t) }}" title="{{ {'none': 'No report yet', 'notrun': 'A check failed: not run', 'ran': 'A report is written'}[card_proof(t)] }}"></span></div>
+</div></a>
+{%- endmacro %}
+{% macro columns(tickets, s) -%}
+<div class="board scroll">
+{% for st, items in columns_of(tickets) %}
+  {% if items or st in ['ready','in_progress','review'] %}
+  <details class="col" open>
+    <summary class="colhead"><span>{{ screen(st) }} <span class="muted" style="font-weight:400">{{ st }}</span></span><span>{{ items|length }}</span></summary>
+    {% for t in items[:8] %}{{ calm_card(t, s) }}{% endfor %}
+    {% if items|length > 8 %}<details class="more"><summary>Show {{ items|length - 8 }} more</summary>{% for t in items[8:] %}{{ calm_card(t, s) }}{% endfor %}</details>{% endif %}
+  </details>
+  {% endif %}
+{% endfor %}
+</div>
+{%- endmacro %}
