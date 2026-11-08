@@ -142,13 +142,15 @@ out.doneLooksClearedWhileAsking=!l1.querySelector('[data-act=done] .box').classL
 p1.querySelector('[data-act=cancel-clear]').click();out.cancelOnDoneSendsOpen=JSON.stringify(subs)===JSON.stringify([['1',' ','','must fix']]);
 subs.length=0;var l2=lis[2],p2=l2.querySelector('.nr-panel');l2.querySelector('[data-act=edit]').click();
 out.editOpensPrefilled=!p2.hidden&&p2.querySelector('textarea').value==='nope'&&p2.querySelector('[value=should]').checked;
+p2.hidden=true;l0.querySelector('[data-act=no]').click();ta.value='keep me';out.opensAgain=!p0.hidden;
+document.querySelector('h1').click();out.clickElsewhereCloses=p0.hidden&&ta.value==='keep me'&&document.activeElement!==l0.querySelector('[data-act=no]');
 fetch('/m',{method:'POST',body:JSON.stringify(out)});});</script>"""
 
 
 @pytest.mark.skipif(browser() is None, reason="no Edge or Chrome installed")
 def test_reason_panel_in_a_real_browser(store):
     """Protects: the panel opens focused, refuses under 3 characters with a message, sends severity and reason, Cancel from an open
-    line closes without sending, Cancel from a Done line sends open, Edit opens the saved reason prefilled."""
+    line closes without sending, Cancel from a Done line sends open, Edit opens the saved reason prefilled, and a click anywhere else closes the panel (James's note on the old build) keeping the typed text."""
     t = _ticket(store, "- [ ] open line\n- [x] done line\n- [!] failed  <!-- by em 2026-11-08T01:00 -->\n  > Not accepted (should): nope")
     html = TestClient(create_app(store.home)).get(f"/ticket/{t.id}").text
     css = (STATIC / "desk.css").read_text(encoding="utf-8")

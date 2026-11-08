@@ -24,15 +24,21 @@
     var ta = p.querySelector("textarea"); if (ta) ta.focus();
     return true;
   }
-  function closePanel(li) {
+  function closePanel(li, quiet) {
     var p = panelOf(li); if (!p || p.hidden) return false;
     p.hidden = true; pending(li, false);
     var err = p.querySelector(".nr-err"); if (err) err.textContent = "";
     var b = li.querySelector('.hit[data-act="no"]');
-    if (b) { b.setAttribute("aria-expanded", "false"); b.focus(); }
+    if (b) { b.setAttribute("aria-expanded", "false"); if (!quiet) b.focus(); }
     return true;
   }
   document.addEventListener("click", function (e) {
+    /* A click anywhere outside an open reason panel closes it (what was typed stays in the box for next time). */
+    document.querySelectorAll(".nr-panel:not([hidden])").forEach(function (p) {
+      var li = lineOf(p), opener = e.target.closest ? e.target.closest('[data-act="no"],[data-act="edit"]') : null;
+      if (p.contains(e.target) || (opener && lineOf(opener) === li)) return;
+      closePanel(li, true);
+    });
     var t = e.target.closest ? e.target.closest("[data-act]") : null;
     if (!t) return;
     var li = lineOf(t); if (!li) return;
