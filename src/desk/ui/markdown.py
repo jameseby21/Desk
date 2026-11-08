@@ -256,14 +256,16 @@ def render(text: str, *, known: dict | None = None, check: dict | None = None, a
     actions: optional fn(id, status) -> html appended to a checkbox line that links to a known ticket (review weeks).
     """
     text = text or ""
-    from ..ticket import NEXT_STATE, check_states
+    from ..ticket import check_states, split_reason
 
     states = check_states(text)
+    reasons: dict[int, str] = {}  # box index -> the reason written after ` — not accepted:` on a `[!]` line
     if any(st == "!" for _, st in states):  # `[!]` is ours, not the task-list plugin's: render it as done, then restyle it below
         lines = text.split("\n")
-        for n, st in states:
+        for i, (n, st) in enumerate(states):
             if st == "!":
-                lines[n] = lines[n].replace("[!]", "[x]", 1)
+                body, reasons[i] = split_reason(lines[n])
+                lines[n] = body.replace("[!]", "[x]", 1)
         text = "\n".join(lines)
     out = _md.render(_COMMENT_LINE.sub("", text), {"known": known or {}, "docs": docs, "resolve": resolve, "glossary": glossary or {},
                                                   "seen": seen if seen is not None else set(), "ids": ids, "censor": censor})
@@ -274,22 +276,35 @@ def render(text: str, *, known: dict | None = None, check: dict | None = None, a
     if len(_CHECKBOX.findall(out)) != n:  # cannot map boxes to lines safely: leave them read-only
         return out
     counter = iter(range(n))
+    pending: dict[str, str] = {}  # marker -> the reason to show under the line whose checkbox carries that marker
+    e = html.escape
 
     def box(m):
         i = next(counter)
         st = states[i][1]
-        bad = '<span class="chip red nr">Not run</span>' if st == "!" else ""
+        mark = ""
+        if st == "!":
+            mark = f"@@NR{i}@@"
+            why = (censor(reasons[i]) if censor else reasons[i])
+            pending[mark] = f'<div class="nr-reason">Not accepted: {e(why)}</div>' if why else '<div class="nr-reason">Not accepted</div>'
         if not check:
-            return f'<span class="chk-failed" role="img" aria-label="failed">&#10007;</span>{bad}' if st == "!" else m.group(0)
-        name, act, glyph = _STATE_UI[st]
-        return (f'<form class="chk post-once" method="post" action="/ticket/{check["id"]}/check">'
-                f'<input type="hidden" name="token" value="{check["token"]() if check.get("token") else ""}">'
-                f'<input type="hidden" name="section" value="{html.escape(check["section"])}">'
-                f'<input type="hidden" name="index" value="{i}">'
-                f'<input type="hidden" name="state" value="{NEXT_STATE[st]}">'
-                f'<button type="submit" class="chk-btn st-{name}" aria-label="{name}. {act}" title="{name}: click to {act}">{glyph}</button></form>{bad}')
+            return f'<span class="chk-failed" role="img" aria-label="not accepted">&#10007;</span>{mark}' if st == "!" else m.group(0)
+        sec, tid = e(check["section"]), e(check["id"])
+        tok = lambda: check["token"]() if check.get("token") else ""  # noqa: E731
+        head = f'<form class="chk post-once" method="post" action="/ticket/{tid}/check"><input type="hidden" name="token" value="{tok()}"><input type="hidden" name="section" value="{sec}"><input type="hidden" name="index" value="{i}">'
+        done = (f'{head}<input type="hidden" name="state" value="{" " if st == "x" else "x"}"><label class="chk-lab"><input type="checkbox" class="chk-box" aria-label="Done"'
+                f'{" checked" if st == "x" else ""} onchange="this.form.requestSubmit()"> Done</label></form>')
+        if st == "!":
+            na = (f'{head}<input type="hidden" name="state" value=" "><label class="chk-lab bad"><input type="checkbox" class="chk-box" aria-label="Not accepted" checked '
+                  f'onchange="this.form.requestSubmit()"> Not accepted</label></form>')
+        else:
+            na = (f'<details class="chk-na"><summary class="chk-lab"><span class="chk-box fake"></span> Not accepted</summary>'
+                  f'{head}<input type="hidden" name="state" value="!"><textarea name="reason" rows="2" required placeholder="What is wrong?" aria-label="Reason it is not accepted"></textarea>'
+                  f'<button class="btn small" type="submit">Save</button></form></details>')
+        return f'<span class="chk2">{done}{na}</span>{mark}'
 
     out = _CHECKBOX.sub(box, out)
+    out = _place_reasons(out, pending)
     if actions and known:
         def li(m):
             ids = re.findall(r'href="/ticket/([A-Z0-9-]+)"', m.group(0))
@@ -299,7 +314,17 @@ def render(text: str, *, known: dict | None = None, check: dict | None = None, a
     return out
 
 
-_STATE_UI = {" ": ("open", "mark done", ""), "x": ("done", "mark failed", "&#10003;"), "!": ("failed", "reopen", "&#10007;")}
+def _place_reasons(out: str, pending: dict) -> str:
+    """Move each reason marker to the end of its own list item (before `</li>` or a nested list), as a red line under the text."""
+    for mark, block in pending.items():
+        i = out.find(mark)
+        if i < 0:
+            continue
+        out = out[:i] + out[i + len(mark):]
+        m = re.compile(r"</li>|<ul|<ol").search(out, i)
+        j = m.start() if m else len(out)
+        out = out[:j] + block + out[j:]
+    return out
 
 
 def has_mermaid(text: str) -> bool:

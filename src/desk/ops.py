@@ -14,7 +14,7 @@ from pathlib import Path
 from . import review
 from .rules import RuleError, check_transition
 from .store import Store, join_profile, split_profile
-from .ticket import CLONED_SECTIONS, NEXT_STATE, Ticket, check_states, slugify, today
+from .ticket import CLONED_SECTIONS, Ticket, check_states, slugify, split_reason, today
 
 PRIVATE_NAMES = {"private_context.md"}
 PRIVATE_PARTS = {"jeby-private"}
@@ -88,12 +88,14 @@ def decide(store: Store, t: Ticket, approve: bool, reason: str, actor: str | Non
     return move(store, t, new, actor=actor, reason=reason)
 
 
-CHECK_SECTIONS = ("Acceptance", "Prompt", "Evidence")
+CHECK_SECTIONS = ("Acceptance", "How to validate", "Prompt", "Evidence")
 
 
-def toggle_check(store: Store, ticket_id: str, section: str, index: int, checked: "bool | str | None" = None, actor: str | None = None) -> Ticket:
-    """Set the `index`-th checkbox line of `section`; only that line's box character changes.
-    `checked` is True/False (done/open), a state char (' ', 'x', '!'), or None to cycle open -> done -> failed -> open."""
+def toggle_check(store: Store, ticket_id: str, section: str, index: int, checked: "bool | str | None" = None, actor: str | None = None,
+                 reason: str = "") -> Ticket:
+    """Set the `index`-th checkbox line of `section`; only that line changes.
+    `checked` is True/False (done/open), a state char (' ', 'x', '!'), or None to flip open <-> done.
+    Not accepted (`!`) REQUIRES a reason, written on the same line as ` — not accepted: <reason>`; any other state removes it."""
     if section not in CHECK_SECTIONS:
         raise ValueError(f"Checkboxes can only be changed in {', '.join(CHECK_SECTIONS)}.")
     t = store.get(ticket_id)
@@ -103,16 +105,20 @@ def toggle_check(store: Store, ticket_id: str, section: str, index: int, checked
         raise ValueError(f"{t.id} {section} has no checkbox line {index}; reload the page.")
     n, cur = lines[index]
     if checked is None:
-        new = NEXT_STATE[cur]
+        new = " " if cur == "x" else "x"
     elif isinstance(checked, bool):
         new = "x" if checked else " "
     elif checked in (" ", "x", "!"):
         new = checked
     else:
-        raise ValueError("A checkbox is open, done (x) or failed (!).")
+        raise ValueError("A checkbox is open, done (x) or not accepted (!).")
+    reason = " ".join((reason or "").split())
+    if new == "!" and not reason:
+        raise ValueError("Not accepted needs a reason: say what is wrong.")
     parts = raw.split("\n")
-    m = re.match(r"^(\s*(?:[-*+]|\d+[.)])\s+\[)[ xX!](\].*)$", parts[n], re.S)
-    parts[n] = m.group(1) + new + m.group(2)
+    body, _old = split_reason(parts[n])
+    m = re.match(r"^(\s*(?:[-*+]|\d+[.)])\s+\[)[ xX!](\].*)$", body, re.S)
+    parts[n] = m.group(1) + new + m.group(2) + (f" — not accepted: {reason}" if new == "!" else "")
     t.sections[section] = "\n".join(parts)
     store.save(t)
     return t

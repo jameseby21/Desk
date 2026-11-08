@@ -29,7 +29,7 @@ def test_toggle_changes_exactly_one_line(store):
     before = store.get(t.id).sections["Acceptance"].split("\n")
     client = TestClient(create_app(store.home))
     page = client.get(f"/ticket/{t.id}").text
-    assert page.count(f'action="/ticket/{t.id}/check"') == 3
+    assert page.count(f'action="/ticket/{t.id}/check"') == 6  # two boxes a line: Done, and Not accepted
     r = client.post(f"/ticket/{t.id}/check", data={"token": client.app.state.tokens.issue(), "section": "Acceptance", "index": 1, "checked": 1}, follow_redirects=False)
     assert r.status_code == 303 and "error" not in r.headers["location"]
     after = store.get(t.id).sections["Acceptance"].split("\n")

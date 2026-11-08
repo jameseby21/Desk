@@ -110,8 +110,14 @@ def _plain(v):
 
 
 _CHECK = re.compile(r"^(\s*(?:[-*+]|\d+[.)])\s+\[)( |x|X|!)(\]\s)")
-# Three states in the file: `[ ]` open, `[x]` done, `[!]` tried and failed. The UI cycles open -> done -> failed -> open.
-NEXT_STATE = {" ": "x", "x": "!", "!": " "}
+# Three states in the file: `[ ]` open, `[x]` done, `[!]` not accepted. A `[!]` line carries its reason on the same line.
+NOT_ACCEPTED = re.compile(r"\s+— not accepted:\s*(.*?)\s*$")
+
+
+def split_reason(line: str) -> tuple[str, str]:
+    """(line without the ` — not accepted: <reason>` suffix, reason or '')."""
+    m = NOT_ACCEPTED.search(line)
+    return (line[:m.start()], m.group(1)) if m else (line, "")
 
 
 def check_states(text: str) -> list[tuple[int, str]]:
