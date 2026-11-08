@@ -15,7 +15,7 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from .. import ops, review as rv, style as styles
+from .. import ops, review as rv, style as styles, version as ver
 from ..config import find_home
 from ..rules import RuleError
 from ..store import Store, id_parts
@@ -97,7 +97,8 @@ def create_app(home: Path | None = None) -> FastAPI:
     templates = Jinja2Templates(directory=str(TEMPLATES))
     mermaid_src = "/static/mermaid.min.js" if (STATIC / "mermaid.min.js").exists() else MERMAID_CDN
     templates.env.globals.update(screen=screen, md=md_html, has_mermaid=has_mermaid, statuses=STATUSES,
-                                 sections=SECTIONS, mermaid_src=mermaid_src, by_project=by_project, token=tokens.issue)
+                                 sections=SECTIONS, mermaid_src=mermaid_src, by_project=by_project, token=tokens.issue,
+                                 build=ver.describe())
     if STATIC.exists():
         app.mount("/static", StaticFiles(directory=str(STATIC)), name="static")
 

@@ -7,3 +7,4 @@ build/
 *.egg-info/
 .desk/
 jeby-private/
+src/desk/_build.py

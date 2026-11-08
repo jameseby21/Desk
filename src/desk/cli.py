@@ -8,7 +8,7 @@ import json
 import sys
 from pathlib import Path
 
-from . import __version__, ops, review as rv
+from . import ops, review as rv, version as ver
 from .config import HomeNotFound, find_home
 from .rules import RuleError, validate_store
 from .store import Store
@@ -356,6 +356,50 @@ def cmd_review_sync(args):
           f"{k['decided']} decided this week")
 
 
+class _Version(argparse.Action):
+    def __call__(self, parser, namespace, values, option_string=None):
+        print(ver.describe())
+        parser.exit()
+
+
+def _home_or_none(args) -> Path | None:
+    try:
+        return find_home(args.home)
+    except HomeNotFound:
+        return None
+
+
+def cmd_doctor(args):
+    lines, stale = ver.doctor_report(_home_or_none(args), args.repo)
+    for line in lines:
+        print(line)
+    if stale:
+        sys.exit(1)
+
+
+def cmd_upgrade(args):
+    import shutil
+    import subprocess
+
+    repo = ver.find_repo(args.repo, _home_or_none(args))
+    if repo is None:
+        _die("No Desk repo found. Pass --repo PATH, set DESK_REPO, or keep the repo at <store>/desk.")
+    running = ver.listeners()
+    if running:
+        pid = running[0]
+        _die(f"Refusing to upgrade: a process (PID {pid}) is listening on the UI port {ver.ui_port()}. "
+             f"If it is the Desk UI, stop it first with `{ver.stop_hint(pid)}`, then run `drew upgrade` again.")
+    uv = shutil.which("uv")
+    if not uv:
+        _die("uv is not on PATH; install uv first (https://docs.astral.sh/uv/).")
+    r = subprocess.run([uv, "tool", "install", "--force", str(repo)])
+    if r.returncode != 0:
+        _die(f"uv tool install failed (exit {r.returncode}). On Windows, if drew.exe is in use, run `uv tool install --force \"{repo}\"` from a plain terminal.", r.returncode)
+    exe = shutil.which("drew")
+    out = subprocess.run([exe, "--version"], capture_output=True, text=True).stdout.strip() if exe else ""
+    print(f"Upgraded: {out or 'installed (run `drew --version` to confirm)'}")
+
+
 def cmd_home(args):
     print(_store(args).home)
 
@@ -365,7 +409,7 @@ def cmd_home(args):
 def build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(prog="desk", description="Tickets as markdown files. Done means proof.")
     p.add_argument("--home", help="the ticket store (else DESK_HOME, else the nearest desk.toml upward)")
-    p.add_argument("--version", action="version", version=f"desk {__version__}")
+    p.add_argument("--version", action=_Version, nargs=0, help="print the version and build commit")
     sub = p.add_subparsers(dest="cmd", required=True)
 
     def actor(sp):
@@ -375,6 +419,14 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("path", nargs="?")
     sp.add_argument("--owner", default="james")
     sp.set_defaults(fn=cmd_init)
+
+    sp = sub.add_parser("doctor", help="installed version and commit vs the repo, tool and store paths, UI port; exit 1 when stale")
+    sp.add_argument("--repo", help="the Desk repo (else DESK_REPO, else <store>/desk)")
+    sp.set_defaults(fn=cmd_doctor)
+
+    sp = sub.add_parser("upgrade", help="reinstall the tool from the repo (refuses while the UI is running)")
+    sp.add_argument("--repo", help="the Desk repo (else DESK_REPO, else <store>/desk)")
+    sp.set_defaults(fn=cmd_upgrade)
 
     sp = sub.add_parser("home", help="print the resolved store path")
     sp.set_defaults(fn=cmd_home)

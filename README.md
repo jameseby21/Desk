@@ -139,6 +139,16 @@ A ticket id is valid when its prefix is the current `prefix` **or** the uppercas
 
 Everywhere tickets are shown (`list`, `board`, `show`, every UI page) they are grouped by their current project under its current name, and a ticket whose id prefix differs from the project's current prefix is marked `(formerly FR)` after the id.
 
+## Refreshing Desk
+
+The installed tool is a copy of the repo from the day it was installed, so a fix in the repo does not reach `drew-ui` until you reinstall. The footer of every UI page and `drew --version` show `Desk <version> · <commit>`, so you can tell which copy is running.
+
+1. Stop the UI (`drew doctor` names the PID listening on the port; `taskkill /PID <pid> /T /F` on Windows, `kill <pid>` elsewhere).
+2. `drew upgrade` (add `--repo PATH` if the repo is not at `<store>/desk` and `DESK_REPO` is not set). It refuses while a process is listening on the UI port, then runs `uv tool install --force <repo>` and prints the new version.
+3. Start `drew-ui` again.
+
+`drew doctor` prints the installed version and commit, the repo path and HEAD, the tool and store paths and anything listening on the UI port (`DESK_UI_PORT`, default 8765). It exits 1 when the installed code is older than the repo.
+
 ## Lifecycle
 
 ```
