@@ -294,3 +294,18 @@ header .actas select{font:inherit;padding:3px 6px}
 .by{font:500 11.5px var(--font-mono);color:var(--muted);margin-left:6px}
 .by.claimed{color:#8a5a00}
 .by.confirmed::after{content:" \2713"}
+/* Today as rows (DESK-0040) */
+.t-head{justify-content:space-between;align-items:flex-end;gap:16px}.t-controls{gap:12px;align-items:center}
+.dd-form{margin:0}.dd-form label{display:inline-flex;align-items:center;gap:6px;font:500 13px var(--font-mono)}.dd-form select{font:inherit;padding:5px 8px;border:1px solid var(--line);border-radius:999px;background:var(--card);color:var(--ink);max-width:22ch}
+.t-sec{margin-top:26px}.t-sec h2{display:flex;align-items:baseline;gap:10px;margin:0 0 8px}.t-sec h2 small{font:400 14px var(--font-body);color:var(--muted)}.t-sec h2 .all{margin-left:auto;font:600 14px var(--font-body);text-decoration:none}
+.rows{background:var(--card);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+.trow{display:grid;grid-template-columns:minmax(80px,max-content) minmax(0,1fr) max-content;align-items:center;gap:14px;padding:10px 16px;border-top:1px solid var(--line);text-decoration:none;min-height:44px}
+.trow:first-child{border-top:0}.trow:hover{background:var(--paper)}
+.tr-lead{font-size:14px;color:var(--muted);min-width:7.5em}
+.tr-title{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}.tr-step{display:block;font:400 13px var(--font-body);color:var(--muted);white-space:normal}
+.tr-id{font:12.5px var(--font-mono);color:var(--muted);white-space:nowrap}
+.ask{display:inline-block;background:var(--ink);color:var(--on-ink);border-radius:6px;padding:4px 12px;font-weight:700;font-size:13px}.ask-do{background:var(--card);color:var(--ink);border:1.5px solid var(--ink)}
+.badge{display:inline-block;margin-right:8px;padding:2px 7px;border-radius:6px;font:700 12px var(--font-body);vertical-align:1px}.badge.bug{background:var(--red);color:var(--on-red)}.badge.urgent{background:var(--ball);color:#141414}
+.fold{margin:10px 0}.fold>summary{cursor:pointer;color:var(--muted);padding:6px 0}.fold>summary b{color:var(--ink)}
+.t-sec .asked{margin-top:12px}
+@media (max-width:700px){.trow{grid-template-columns:minmax(0,1fr);gap:2px}.tr-title{white-space:normal}}

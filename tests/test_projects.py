@@ -108,6 +108,7 @@ def test_rename_shows_formerly_in_cli_and_ui(store, capsys):
     assert "project: learninglabs" in out
 
     ops.move(store, store.get(t.id), "ready", actor="main")
+    ops.claim(store, store.get(t.id), "jre")  # Today lists what is in hand as rows (DESK-0040); a ready ticket is only counted there
     client = TestClient(create_app(store.home))
     assert "(formerly FR)" in client.get("/").text
     assert "(formerly FR)" in client.get("/board?open=*&g=*").text  # opened: the board starts at projects (DESK-0084)

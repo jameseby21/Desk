@@ -87,8 +87,8 @@ def test_list_filters_by_sprint(store, capsys):
 
 def test_board_and_today_filter_by_sprint_and_show_the_chip(store, capsys):
     _new(store, capsys)
-    a = _mk(store, "Inside", sprint=NAME, status="ready")
-    _mk(store, "Outside", status="ready")
+    a = _mk(store, "Inside", sprint=NAME, status="in_progress")  # in hand, so Today lists it as a row (DESK-0040)
+    _mk(store, "Outside", status="in_progress")
     c = TestClient(create_app(store.home))
     board = c.get("/board?sprint=sprint-6-2026").text
     assert "Inside" in board and "Outside" not in board and "sprint=sprint-6-2026" in board

@@ -20,7 +20,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from .. import timing
-from .. import asks, boardview as bv, identity as idmod, sprints as sprintmod, people as peoplemod, search as srch, nav as navmod, buildstamp as bs, comments as cm, docs as docsmod, ops, profanity, review as rv, style as styles, tracks as trk, version as ver
+from .. import asks, boardview as bv, identity as idmod, sprints as sprintmod, todayview as tv, people as peoplemod, search as srch, nav as navmod, buildstamp as bs, comments as cm, docs as docsmod, ops, profanity, review as rv, style as styles, tracks as trk, version as ver
 from ..config import find_home
 from ..rules import RuleError
 from ..store import Store, id_parts, split_profile
@@ -339,10 +339,6 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         if sprint:
             ts = [t for t in ts if in_sprint(t, sprint)]
         week = ops.week_ago()
-        mouth = [t for t in ts if t.status in ("claimed", "in_progress")]
-        feet = [t for t in ts if t.status == "review"]
-        decisions = [t for t in ts if t.meta.get("type") == "decision" and t.status in ("ready", "inbox", "triage")]
-        others = [t for t in ts if t.status in ("ready", "blocked", "changes_requested", "approved", "triage", "inbox")]
         stale = [t for t in ts if s.is_stale(t)]
         decided = [t for t in ts if t.status in ("approved", "done", "rejected", "changes_requested") and str(t.meta.get("updated", "")) >= week]
         rt = rv.find(s, rv.monday_of(dt.date.today()))
@@ -351,11 +347,11 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
             stale = []
         combos = combos_for(ts) if s.combos else []
         asked = cm.query(s, author=s.owner, unanswered=True)
-        return templates.TemplateResponse(request, "today.html", ctx(request, s, asked=asked, mouth=by_project(mouth), feet=by_project(feet + decisions),
-                                                             others=by_project(others), stale=by_project(stale),
-                                                             decided=by_project(decided), cap=cap, s=s, combos=combos, review_line=review_line,
-                                                             chips=chips, track=track, chip_base="/", chip_extra="&".join(x for x in (f"cap={cap}", f"sprint={sprint}" if sprint else "") if x),
-                                                             schips=schips, sprint=sprint, sbase="/", sextra="&".join(x for x in (f"cap={cap}", f"track={track}" if track else "") if x), events_url="/events", events_since=ev.tickets_stamp(s)))
+        view = tv.build(s, ts)
+        now = dt.date.today()
+        return templates.TemplateResponse(request, "today.html", ctx(request, s, asked=asked, v=view, stale=sorted(stale, key=tv.queue_key), decided=by_project(decided),
+                                                             cap=cap, s=s, combos=combos, review_line=review_line, long_today=f"{now.strftime('%A, %B')} {now.day}",
+                                                             chips=chips, track=track, schips=schips, sprint=sprint, events_url="/events", events_since=ev.tickets_stamp(s)))
 
     def sse(stamp, since: str, timeout: float) -> StreamingResponse:
         return StreamingResponse(ev.stream(stamp, int(since) if since.isdigit() else None, poll, min(max(timeout, 0), 3600), stopping=lambda: app.state.stopping), media_type="text/event-stream",
