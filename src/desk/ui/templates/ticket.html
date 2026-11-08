@@ -21,10 +21,20 @@
     {% endif %}{% endfor %}
 
     <div class="card section">
-      <div class="row" style="justify-content:space-between"><span class="label">Done means (Acceptance)</span>
+      <div class="row" style="justify-content:space-between"><span class="label">Acceptance (this ticket's outcome)</span>
         {% set acc = t.acceptance() %}{% if acc %}<span class="muted" style="font-size:13px">{{ acc|selectattr(0)|list|length }} of {{ acc|length }} true</span>{% endif %}</div>
       {% if t.section('Acceptance') %}<div class="md">{{ render(t.section('Acceptance'), t, 'Acceptance')|safe }}</div>{% else %}<p class="muted">No acceptance lines yet.</p>{% endif %}
-      {% if t.meta.get('dod') %}<div class="row" style="margin-top:6px"><span class="label">DoD modules</span>{% for d in t.meta.get('dod') %}<span class="chip">{{ d }}</span>{% endfor %}</div>{% endif %}
+    </div>
+
+    <div class="card section" id="done-means">
+      <div class="row" style="justify-content:space-between"><span class="label">Done means (from the Definition of Done)</span>
+        <span class="muted" style="font-size:13px">{% if dod.kind == 'project' %}this project's own{% else %}shared modules{% endif %}, read from the file, not copied</span></div>
+      {% if dod.note %}<p class="muted"><span class="chip red">Check</span> {{ dod.note }}</p>{% endif %}
+      {% for it in dod['items'] %}
+      <details open style="margin-top:6px"><summary><b>{{ it.label }}</b>{% if it.path %} <a class="docref" href="/doc/{{ it.path|urlencode_path }}">{{ it.path }}</a> <a class="vsc" href="{{ it.edit_url }}">Edit in VS Code</a>{% endif %}</summary>
+        {% if it.body is defined %}<div class="md">{{ render(it.body)|safe }}</div>{% else %}<p class="muted"><span class="chip red">missing</span> No file at {{ it.tried|join(' or ') }}.</p>{% endif %}
+      </details>
+      {% else %}<p class="muted">This ticket lists no DoD modules. Add `dod:` to its frontmatter.</p>{% endfor %}
     </div>
 
     <div class="card section"><span class="label">How to validate</span>

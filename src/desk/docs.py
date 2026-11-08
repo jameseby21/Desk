@@ -147,6 +147,37 @@ def resolve_for(store, project: str, path: str) -> tuple[str | None, list[str]]:
     return None, tried
 
 
+DOD_DIR = "standards/definition-of-done"
+# Where a project that keeps its own Definition of Done is expected to have it, when its profile does not say (`dod_doc:`).
+DOD_CONVENTIONS = ("docs/guides/DEFINITION_OF_DONE.md", "docs/DEFINITION_OF_DONE.md")
+
+
+def dod_sources(store, t: Ticket) -> dict:
+    """Where "Done means" comes from, by reference: nothing is copied into the ticket.
+    {"kind": "project" | "standards", "items": [{"label", "path" (store-relative, or None when missing), "tried"}], "note"}.
+    A project profile's `dod_doc:` (path in its repo, or the store) overrides the shared modules; without it a repo file at a
+    conventional path (docs/guides/DEFINITION_OF_DONE.md) is used; otherwise each module in the ticket's `dod:` comes from
+    standards/definition-of-done/<module>.md."""
+    meta, _ = store.project_profile(t.project)
+    declared = str(meta.get("dod_doc") or "").strip()
+    note = ""
+    if declared:
+        res, tried = resolve_for(store, t.project, declared)
+        if res:
+            return {"kind": "project", "items": [{"label": f"{store.project_title(t.project)} Definition of Done", "path": res.split("#", 1)[0], "tried": tried}], "note": ""}
+        note = f"Profile says dod_doc: {declared}, but no such file (tried {', '.join(tried)}). Showing the shared modules."
+    else:
+        for conv in DOD_CONVENTIONS:
+            res, tried = resolve_for(store, t.project, conv) if repo_dir(store, t.project) else (None, [])
+            if res:
+                return {"kind": "project", "items": [{"label": f"{store.project_title(t.project)} Definition of Done", "path": res, "tried": tried}], "note": ""}
+    items = []
+    for mod in (t.meta.get("dod") or []):
+        rel = f"{DOD_DIR}/{mod}.md"
+        items.append({"label": str(mod), "path": rel if resolve_doc(store.home, rel) else None, "tried": [rel]})
+    return {"kind": "standards", "items": items, "note": note}
+
+
 def split_sources(src: str) -> list[str]:
     """A `source:` value may hold several paths separated by `;` or `,`."""
     return [p.strip() for p in re.split(r"[;,]", str(src or "")) if p.strip()]

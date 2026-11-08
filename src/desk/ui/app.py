@@ -268,7 +268,7 @@ def create_app(home: Path | None = None) -> FastAPI:
         mermaid = any(has_mermaid(t.section(name)) for name in t.sections)
         return templates.TemplateResponse(request, "ticket.html", ctx(request, s, t=t, deps=deps, stale=s.is_stale(t), error=error, s=s,
                                                              formerly=s.formerly(t), mermaid=mermaid, mentions=docsmod.mentioned_in(list(by_id.values()), ticket_id=t.id),
-                                                             owning=docsmod.owning_docs(s, t), source_doc=source_doc(s, t)))
+                                                             owning=docsmod.owning_docs(s, t), source_doc=source_doc(s, t), dod=dod_view(s, t)))
 
     @app.get("/doc/{path:path}", response_class=HTMLResponse)
     def doc(request: Request, path: str):
@@ -287,6 +287,17 @@ def create_app(home: Path | None = None) -> FastAPI:
             index = docsmod.doc_index(s, rel.split("/")[1][:-3])
         return templates.TemplateResponse(request, "doc.html", {**c, "rel": rel, "body_html": html_body, "meta": meta, "mentions": mentions,
                                                                "edit_url": docsmod.vscode_url(target), "doc_index": index})
+
+    def dod_view(s: Store, t) -> dict:
+        """"Done means": the Definition of Done text for this ticket, read from its source file on every request."""
+        d = docsmod.dod_sources(s, t)
+        for it in d["items"]:
+            target = docsmod.resolve_doc(s.home, it["path"]) if it["path"] else None
+            if target is not None:
+                _, body = split_profile(target.read_text(encoding="utf-8"))
+                it["body"] = body
+                it["edit_url"] = docsmod.vscode_url(target)
+        return d
 
     def source_doc(s: Store, t) -> list[dict]:
         """Each path of `source:` (several may be separated by `;` or `,`), resolved against the store root then the repo."""

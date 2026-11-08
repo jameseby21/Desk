@@ -17,6 +17,7 @@ Every command a person or an agent runs day to day, with what it does and when. 
 | `drew init [path] [--owner]` | creates a store (`desk.toml`, `tickets/`, `projects/`, `intake/`) | safe to run again |
 | `drew migrate track --dry-run [--rules tracks/rules.yaml]` | prints ticket -> track and counts per track; writes nothing | read it before applying |
 | `drew migrate track --apply [--rules ...]` | writes one `track:` line into each matched ticket; nothing else changes, `updated` included | skips tickets that already have a track |
+| `drew migrate acceptance --dry-run` / `--apply` | removes boilerplate Acceptance lines that restate the Definition of Done; the dry run prints every line and the count | `--apply` edits only the Acceptance section; `updated` untouched |
 | `drew migrate type --dry-run` / `--apply` | retires the legacy `slice` and `chore` types by rule; the dry run prints ticket, old -> new and counts | `--apply` rewrites only the `type:` line |
 | `drew new --project key --type feature "title"` | types: feature, upgrade, bug, task, docs, decision, research, intake, release; writes the `How to validate` heading with a hint | write the steps before the work starts |
 | `drew rename-project old new` | renames a project; ids stay, old key and prefix become aliases | |

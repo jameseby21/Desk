@@ -8,7 +8,7 @@ import json
 import sys
 from pathlib import Path
 
-from . import ops, profanity, retype, review as rv, style as styles, tracks as trk, version as ver
+from . import accept_migrate, ops, profanity, retype, review as rv, style as styles, tracks as trk, version as ver
 from .config import HomeNotFound, find_home
 from .rules import RuleError, validate_store
 from .store import Store
@@ -416,6 +416,8 @@ def cmd_upgrade(args):
 def cmd_migrate(args):
     if args.what == "type":
         return cmd_migrate_type(args)
+    if args.what == "acceptance":
+        return cmd_migrate_acceptance(args)
     s = _store(args)
     rules_path = Path(args.rules) if args.rules else s.home / trk.RULES_PATH
     if not rules_path.is_absolute() and not rules_path.exists():
@@ -459,6 +461,29 @@ def cmd_migrate_type(args):
     print(f"Retyped {wrote} tickets. updated dates were not changed.")
 
 
+def cmd_migrate_acceptance(args):
+    s = _store(args)
+    pairs = accept_migrate.plan(s.tickets())
+    for t, lines in pairs:
+        for state, text in lines:
+            print(f"{t.id}  [{state}] {text}")
+    total = sum(len(lines) for _, lines in pairs)
+    by_text: dict = {}
+    for _, lines in pairs:
+        for _, text in lines:
+            by_text[text] = by_text.get(text, 0) + 1
+    if pairs:
+        print()
+        print(_table([[str(v), k] for k, v in sorted(by_text.items(), key=lambda kv: (-kv[1], kv[0]))], ["lines", "boilerplate text"]))
+    print()
+    print(f"{total} boilerplate lines in {len(pairs)} tickets would be removed; {len(s.tickets()) - len(pairs)} tickets left alone.")
+    if not args.apply:
+        print("Dry run: nothing written. Add --apply to remove them (only Acceptance changes; updated dates are not touched).")
+        return
+    wrote = sum(accept_migrate.strip_file(t) for t, _ in pairs)
+    print(f"Removed {wrote} lines from {len(pairs)} tickets.")
+
+
 def cmd_home(args):
     print(_store(args).home)
 
@@ -487,8 +512,8 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--repo", help="the Desk repo (else DESK_REPO, else <store>/desk)")
     sp.set_defaults(fn=cmd_upgrade)
 
-    sp = sub.add_parser("migrate", help="one-off bulk edits; `migrate track` assigns tracks from tracks/rules.yaml, `migrate type` retires the legacy slice and chore types")
-    sp.add_argument("what", choices=["track", "type"])
+    sp = sub.add_parser("migrate", help="one-off bulk edits; `migrate track` assigns tracks from tracks/rules.yaml, `migrate type` retires the legacy slice and chore types, `migrate acceptance` strips boilerplate Acceptance lines that restate the Definition of Done")
+    sp.add_argument("what", choices=["track", "type", "acceptance"])
     mode = sp.add_mutually_exclusive_group(required=True)
     mode.add_argument("--dry-run", action="store_true", help="print ticket -> track and counts; write nothing")
     mode.add_argument("--apply", action="store_true", help="write track: into each matched ticket's frontmatter")
