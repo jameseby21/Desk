@@ -137,7 +137,7 @@
         <div class="shots" id="shots" hidden></div>
         <label class="evline" id="evline" hidden>Evidence for <select name="line"><option value="">No line</option>{% for n, txt in acc_lines %}<option value="{{ n }}">Line {{ n }}: {{ txt[:48] }}{% if txt|length > 48 %}…{% endif %}</option>{% endfor %}</select></label>
         <div class="attach-note" id="attach-note" role="status"></div>
-        <div class="composer-foot"><input type="text" name="who" placeholder="who (default {{ owner }})" aria-label="Who is posting"><span class="dp-slot"></span><span id="post-status" class="post-status" role="status" aria-live="polite"></span><button class="btn ball post-btn" type="submit">Post</button></div>
+        <div class="composer-foot"><span class="muted" style="font-size:12.5px" title="{{ me.short() }}">posting as {{ me.display() }}</span><span class="dp-slot"></span><span id="post-status" class="post-status" role="status" aria-live="polite"></span><button class="btn ball post-btn" type="submit">Post</button></div>
       </form>
       <form class="post-once attach-form" method="post" action="/ticket/{{ t.id }}/attach" enctype="multipart/form-data" data-inplace="attach" data-progress="Uploading,Saving,Done">
         <input type="hidden" name="token" value="{{ token() }}">

@@ -9,7 +9,7 @@ import re
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
-from .ops import _COMMENT_LINE, split_comment_kind
+from .ops import _COMMENT_LINE, comment_identity, split_comment_kind
 from .store import Store
 
 ANSWERERS = ("patch",)  # the main session; a later line by one of these answers every earlier comment on the ticket
@@ -25,11 +25,12 @@ class Entry:
     kind: str
     text: str
     answered: bool
+    ident: dict | None = None  # the parsed identity tag; {} for a comment written before identities were kept
 
     def as_json(self) -> dict:
         d = asdict(self)
         return {"ticket": d["ticket_id"], "title": d["title"], "when": self.when.strftime("%Y-%m-%d %H:%M"), "author": d["author"],
-                "kind": d["kind"], "text": d["text"], "answered": d["answered"]}
+                "kind": d["kind"], "text": d["text"], "answered": d["answered"], "identity": self.ident or {}}
 
 
 def _state_path(home: Path) -> Path:
@@ -99,16 +100,16 @@ def entries(store: Store, answerers: tuple[str, ...] = ANSWERERS) -> list[Entry]
             except ValueError:
                 continue
             kind, text = split_comment_kind(m.group(4))
-            rows.append((when, m.group(3).strip(), kind or "", re.sub(r"\s+", " ", text).strip()))
+            rows.append((when, m.group(3).strip(), kind or "", re.sub(r"\s+", " ", text).strip(), comment_identity(m.group(4))))
         if not rows:
             continue
         last_day = max(r[0].date() for r in rows)
         upd = _updated(t)
         moved = upd is not None and upd > last_day
         title = str(t.meta.get("title") or "")
-        for i, (when, who, kind, text) in enumerate(rows):
+        for i, (when, who, kind, text, ident) in enumerate(rows):
             later_answer = any(rows[j][1].lower() in names and (rows[j][0], j) > (when, i) for j in range(len(rows)))
-            out.append(Entry(t.id, title, when, who, kind, text, later_answer or moved))
+            out.append(Entry(t.id, title, when, who, kind, text, later_answer or moved, ident))
     return out
 
 

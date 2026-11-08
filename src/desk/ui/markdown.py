@@ -401,18 +401,44 @@ def _place_reasons(out: str, pending: dict) -> str:
     return out
 
 
-_KINDED = re.compile(r"^(- \d{4}-\d{2}-\d{2} \d{2}:\d{2} · [^·]+? · )(.*?)\s*<!-- kind: (Question|Suggestion|Concern|FYI) -->\s*$", re.M)
-_KIND_MARK = re.compile(r"@@KIND-(Question|Suggestion|Concern|FYI)@@")
+_KINDED = re.compile(r"^(- \d{4}-\d{2}-\d{2} \d{2}:\d{2} · [^·]+? · )(.*?)(?:\s*<!-- by ([^>]*?) -->)?\s*<!-- kind: (Question|Suggestion|Concern|FYI) -->\s*$", re.M)
+_KIND_MARK = re.compile(r"@@KIND-(Question|Suggestion|Concern|FYI)@@(?:@@BY-([^@]*)@@)?")
 
 
 def prep_comments(text: str) -> str:
-    """Before rendering the Comments section: move each line's `<!-- kind: X -->` tail to a marker right after the author."""
-    return _KINDED.sub(lambda m: f"{m.group(1)}@@KIND-{m.group(3)}@@ {m.group(2)}", text or "")
+    """Before rendering the Comments section: move each line's `<!-- kind: X -->` tail, and the identity tag before it (DESK-0144), to
+    markers right after the author. A line written before identities were kept gets the marker `none`."""
+    def swap(m):
+        by = (m.group(3) or "").strip()
+        tag = "@@BY-" + (by.encode("utf-8").hex() if by else "none") + "@@"  # hex: nothing in it can be read as markup
+        return f"{m.group(1)}@@KIND-{m.group(4)}@@{tag} {m.group(2)}"
+
+    return _KINDED.sub(swap, text or "")
+
+
+def _by_html(code: str | None) -> str:
+    if not code:
+        return ""
+    if code == "none":
+        return '<span class="by" title="Written before Desk kept who made a change">not recorded</span>'
+    try:
+        info = dict(re.findall(r"(\w+)=(\S*)", bytes.fromhex(code).decode("utf-8")))
+    except ValueError:
+        return ""
+    ok = info.get("ok") == "1"
+    words = f"{info.get('kind', '?')} · {info.get('src', '?')} · {info.get('via', '?').replace('-', ' ')} · {'confirmed' if ok else 'claimed'}"
+    if info.get("as"):
+        words += f" · as {info['as']}"
+    if info.get("parent"):
+        words += f" · parent {info['parent']}"
+    title = ("instance " + info["inst"]) if info.get("inst") else ""
+    return f'<span class="by {"confirmed" if ok else "claimed"}" title="{title}">{words}</span>'
 
 
 def finish_comments(rendered: str) -> str:
-    """After rendering: the markers become the small kind labels (Question, Suggestion, Concern, FYI) beside the author."""
-    return _KIND_MARK.sub(lambda m: f'<span class="kind kind-{m.group(1).lower()}">{m.group(1)}</span>', rendered)
+    """After rendering: the markers become the small kind label (Question, Suggestion, Concern, FYI) and the identity (actor kind, source,
+    how it was established, confirmed or claimed) beside the author."""
+    return _KIND_MARK.sub(lambda m: f'<span class="kind kind-{m.group(1).lower()}">{m.group(1)}</span>{_by_html(m.group(2))}', rendered)
 
 
 def has_mermaid(text: str) -> bool:

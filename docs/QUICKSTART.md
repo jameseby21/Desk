@@ -30,6 +30,8 @@ drew-ui
 ```
 Open http://127.0.0.1:8765. You should see the Today page with "Today's walk", the navigation (Today, Board, Projects, About, Settings) and, in the footer, `Desk <version> · <commit>`.
 
+The first time, a banner says Desk does not know who you are on this machine. Follow "Say who you are, once" (`/whoami`), pick yourself, and it is written to `people.yaml` and never asked again; until then your changes are recorded as the store owner, marked claimed. `drew whoami` shows how the command line would be recorded.
+
 Make a first ticket (a project profile must exist first):
 ```
 echo "# First" > "$DESK_HOME/projects/first.md"

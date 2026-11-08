@@ -11,7 +11,7 @@ import tempfile
 import zipfile
 from pathlib import Path
 
-from . import review
+from . import identity, review
 from .rules import RuleError, check_transition
 from .secretscan import looks_secret, refusal as secret_refusal
 from .store import Store, join_profile, split_profile
@@ -328,9 +328,17 @@ _KIND_TAIL = re.compile(r"\s*<!-- kind: (Question|Suggestion|Concern|FYI) -->\s*
 
 
 def split_comment_kind(rest: str) -> tuple[str | None, str]:
-    """(kind or None, the words) for what follows `<when> · <who> · ` on a comment line. Comments written before kinds have none."""
+    """(kind or None, the words) for what follows `<when> · <who> · ` on a comment line. Comments written before kinds have none.
+    The hidden `<!-- by ... -->` identity tag (DESK-0144) is not part of the words."""
     m = _KIND_TAIL.search(rest)
-    return (m.group(1), rest[:m.start()]) if m else (None, rest)
+    kind, words = (m.group(1), rest[:m.start()]) if m else (None, rest)
+    return kind, identity.parse_tag(words)[1]
+
+
+def comment_identity(rest: str) -> dict:
+    """The parsed identity tag of a comment line's tail ({} for a comment written before identities were kept)."""
+    m = _KIND_TAIL.search(rest)
+    return identity.parse_tag(rest[:m.start()] if m else rest)[0]
 
 
 def is_duplicate_comment(t: Ticket, actor: str, text: str, now: dt.datetime | None = None) -> bool:
@@ -368,7 +376,9 @@ def comment(store: Store, t: Ticket, text: str, actor: str | None = None, kind: 
     who = actor or "desk"
     if is_duplicate_comment(t, who, text):
         return CommentResult(t, False)
-    t.append_line("Comments", _stamp(who, f"{text.strip()} <!-- kind: {kind} -->", at_time=True))
+    ident = identity.CURRENT.get()
+    tag = f" {ident.tag()}" if ident is not None else ""  # who really wrote it: kind, source, how it was established, instance
+    t.append_line("Comments", _stamp(who, f"{text.strip()}{tag} <!-- kind: {kind} -->", at_time=True))
     if who.lower() == store.owner.lower():
         from . import repeats  # DESK-0158: the owner asking for the same thing twice in a week makes the ticket p0 with the tag emergency
 

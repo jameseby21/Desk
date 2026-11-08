@@ -11,6 +11,7 @@ display name appears only on a machine that has that file. Entries of kind `exte
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -155,6 +156,59 @@ def load(home: Path | None) -> People:
     out = People(people)
     _CACHE[sig[:1] + sig[2:3]] = (sig, out)
     return out
+
+
+def _write_people(home: Path, rows: list[dict]) -> Path:
+    p = Path(home) / "people.yaml"
+    head = "# People: who owners and assignees are (DESK-0044). A ticket stores the key; the UI shows the name and colour.\n# os_users: the operating-system user names that are this person (DESK-0144); written when someone is named on first run.\n"
+    p.write_text(head + yamlio.dump({"people": rows}, sort_keys=False, allow_unicode=True, default_flow_style=False, width=1000), encoding="utf-8", newline="\n")
+    return p
+
+
+def _rows(home: Path) -> list[dict]:
+    """The people.yaml rows as plain dicts; the built-in team when the store has no file yet."""
+    f = Path(home) / "people.yaml"
+    people = _read(f) if f.is_file() else [Person(**p.__dict__) for p in SEED]
+    out = []
+    for p in people:
+        r = {"key": p.key, "name": p.name, "kind": p.kind}
+        if p.role:
+            r["role"] = p.role
+        r["colour"] = p.colour
+        if p.aliases:
+            r["aliases"] = list(p.aliases)
+        if p.os_users:
+            r["os_users"] = list(p.os_users)
+        out.append(r)
+    return out
+
+
+def link_os_user(home: Path, key: str, user: str) -> Path:
+    """Record that the operating-system user `user` is the person `key` (first-run naming). Written to the store's people.yaml."""
+    rows = _rows(home)
+    row = next((r for r in rows if r["key"].lower() == key.lower()), None)
+    if row is None:
+        raise KeyError(key)
+    for r in rows:  # one user is one person
+        if r is not row and r.get("os_users"):
+            r["os_users"] = [u for u in r["os_users"] if u.lower() != user.lower()]
+            if not r["os_users"]:
+                r.pop("os_users")
+    row["os_users"] = sorted({*row.get("os_users", []), user})
+    return _write_people(home, rows)
+
+
+def add_person(home: Path, key: str, name: str, kind: str = "person", os_user: str = "") -> Path:
+    key = re.sub(r"[^a-z0-9:_-]+", "-", key.lower()).strip("-")
+    if not key or not name.strip():
+        raise ValueError("A person needs a key and a display name.")
+    rows = _rows(home)
+    if any(r["key"].lower() == key for r in rows):
+        raise ValueError(f"{key} is already in people.yaml.")
+    row = {"key": key, "name": name.strip(), "kind": kind if kind in KINDS else "person", "colour": PALETTE[len(rows) % len(PALETTE)]}
+    if os_user:
+        row["os_users"] = [os_user]
+    return _write_people(home, rows + [row])
 
 
 def seed_text() -> str:

@@ -217,7 +217,7 @@ def cmd_decide(args):
 
 
 def cmd_comments(args):
-    from . import comments as cm
+    from . import comments as cm, identity
 
     s = _store(args)
     if args.mark_sweep:  # the flags come first in the sweep: repeated asks, then hand-offs nobody answered (DESK-0158)
@@ -239,7 +239,7 @@ def cmd_comments(args):
         for r in rows:
             mark = "" if r.answered else "  [open]"
             kind = f" {r.kind}" if r.kind else ""
-            print(f"{r.ticket_id}  {r.when.strftime('%Y-%m-%d %H:%M')}  {r.author}{kind}{mark}\n    {r.text}")
+            print(f"{r.ticket_id}  {r.when.strftime('%Y-%m-%d %H:%M')}  {r.author} [{identity.describe(r.ident or {})}]{kind}{mark}\n    {r.text}")
         print(f"{len(rows)} comment(s)")
     if args.mark_sweep:
         cm.mark_sweep(s.home)
@@ -528,6 +528,20 @@ def cmd_split(args):
     s.sync_after(f"desk: split {old.id} -> {new.id}")
     print(f"{new.id} created from {old.id}: depends_on {old.id}; {old.id} lists it under blocks and asks for the completion decision (done as scoped, or closed in favour)")
     print(new.path)
+
+
+def cmd_whoami(args):
+    """DESK-0144: how this command line would be recorded: the actor, kind, instance, source and how it was established."""
+    from . import identity
+
+    s = _store(args)
+    a = identity.resolve_cli(s, args.as_)
+    if args.json:
+        print(json.dumps(a.as_dict(), indent=2))
+        return
+    print(f"{a.display()}: {a.short()}" + (f" · instance {a.instance}" if a.instance else "") + (f" · parent {a.parent}" if a.parent else ""))
+    if not a.confirmed:
+        print("This is a claim, not a check: Desk records it as claimed. To be confirmed, run as your own operating-system user, listed under os_users in people.yaml.")
 
 
 def cmd_index(args):
@@ -1052,6 +1066,11 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--note", help="the scope note")
     sp.set_defaults(fn=cmd_sprint)
 
+    sp = sub.add_parser("whoami", help="how this command line would be recorded on a write: actor, kind (person, thread, session, subagent), instance, source and how it was established; a name that is only claimed is shown as claimed. Environment: DESK_ACTOR, DESK_ACTOR_KIND, DESK_INSTANCE, DESK_SUBAGENT_ID, DESK_PARENT_SESSION")
+    sp.add_argument("--json", action="store_true")
+    actor(sp)
+    sp.set_defaults(fn=cmd_whoami)
+
     sp = sub.add_parser("repeats", help="repeated asks (the owner asked for the same thing twice on a ticket within 7 days) and stale hand-offs (blocked_on names the owner, unchanged across two sweeps); --apply makes the repeated-ask tickets p0 with the tag emergency")
     sp.add_argument("--apply", action="store_true")
     sp.set_defaults(fn=cmd_repeats)
@@ -1302,6 +1321,24 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
+READ_ONLY = {"list", "show", "search", "validate", "board", "stats", "doctor", "bench", "home", "index", "people", "assign-rules", "dispatch", "next",
+             "outbox", "whoami", "stop", "refresh", "init", "upgrade", "sync", "brand-check"}
+
+
+def _identify(args):
+    """DESK-0144: work out who is acting and keep it for the rest of the command, so every write (Comments lines, the write log) records
+    the actor, its kind, instance, source and how sure we are. `--as` is kept for agents and is recorded as claimed."""
+    from . import identity
+
+    if args.cmd in READ_ONLY and args.cmd != "whoami":
+        return None
+    try:
+        s = Store(find_home(args.home))
+    except HomeNotFound:
+        return None
+    return identity.CURRENT.set(identity.resolve_cli(s, getattr(args, "as_", None)))
+
+
 def main(argv: list[str] | None = None) -> None:
     for stream in (sys.stdout, sys.stderr):  # Windows consoles default to cp1252; tickets are UTF-8
         try:
@@ -1309,7 +1346,14 @@ def main(argv: list[str] | None = None) -> None:
         except (AttributeError, ValueError):
             pass
     args = build_parser().parse_args(argv)
-    args.fn(args)
+    token = _identify(args)
+    try:
+        args.fn(args)
+    finally:
+        if token is not None:
+            from . import identity
+
+            identity.CURRENT.reset(token)
 
 
 if __name__ == "__main__":

@@ -20,7 +20,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from .. import timing
-from .. import asks, boardview as bv, sprints as sprintmod, people as peoplemod, search as srch, nav as navmod, buildstamp as bs, comments as cm, docs as docsmod, ops, profanity, review as rv, style as styles, tracks as trk, version as ver
+from .. import asks, boardview as bv, identity as idmod, sprints as sprintmod, people as peoplemod, search as srch, nav as navmod, buildstamp as bs, comments as cm, docs as docsmod, ops, profanity, review as rv, style as styles, tracks as trk, version as ver
 from ..config import find_home
 from ..rules import RuleError
 from ..store import Store, id_parts, split_profile
@@ -141,6 +141,41 @@ def why_text(home: Path) -> str:
     return "WHY.md not found: set DESK_REPO to your Desk repo."
 
 
+class IdentityMiddleware:
+    """Pure ASGI. Works out who is behind each request (DESK-0144) and keeps it for the request: `scope["state"]["actor"]` for the routes
+    and `identity.CURRENT` for every write. A browser that has no device cookie gets one, which names the browser as the instance."""
+
+    def __init__(self, app, find_store):
+        self.app, self.find_store = app, find_store
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http" or scope["path"].startswith(("/static", "/events")):
+            return await self.app(scope, receive, send)
+        raw = next((v.decode("latin-1") for k, v in scope.get("headers", []) if k == b"cookie"), "")
+        cookies = {k.strip(): v.strip() for k, _, v in (p.partition("=") for p in raw.split(";")) if k.strip()}
+        new_device = "" if cookies.get("desk_device") else secrets.token_hex(4)
+        if new_device:
+            cookies["desk_device"] = new_device
+        actor = idmod.resolve_ui(self.find_store(), cookies)
+        scope.setdefault("state", {})["actor"] = actor
+        token = idmod.CURRENT.set(actor)
+
+        async def send_wrapped(message):
+            if new_device and message["type"] == "http.response.start":
+                message = {**message, "headers": [*message.get("headers", []), (b"set-cookie", f"desk_device={new_device}; Path=/; SameSite=Lax; Max-Age=31536000".encode())]}
+            await send(message)
+
+        try:
+            await self.app(scope, receive, send_wrapped)
+        finally:
+            idmod.CURRENT.reset(token)
+
+
+def acting(request) -> "idmod.Actor":
+    """The resolved actor of this request (the store owner, assumed, when nothing could be worked out)."""
+    return request.scope.get("state", {}).get("actor") or idmod.Actor("desk", "person", "", "ui", "assumed-owner", False)
+
+
 def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastAPI:
     def who_html(key) -> Markup:
         """An owner or assignee as a colour dot and the display name from people.yaml; a value nobody listed renders as written."""
@@ -159,6 +194,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
     app = FastAPI(title="Desk", lifespan=lifespan)
     app.state.stopping = False
     app.add_middleware(timing.TimingMiddleware)
+    app.add_middleware(IdentityMiddleware, find_store=lambda: Store(home or find_home()))
     tokens = Tokens()
     app.state.tokens = tokens
     templates = Jinja2Templates(directory=str(TEMPLATES))
@@ -219,7 +255,10 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         done_kind = qp.get("done") or qp.get("ok") or ""
         events_url, events_since = kw.pop("events_url", ""), kw.pop("events_since", "")
         events = {"url": events_url, "since": events_since} if events_url and styles.load(st.home)["autorefresh"] else None
-        return {"build_stale": bs.stale(STAMP_DIR), "stale_text": bs.STALE_TEXT, "assign_dod": ops.ASSIGN_DOD, "events": events, "notice": notice(done_kind, qp.get("at", ""), int(qp.get("dup") or 0) if str(qp.get("dup") or "0").isdigit() else 0), "render": render, "comments_html": comments_html, "request": request, "owner": st.owner, "style": styles.load(st.home), "favicon": FAVICON, "home": str(st.home), "today": dt.date.today().isoformat(),
+        me = acting(request)
+        can_act = me.confirmed and me.name == st.owner
+        return {"me": me, "unnamed": idmod.unnamed(me), "can_act_as": can_act, "act_people": [p for p in peoplemod.load(st.home).list if p.key != st.owner] if can_act else [],
+                "build_stale": bs.stale(STAMP_DIR), "stale_text": bs.STALE_TEXT, "assign_dod": ops.ASSIGN_DOD, "events": events, "notice": notice(done_kind, qp.get("at", ""), int(qp.get("dup") or 0) if str(qp.get("dup") or "0").isdigit() else 0), "render": render, "comments_html": comments_html, "request": request, "owner": st.owner, "style": styles.load(st.home), "favicon": FAVICON, "home": str(st.home), "today": dt.date.today().isoformat(),
                 "titles": {k: st.project_title(k) for k in st.projects()}, **kw}
 
     held: OrderedDict[str, dict] = OrderedDict()  # unhandled errors a person may file as a bug, by one-time id
@@ -775,7 +814,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
                 raise ValueError(f"{to.strip()} is not in people.yaml. Pick someone from the list, or add them with `drew people init` and an edit.")
             s.sync_before()
             if to.strip():
-                ops.assign(s, t, to, actor=s.owner)
+                ops.assign(s, t, to, actor=acting(request).display())
             else:
                 ops.unassign(s, t, actor=s.owner)
             s.sync_after(f"desk: assign {t.id}")
@@ -839,6 +878,60 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
     posted: OrderedDict[str, tuple[str, int, "int | None"]] = OrderedDict()  # a post's key -> (ticket id, comment index, Acceptance line it put evidence on)
     post_lock = threading.Lock()
 
+    def comment_as(request: Request, s: Store, t, text: str, who: str, kind: str):
+        """Write a comment as the person behind the request. A name sent in the old `who` field is honoured for callers that are not the
+        page (a script), but is recorded as claimed, not confirmed (DESK-0144); the page itself has no author field."""
+        me = acting(request)
+        claimed = " ".join((who or "").split())
+        if claimed and claimed.lower() not in (me.name.lower(), me.display().lower()):
+            token = idmod.CURRENT.set(idmod.Actor(claimed, "person", me.instance, "ui", "claimed-in-request", False))
+            try:
+                return ops.comment(s, t, text, actor=claimed, kind=kind)
+            finally:
+                idmod.CURRENT.reset(token)
+        return ops.comment(s, t, text, actor=me.display(), kind=kind)
+
+    @app.get("/whoami", response_class=HTMLResponse)
+    def whoami_page(request: Request):
+        s = store()
+        return templates.TemplateResponse(request, "whoami.html", ctx(request, s, os_user=idmod.os_user(), people=peoplemod.load(s.home).list, s=s))
+
+    @app.post("/whoami")
+    def post_whoami(request: Request, pick: str = Form(""), new_name: str = Form(""), new_kind: str = Form("person"), token: str = Form("")):
+        """First run: say who this machine's user is, once. Written into people.yaml (os_users) and remembered in a cookie."""
+        if not tokens.use(token):
+            return _spent("")
+        s = store()
+        user = idmod.os_user()
+        try:
+            if new_name.strip():
+                key = re.sub(r"[^a-z0-9]+", "-", new_name.strip().lower()).strip("-")
+                peoplemod.add_person(s.home, key, new_name, new_kind, os_user=user)
+                pick = key
+            else:
+                peoplemod.link_os_user(s.home, pick, user)
+        except (KeyError, ValueError) as e:
+            return HTMLResponse(f"<p>{html.escape(str(e).strip(chr(39)))}</p><p><a href=\"/whoami\">Back</a></p>", status_code=422)
+        r = RedirectResponse("/", status_code=303)
+        r.set_cookie("desk_who", pick, max_age=31536000, samesite="lax")
+        return r
+
+    @app.post("/act-as")
+    def post_act_as(request: Request, person: str = Form(""), back: str = Form("/"), token: str = Form("")):
+        """The store owner may act as someone else; the record then reads `james (as chaz)`. Anyone else is refused."""
+        if not tokens.use(token):
+            return _spent("")
+        s = store()
+        me = acting(request)
+        if not (me.confirmed and me.name == s.owner):
+            return HTMLResponse("<p>Only the owner, once Desk knows who they are, can act as someone else.</p>", status_code=403)
+        r = RedirectResponse(back if back.startswith("/") and not back.startswith("//") else "/", status_code=303)
+        if person and peoplemod.load(s.home).get(person):
+            r.set_cookie("desk_act_as", peoplemod.load(s.home).get(person).key, samesite="lax")
+        else:
+            r.delete_cookie("desk_act_as")
+        return r
+
     @app.post("/ticket/{ticket_id}/comment")
     def post_comment(request: Request, ticket_id: str, text: str = Form(""), who: str = Form(""), token: str = Form(""),
                      evidence: list[str] = Form([]), line: str = Form(""), kind: str = Form("")):
@@ -854,7 +947,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
             try:
                 t = s.get(ticket_id)
                 s.sync_before()
-                res = ops.comment(s, t, text, actor=who or s.owner, kind=kind)
+                res = comment_as(request, s, t, text, who, kind)
                 if res.added:
                     s.sync_after(f"desk: comment {t.id}")
             except (KeyError, RuleError, ValueError) as e:
@@ -894,8 +987,8 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
                     rels = [f"assets/{t.id}/{n}" for n in names]
                     body = text.strip() + "".join(f" ![{Path(n).stem}]({r})" for n, r in zip(names, rels)) + (f" (Evidence for line {pick + 1})" if pick is not None else "")
                     s.sync_before()
-                    who_ = who or s.owner
-                    res = ops.comment(s, t, body, actor=who_, kind=kind)
+                    who_ = who or acting(request).display()
+                    res = comment_as(request, s, t, body, who, kind)
                     duplicate = not res.added
                     if pick is not None:
                         ops.add_evidence(s, t.id, "Acceptance", pick, rels)

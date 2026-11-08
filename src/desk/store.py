@@ -307,7 +307,11 @@ class Store:
         if ticket.path is None:
             ticket.path = self.path_for(ticket)
         self.tickets_dir.mkdir(parents=True, exist_ok=True)
-        return ticket.write()
+        path = ticket.write()
+        from . import identity  # every write records who made it (DESK-0144)
+
+        identity.record_write(self.home, ticket.id)
+        return path
 
     # -- derived -----------------------------------------------------------
     def is_stale(self, ticket: Ticket, on: dt.date | None = None) -> bool:
