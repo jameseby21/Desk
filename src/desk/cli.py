@@ -216,6 +216,31 @@ def cmd_comments(args):
         cm.mark_sweep(s.home)
 
 
+def cmd_needs_me(args):
+    from . import needs_me as nm
+
+    s = _store(args)
+    who = args.as_
+    if args.seen or args.seen_all:
+        every = nm.build(s, who)
+        want = {i.upper() for i in args.seen or []}
+        picked = [i.ticket for i in every if i.group == "change" and (args.seen_all or i.id in want)]
+        skipped = sorted(want - {t.id for t in picked})
+        n = nm.mark(s, picked)
+        print(f"marked {n} change(s) seen")
+        for i in skipped:
+            print(f"{i}: no change to mark seen (asks stay until you answer them)")
+        return
+    items = nm.build(s, who)
+    if args.json:
+        print(json.dumps([{"ticket": i.id, "title": str(i.ticket.meta.get("title") or ""), "group": i.group, "kind": i.kind, "why": i.why,
+                           "emergency": i.emergency} for i in items], indent=2, ensure_ascii=False))
+        return
+    for i in items:
+        print(f"{i.chip:<13} {i.id}  {i.ticket.meta.get('title')}{'  [EMERGENCY]' if i.emergency else ''}\n    {i.why}")
+    print(nm.summary(items) if items else nm.empty_words(styles.load(s.home)["name"])[0])
+
+
 def cmd_done(args):
     _write_cmd(args, lambda s, t: ops.done(s, t, args.commit), "done")
 
@@ -254,7 +279,7 @@ def cmd_comment(args):
     except (KeyError, RuleError, ValueError) as e:
         _die(str(e))
     if not res.added:
-        print(f"{res.id}: that comment is already on the ticket; nothing written")
+        print(f"{res.id}: {res.message.lower()}; nothing written")
         return
     s.sync_after(f"desk: comment {res.id}")
     print(f"{res.id} -> {res.status} ({screen(res.status)})")
@@ -795,6 +820,13 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--json", action="store_true", help="a JSON list: ticket, title, when, author, kind, text, answered")
     sp.add_argument("--mark-sweep", action="store_true", help="after listing, record now as the last sweep (alone: just record it)")
     sp.set_defaults(fn=cmd_comments)
+
+    sp = sub.add_parser("needs-me", help="the tickets with an ask for you, and those someone else changed since you last acted (reading does not count)")
+    sp.add_argument("--seen", nargs="+", metavar="ID", help="Mark seen: clear these changes without acting (asks stay)")
+    sp.add_argument("--seen-all", action="store_true", help="Mark all changes seen")
+    sp.add_argument("--json", action="store_true")
+    actor(sp)
+    sp.set_defaults(fn=cmd_needs_me)
 
     sp = sub.add_parser("validate", help="schema, lifecycle rules, dangling depends_on (exit 1 on errors)")
     sp.set_defaults(fn=cmd_validate)

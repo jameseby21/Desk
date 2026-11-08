@@ -2,6 +2,7 @@
 {% from "_card.html" import card %}
 {% from "_chips.html" import bar %}
 {% from "_mascot.html" import empty %}
+{% from "_needs_me.html" import block as needs_block with context %}
 {% block title %}Desk · Today{% endblock %}
 {% block body %}
 <div class="row" style="justify-content:space-between;align-items:flex-end">
@@ -26,6 +27,8 @@
 {% if review_line %}
 <p style="margin:14px 0 0"><span class="label">Ticket review</span> <a href="/ticket/{{ review_line[0].id }}">{{ review_line[0].meta.get('title') }}</a> · {{ review_line[1] }} waiting</p>
 {% endif %}
+
+{{ needs_block(nm, style, all_open_href, n_open, back) }}
 
 <div class="card asked" id="asked" style="margin:14px 0 0">
   <span class="label">{{ owner|capitalize }} asked</span>
