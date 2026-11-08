@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="214 60 176 186" role="img" aria-label="Soot, a black cat">
+  <title>Soot</title>
+  <path d="M225 182 248 70l53 42 55-42 22 112c-10 31-35 49-77 49s-67-18-76-49Z" fill="#141414"/>
+  <ellipse cx="274" cy="151" rx="11" ry="13" fill="#C8F03C"/><ellipse cx="329" cy="151" rx="11" ry="13" fill="#C8F03C"/>
+  <ellipse cx="274" cy="151" rx="3.5" ry="10" fill="#141414"/><ellipse cx="329" cy="151" rx="3.5" ry="10" fill="#141414"/>
+  <path d="m292 172 9 8 9-8Z" fill="#FF8FA0"/>
+  <path d="M262 180 L218 172 M262 188 L220 194 M340 180 L386 172 M340 188 L384 194" stroke="#9A988F" stroke-width="3" stroke-linecap="round"/>
+</svg>

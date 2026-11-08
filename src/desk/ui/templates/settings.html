@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Settings{% endblock %}
+{% block body %}
+<h1>Settings</h1>
+{% if saved %}<p role="status" class="chip ball">Saved</p>{% endif %}
+<form method="post" action="/settings" class="radios">
+  <fieldset style="border:1px solid var(--line);border-radius:14px;max-width:70ch">
+    <legend class="label">Style</legend>
+    {% for n, d in (("plain", "Plain: the Desk ball, no mascots"), ("dogs", "Dogs: a dog in empty states"), ("cat", "Cat: Soot in empty states")) %}
+    <label><input type="radio" name="name" value="{{ n }}"{% if style.name == n %} checked{% endif %}>{{ d }}</label>
+    {% endfor %}
+  </fieldset>
+  <fieldset style="border:1px solid var(--line);border-radius:14px;max-width:70ch;margin-top:14px">
+    <legend class="label">Which dog (Dogs only)</legend>
+    {% for d in dogs %}<label><input type="radio" name="dog" value="{{ d }}"{% if style.dog == d %} checked{% endif %}>{{ d|capitalize }}</label>{% endfor %}
+  </fieldset>
+  <p><button class="btn ball" type="submit">Save</button></p>
+</form>
+{% endblock %}

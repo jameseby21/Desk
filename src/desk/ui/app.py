@@ -13,16 +13,25 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from .. import ops, review as rv
+from .. import ops, review as rv, style as styles
 from ..config import find_home
 from ..rules import RuleError
 from ..store import Store, id_parts
 from ..ticket import SECTIONS, STATUSES
 from ..words import screen
+from urllib.parse import quote
+
 from .markdown import has_mermaid, render as md_html
 
 TEMPLATES = Path(__file__).parent / "templates"
 STATIC = Path(__file__).parent / "static"
+CONTENT = Path(__file__).parent / "content"
+_MARK = ('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><style>.b{fill:#141414}'
+         '@media(prefers-color-scheme:dark){.b{fill:#F5F3EC}}</style><rect class="b" width="64" height="64" rx="14"/>'
+         '<circle cx="32" cy="32" r="19" fill="#C8F03C"/><path d="M14.5 26c6 1.5 9.5 6 9.5 12M49.5 38c-6-1.5-9.5-6-9.5-12" fill="none" '
+         'stroke="#fff" stroke-width="2.4" stroke-linecap="round"/><path d="M23 32.5l6.5 6.5L42 25" fill="none" stroke="#141414" stroke-width="4.6" '
+         'stroke-linecap="round" stroke-linejoin="round"/></svg>')
+FAVICON = quote(_MARK, safe="")
 MERMAID_CDN = "https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js"
 COMBO_WINDOW = dt.timedelta(minutes=30)
 BRAND_TYPES = {".svg", ".png", ".jpg", ".jpeg", ".webp", ".gif"}
@@ -80,7 +89,7 @@ def create_app(home: Path | None = None) -> FastAPI:
             actions = (lambda i, status: review_actions(i, status, t.id)) if check and rv.is_review_ticket(t) else None
             return md_html(text, known=known, check=check, actions=actions)
 
-        return {"render": render, "request": request, "owner": st.owner, "home": str(st.home), "today": dt.date.today().isoformat(),
+        return {"render": render, "request": request, "owner": st.owner, "style": styles.load(st.home), "favicon": FAVICON, "home": str(st.home), "today": dt.date.today().isoformat(),
                 "titles": {k: st.project_title(k) for k in st.projects()}, **kw}
 
     @app.get("/", response_class=HTMLResponse)
@@ -102,6 +111,23 @@ def create_app(home: Path | None = None) -> FastAPI:
         return templates.TemplateResponse(request, "today.html", ctx(request, s, mouth=by_project(mouth), feet=by_project(feet + decisions),
                                                              others=by_project(others), stale=by_project(stale),
                                                              decided=by_project(decided), cap=cap, s=s, combos=combos, review_line=review_line))
+
+    @app.get("/about", response_class=HTMLResponse)
+    def about(request: Request):
+        text = (CONTENT / "WHY.md").read_text(encoding="utf-8")
+        return templates.TemplateResponse(request, "about.html", ctx(request, store(), body=md_html(text)))
+
+    @app.get("/settings", response_class=HTMLResponse)
+    def settings(request: Request, saved: int = 0):
+        return templates.TemplateResponse(request, "settings.html", ctx(request, store(), saved=bool(saved), styles=styles.STYLES, dogs=styles.DOGS))
+
+    @app.post("/settings")
+    def post_settings(name: str = Form("plain"), dog: str = Form("drew")):
+        try:
+            styles.save(store().home, name, dog)
+        except ValueError:
+            return HTMLResponse("<p>Unknown style</p>", status_code=400)
+        return RedirectResponse("/settings?saved=1", status_code=303)
 
     @app.get("/board", response_class=HTMLResponse)
     def board(request: Request, project: str | None = None):

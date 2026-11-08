@@ -1,0 +1,10 @@
+{% macro mascot(style, size=64) -%}
+{%- if style.mascot -%}
+<picture><source srcset="/static/mascots/{{ style.mascot }}-dark.svg" media="(prefers-color-scheme: dark)"><img src="/static/mascots/{{ style.mascot }}-light.svg" width="{{ size }}" height="{{ size }}" alt="" class="mascot"></picture>
+{%- else -%}
+<svg width="{{ size }}" height="{{ size }}" viewBox="0 0 64 64" aria-hidden="true"><circle cx="32" cy="32" r="19" fill="#C8F03C" stroke="currentColor" stroke-width="2"/><path d="M23 32.5l6.5 6.5L42 25" fill="none" stroke="currentColor" stroke-width="4.6" stroke-linecap="round" stroke-linejoin="round"/></svg>
+{%- endif -%}
+{%- endmacro %}
+{% macro empty(style, text) -%}<div class="empty">{{ mascot(style) }}<p>{{ text }}</p></div>{%- endmacro %}
+{% macro loading(style, text="Fetching...") -%}<div class="loading" role="status">{{ mascot(style, 48) }}<span>{{ text }}</span></div>{%- endmacro %}
+{% macro lesson(style, text) -%}<aside class="callout">{{ mascot(style, 48) }}<p style="margin:0">{{ text }}</p></aside>{%- endmacro %}

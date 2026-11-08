@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% from "_card.html" import card %}
+{% from "_mascot.html" import empty %}
 {% block title %}Desk · Today{% endblock %}
 {% block body %}
 <div class="row" style="justify-content:space-between;align-items:flex-end">
@@ -33,15 +34,15 @@
 
 <h2>In your mouth <small>Claimed or being fetched. One ball per person or agent.</small></h2>
 {% if mouth %}<div class="grid">{% for t in mouth %}{{ card(t, s, hold=True) }}{% endfor %}</div>
-{% else %}<p class="muted">Nothing is being fetched right now.</p>{% endif %}
+{% else %}{{ empty(style, "Nothing is being fetched right now.") }}{% endif %}
 
 <h2>Dropped at your feet <small>Proof attached, or a decision to make. Nothing moves until you say so, in so many words.</small></h2>
 {% if feet %}<div class="grid">{% for t in feet %}{{ card(t, s) }}{% endfor %}</div>
-{% else %}<p class="muted">Nothing is waiting on you.</p>{% endif %}
+{% else %}{{ empty(style, "Nothing is waiting on you.") }}{% endif %}
 
 <h2>Other balls in play <small>Thrown, stuck, sent back or approved and waiting for a merge.</small></h2>
 {% if others %}<div class="grid">{% for t in others %}{{ card(t, s) }}{% endfor %}</div>
-{% else %}<p class="muted">The queue is empty.</p>{% endif %}
+{% else %}{{ empty(style, "The queue is empty.") }}{% endif %}
 
 {% if stale %}
 <h2>Chewed back <small>Untouched past the stale window. Keep each with a reason, or let it go with one.</small></h2>
@@ -53,5 +54,5 @@
 <table><tr><th>Ticket</th><th>Status</th><th>Decision</th></tr>
 {% for t in decided %}<tr><td><a href="/ticket/{{ t.id }}">{{ t.id }}</a> · {{ t.meta.get('title') }}</td><td>{{ screen(t.status) }}</td><td style="font-size:13px">{{ (t.section('Decision').splitlines() or [''])[-1] }}</td></tr>{% endfor %}
 </table>
-{% else %}<p class="muted">No decisions recorded in the last seven days.</p>{% endif %}
+{% else %}{{ empty(style, "No decisions recorded in the last seven days.") }}{% endif %}
 {% endblock %}
