@@ -121,7 +121,9 @@ def measure_in_browser(html: str, width: int, timeout: float = 60) -> dict:
 
     class H(http.server.BaseHTTPRequestHandler):
         def do_GET(self):
-            body = html.encode("utf-8")
+            # the page sits in an iframe of exactly `width` px, because a browser window will not shrink below about 500 px
+            body = (html if self.path.startswith("/page.html") else
+                    f'<!doctype html><body style="margin:0"><iframe src="/page.html" style="width:{width}px;height:1400px;border:0"></iframe>').encode("utf-8")
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
@@ -143,7 +145,7 @@ def measure_in_browser(html: str, width: int, timeout: float = 60) -> dict:
     proc = None
     try:
         proc = subprocess.Popen([_browser(), "--headless=new", "--disable-gpu", "--no-first-run", "--disable-extensions", f"--user-data-dir={tmp / 'profile'}",
-                                 f"--window-size={width},1400", f"http://127.0.0.1:{srv.server_address[1]}/page.html"],
+                                 "--window-size=1400,1500", f"http://127.0.0.1:{srv.server_address[1]}/frame.html"],
                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         assert ev.wait(timeout), "the browser did not run the measuring script"
     finally:
