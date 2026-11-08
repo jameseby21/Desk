@@ -192,6 +192,27 @@ def cmd_validate(args):
     sys.exit(1 if errors else 0)
 
 
+def cmd_brand_check(args):
+    from . import brand
+
+    s = _store(args)
+    rows = brand.missing(s)
+    for key, reason in rows:
+        print(f"{key}: {reason}")
+    print(f"{len(rows)} project(s) without a usable brand")
+    if args.create:
+        s.sync_before()
+        try:
+            created, skipped = brand.create(s, assignee=args.assignee)
+        except (RuleError, ValueError) as e:
+            _die(str(e))
+        s.sync_after("desk: brand-check")
+        for i in created:
+            print(f"created {i}")
+        for i in skipped:
+            print(f"already open {i}")
+
+
 def cmd_index(args):
     s = _store(args)
     print(s.index())
@@ -438,6 +459,11 @@ def build_parser() -> argparse.ArgumentParser:
 
     sp = sub.add_parser("validate", help="schema, lifecycle rules, dangling depends_on (exit 1 on errors)")
     sp.set_defaults(fn=cmd_validate)
+
+    sp = sub.add_parser("brand-check", help="projects with no brand block or a missing mark file; --create opens a ticket for each")
+    sp.add_argument("--create", action="store_true", help="open one chore per missing project in project `brand`")
+    sp.add_argument("--assignee", default="chaz")
+    sp.set_defaults(fn=cmd_brand_check)
 
     sp = sub.add_parser("index", help="rebuild .desk/index.sqlite from the files")
     sp.set_defaults(fn=cmd_index)

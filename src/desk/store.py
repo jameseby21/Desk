@@ -73,6 +73,7 @@ class Store:
         self.projects_dir = self.home / "projects"
         self.intake_dir = self.home / "intake"
         self.assets_dir = self.tickets_dir / "assets"
+        self.brand_dir = self.home / "assets" / "brand"
         self.index_path = self.home / ".desk" / "index.sqlite"
 
     # -- setup -------------------------------------------------------------
@@ -128,6 +129,25 @@ class Store:
         if not path:
             return {}, ""
         return split_profile(path.read_text(encoding="utf-8"))
+
+    def brand_for(self, project: str) -> dict | None:
+        """{'mark_url', 'accent', 'family'} for a project whose profile has a `brand:` block, else None.
+        mark_url is None when the mark file is missing; the block still counts as present."""
+        meta, _ = self.project_profile(project)
+        b = meta.get("brand")
+        if isinstance(b, str):
+            try:
+                b = yaml.safe_load(b)
+            except yaml.YAMLError:
+                b = None
+        if not isinstance(b, dict):
+            return None
+        mark = str(b.get("mark") or "").replace("\\", "/")
+        url = None
+        if mark and (self.home / mark).is_file():
+            root = "assets/brand/"
+            url = "/brand/" + (mark[len(root):] if mark.startswith(root) else mark)
+        return {"mark_url": url, "mark": mark, "accent": str(b.get("accent") or ""), "family": str(b.get("family") or "")}
 
     def project_title(self, key: str) -> str:
         meta, body = self.project_profile(key)

@@ -76,6 +76,22 @@ def _plain(v):
     return v
 
 
+_CHECK = re.compile(r"^(\s*(?:[-*+]|\d+[.)])\s+\[)( |x|X)(\]\s)")
+
+
+def check_lines(text: str) -> list[tuple[int, bool]]:
+    """(line number, checked) for every checkbox line in a section's text, fenced code skipped."""
+    out, fence = [], False
+    for n, line in enumerate((text or "").split("\n")):
+        if line.lstrip().startswith(("```", "~~~")):
+            fence = not fence
+        elif not fence:
+            m = _CHECK.match(line)
+            if m:
+                out.append((n, m.group(2) != " "))
+    return out
+
+
 def slugify(text: str, limit: int = 48) -> str:
     s = re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
     return s[:limit].rstrip("-") or "ticket"

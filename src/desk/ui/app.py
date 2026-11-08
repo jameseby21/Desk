@@ -25,6 +25,7 @@ TEMPLATES = Path(__file__).parent / "templates"
 STATIC = Path(__file__).parent / "static"
 MERMAID_CDN = "https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js"
 COMBO_WINDOW = dt.timedelta(minutes=30)
+BRAND_TYPES = {".svg", ".png", ".jpg", ".jpeg", ".webp", ".gif"}
 _ASSET_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._ -]*$")
 
 
@@ -68,7 +69,18 @@ def create_app(home: Path | None = None) -> FastAPI:
         return Store(home or find_home())
 
     def ctx(request: Request, st: Store, **kw) -> dict:
-        return {"request": request, "owner": st.owner, "home": str(st.home), "today": dt.date.today().isoformat(),
+        known = None
+
+        def render(text, t=None, section=None):
+            """Section markdown with ticket-id links; with `t` and `section`, checkboxes are live."""
+            nonlocal known
+            if known is None:
+                known = {x.id: (x.meta.get("title", ""), x.status) for x in st.tickets()}
+            check = {"id": t.id, "section": section} if t is not None and section in ops.CHECK_SECTIONS else None
+            actions = (lambda i, status: review_actions(i, status, t.id)) if check and rv.is_review_ticket(t) else None
+            return md_html(text, known=known, check=check, actions=actions)
+
+        return {"render": render, "request": request, "owner": st.owner, "home": str(st.home), "today": dt.date.today().isoformat(),
                 "titles": {k: st.project_title(k) for k in st.projects()}, **kw}
 
     @app.get("/", response_class=HTMLResponse)
@@ -125,8 +137,32 @@ def create_app(home: Path | None = None) -> FastAPI:
             dep = by_id.get(str(d))
             deps.append((str(d), dep.status if dep else "missing"))
         mermaid = any(has_mermaid(t.section(name)) for name in t.sections)
-        return templates.TemplateResponse(request, "ticket.html", ctx(request, s, t=t, deps=deps, stale=s.is_stale(t), error=error,
+        return templates.TemplateResponse(request, "ticket.html", ctx(request, s, t=t, deps=deps, stale=s.is_stale(t), error=error, s=s,
                                                              formerly=s.formerly(t), mermaid=mermaid))
+
+    def review_actions(tid: str, status: str, review_id: str) -> str:
+        e = html.escape
+        out = f' <a class="rv-open" href="/ticket/{e(tid)}">Open</a>'
+        if status == "review":
+            for action, label in (("approve", "Approve"), ("changes", "Send back")):
+                out += (f'<form class="rv-form" method="post" action="/ticket/{e(tid)}/decide">'
+                        f'<input type="hidden" name="action" value="{action}"><input type="hidden" name="next" value="/ticket/{e(review_id)}">'
+                        f'<input type="text" name="words" placeholder="{"why not" if action == "changes" else "in your words"}" required minlength="4">'
+                        f'<button class="btn small" type="submit">{label}</button></form>')
+        return out
+
+    @app.get("/brand/{path:path}")
+    def brand_asset(path: str):
+        s = store()
+        root = s.brand_dir.resolve()
+        try:
+            target = (root / path).resolve()
+            target.relative_to(root)
+        except (ValueError, OSError):
+            return HTMLResponse("<p>No such asset</p>", status_code=404)
+        if not target.is_file() or target.suffix.lower() not in BRAND_TYPES:
+            return HTMLResponse("<p>No such asset</p>", status_code=404)
+        return FileResponse(str(target), headers={"Content-Security-Policy": "default-src 'none'; style-src 'unsafe-inline'"})
 
     @app.get("/assets/{ticket_id}/{filename}")
     def asset(ticket_id: str, filename: str):
@@ -139,18 +175,29 @@ def create_app(home: Path | None = None) -> FastAPI:
             return HTMLResponse("<p>No such asset</p>", status_code=404)
         return FileResponse(str(target))
 
-    def _back(t_id: str, error: str | None = None) -> RedirectResponse:
-        url = f"/ticket/{t_id}" + (f"?error={html.escape(error)}" if error else "")
+    def _back(t_id: str, error: str | None = None, next_: str = "") -> RedirectResponse:
+        url = next_ if re.fullmatch(r"/ticket/[A-Za-z0-9-]+", next_) else f"/ticket/{t_id}" + (f"?error={html.escape(error)}" if error else "")
         return RedirectResponse(url, status_code=303)
 
     @app.post("/ticket/{ticket_id}/decide")
-    def post_decide(ticket_id: str, action: str = Form(...), words: str = Form("")):
+    def post_decide(ticket_id: str, action: str = Form(...), words: str = Form(""), next: str = Form("")):
         s = store()
         try:
             t = s.get(ticket_id)
             s.sync_before()
             ops.decide(s, t, approve=(action == "approve"), reason=words, actor=s.owner)
             s.sync_after(f"desk: decide {t.id}")
+        except (KeyError, RuleError, ValueError) as e:
+            return _back(ticket_id, str(e), next)
+        return _back(ticket_id, None, next)
+
+    @app.post("/ticket/{ticket_id}/check")
+    def post_check(ticket_id: str, section: str = Form(...), index: int = Form(...), checked: int = Form(...)):
+        s = store()
+        try:
+            s.sync_before()
+            t = ops.toggle_check(s, ticket_id, section, index, bool(checked), actor=s.owner)
+            s.sync_after(f"desk: check {t.id}")
         except (KeyError, RuleError, ValueError) as e:
             return _back(ticket_id, str(e))
         return _back(ticket_id)

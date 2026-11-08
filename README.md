@@ -228,3 +228,9 @@ uv run pytest
 ## License
 
 MIT, copyright JA Insights LLC.
+
+## UI links, checkboxes and brand
+
+- Ticket ids that exist in the store (`ABC-0001`) render as links with the ticket's title on hover; files are never changed.
+- Acceptance, Prompt and Evidence checkboxes are clickable in the UI (`POST /ticket/<ID>/check`, `ops.toggle_check`). On a review-week ticket each line also gets Open, Approve and Send back.
+- A project profile may carry `brand: {mark: "assets/brand/<key>/mark.svg", accent: "#B3121A", family: "JA Insights"}`. `assets/brand/` is served at `/brand/<path>`. `drew brand-check [--create] [--assignee chaz]` lists projects with no usable brand and can open one ticket each in project `brand`; `drew validate` warns for projects without a brand block.

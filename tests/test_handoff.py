@@ -20,7 +20,7 @@ def test_optional_handoff_fields_validate_when_present(store):
     b.meta.update({"blocks": [a.id], "related": [a.id], "cloned_from": a.id, "done_at": "2026-11-08", "evidence": "commit abc123, 3 tests"})
     store.save(b)
     errors, warnings = validate_store(store)
-    assert errors == [] and warnings == []
+    assert errors == [] and [w for w in warnings if "no brand block" not in w] == []
     text = b.path.read_text(encoding="utf-8")
     assert "assignee: codex" in text and "blocks: [JRE-0001]" in text and "done_at: 2026-11-08" in text
 
