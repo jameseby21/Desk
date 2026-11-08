@@ -306,7 +306,7 @@ def render(text: str, *, known: dict | None = None, check: dict | None = None, a
         tok = lambda: check["token"]() if check.get("token") else ""  # noqa: E731
 
         def head():  # every form has its own one-time token
-            return (f'<form class="chk post-once" method="post" action="/ticket/{tid}/check"><input type="hidden" name="token" value="{tok()}">'
+            return (f'<form class="chk post-once" method="post" action="/ticket/{tid}/check" data-progress="Sending,Saving,Done"><input type="hidden" name="token" value="{tok()}">'
                     f'<input type="hidden" name="section" value="{sec}"><input type="hidden" name="index" value="{i}">')
 
         done = (f'{head()}<input type="hidden" name="state" value="{press(st, "done")[0]}"><button type="submit" class="hit" data-act="done" '

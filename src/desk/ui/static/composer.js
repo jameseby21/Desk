@@ -4,14 +4,15 @@
 (function () {
   "use strict";
   var form = document.getElementById("composer");
-  if (!form || !window.fetch) return;
+  var P = window.DeskProgress;
+  if (!form || !window.fetch || !P) return;
   var ta = form.querySelector("textarea[name=text]"), btn = form.querySelector(".post-btn"), status = document.getElementById("post-status");
   var list = document.querySelector("[data-comments]"), key = form.querySelector("[name=token]");
   var strip = document.getElementById("shots"), evline = document.getElementById("evline"), pick = form.querySelector("select[name=line]");
   var note = document.getElementById("attach-note");
   var idle = btn.textContent.trim(), posting = form.getAttribute("data-posting") || "Posting…";
   var FAILED = "Couldn't post: Desk didn't answer. Your text is still here.";
-  var busy = false, shots = [];
+  var busy = false, shots = [], slot = form.querySelector(".dp-slot"), prog = null;
 
   function say(msg, kind) { status.textContent = msg || ""; status.className = "post-status" + (kind ? " " + kind : ""); form.classList.toggle("failed", kind === "bad"); }
   function tell(msg, bad) { if (note) { note.textContent = msg || ""; note.className = "attach-note" + (bad ? " err" : ""); } }
@@ -39,21 +40,19 @@
   /* A post ends in one of two visible ways: Posted (the comment is on the page, highlighted for 2 s, the box is empty), or a failure
      sentence with the draft and screenshots untouched and the button reading Try again. No answer within data-timeout-ms (10 s) is a
      failure, and because the key is unchanged, Try again returns the comment if Desk did store it after all. */
-  function fail(msg) { lock(false); idle = "Try again"; btn.textContent = idle; say(msg || FAILED, "bad"); }
+  function fail(msg) { if (prog) prog.fail(msg || FAILED); lock(false); idle = "Try again"; btn.textContent = idle; say(msg || FAILED, "bad"); }
   function send() {
     if (busy) return;  // the first click did it; more clicks while it is out do nothing
     if (!ta.value.trim() && !shots.length) { say("Write something first.", "bad"); ta.focus(); return; }
     var fd = new FormData(form), ms = parseInt(form.getAttribute("data-timeout-ms"), 10) || 10000;
     shots.forEach(function (s) { fd.append("evidence", s.name); });
-    var ctl = window.AbortController ? new AbortController() : null, timer = setTimeout(function () { if (ctl) ctl.abort(); }, ms);
     lock(true); say(posting);
-    fetch(form.action, { method: "POST", body: fd, headers: { "Accept": "application/json" }, signal: ctl ? ctl.signal : undefined })
-      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }, function () { return { ok: false, j: {} }; }); })
+    prog = P.start(slot, { steps: P.stepsOf(form), msgEl: document.createElement("span") });  // the sentence is the status line; the bar is this component's
+    P.post(form.action, fd, { progress: prog, timeoutMs: ms })
       .then(function (x) {
-        clearTimeout(timer);
         if (x.j.token) key.value = x.j.token;  // a refused key (out of date) comes with a fresh one
         if (!x.ok) { fail(x.j.error ? "Couldn't post: " + x.j.error + " Your text is still here." : FAILED); return; }
-        lock(false); idle = "Post"; btn.textContent = idle;
+        prog.done(); lock(false); idle = "Post"; btn.textContent = idle;
         list.innerHTML = x.j.html;
         if (x.j.check_html) {  // the post also put evidence on an Acceptance line
           var host = document.querySelector('[data-check-section="Acceptance"]'), sum = document.getElementById("chk-summary");
@@ -65,7 +64,7 @@
         ta.value = ""; shots = []; drawShots(); tell("");
         say(x.j.duplicate ? "That comment is already on the ticket." : "Posted", "ok");
       })
-      .catch(function () { clearTimeout(timer); fail(FAILED); });
+      .catch(function () { fail(FAILED); });
   }
   /* Ctrl Enter (Cmd Enter on a Mac) posts through the same single-shot path as the button. Plain Enter is a new line. */
   form.addEventListener("keydown", function (e) {

@@ -22,6 +22,7 @@
 {% block body %}{% endblock %}
 </main>
 <footer><a href="/about">About Desk: why it counts proof</a> · <span class="build">{{ build }}</span></footer>
+<script src="/static/progress.js"></script>
 <script>
 /* A page that saves in place (check boxes, comments) tells the auto-refresh the file stamp of its own write, so it does not reload itself. */
 window.DeskLive = { own: "0", mine: function (stamp) { if (stamp && BigInt(stamp) > BigInt(this.own)) this.own = String(stamp); } };
@@ -60,7 +61,7 @@ window.addEventListener("pageshow", function () {
   es.addEventListener("change", function (e) {
     try { if (e.data && BigInt(e.data) <= BigInt(window.DeskLive.own)) return; } catch (err) { /* old browser: fall through to a reload */ }
     if (typing()) { bar.hidden = false; return; }
-    location.reload();
+    if (window.DeskProgress) DeskProgress.reload(); else location.reload();  // the same place on the page afterwards
   });
   window.addEventListener("pagehide", function () { es.close(); });
 })();

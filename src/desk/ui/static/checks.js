@@ -80,7 +80,8 @@
   }
   document.addEventListener("submit", function (e) {
     var f = e.target;
-    if (!window.fetch || !f.classList || !f.classList.contains("chk")) return;
+    var P = window.DeskProgress;
+    if (!window.fetch || !P || !f.classList || !f.classList.contains("chk")) return;
     var host = f.closest("[data-check-section]"); if (!host) return;
     e.preventDefault(); e.stopImmediatePropagation();
     if (f.getAttribute("data-busy")) return;  // a second click while the first is out does nothing
@@ -90,25 +91,28 @@
     var btns = host.querySelectorAll("button"); btns.forEach(function (b) { b.disabled = true; });
     host.setAttribute("aria-busy", "true"); say(host, "");
     function done() { f.removeAttribute("data-busy"); host.removeAttribute("aria-busy"); }
-    fetch(f.action, { method: "POST", body: fd, headers: { "Accept": "application/json" } })
-      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }, function () { return { ok: false, j: {} }; }); })
+    var prog = P.start(P.floater(), { steps: P.stepsOf(f), floating: true });  // a pill at the bottom of the window: it never moves the page
+    P.post(f.action, fd, { progress: prog, timeoutMs: 30000 })
       .then(function (x) {
         if (!x.ok) {
           btns.forEach(function (b) { b.disabled = false; });
           var err = f.querySelector(".nr-err"), msg = x.j.error || "Desk could not save that. Nothing was changed.";
           if (err) { err.textContent = msg; } else { say(host, msg); }
+          prog.fail(msg);
           return done();
         }
+        prog.done("Saved.");
         host.innerHTML = x.j.html;
         var sum = document.getElementById("chk-summary"); if (sum && host.getAttribute("data-check-section") === "Acceptance") sum.innerHTML = x.j.summary_html;
         if (window.DeskLive) window.DeskLive.mine(x.j.stamp);
         var li = host.querySelectorAll("li.task-list-item")[parseInt(idx, 10)];
-        if (li) li.focus();
+        if (li) li.focus({ preventScroll: true });
         done();
       })
-      .catch(function () {
+      .catch(function (err) {
         btns.forEach(function (b) { b.disabled = false; });
-        say(host, "Could not reach Desk. Nothing was changed.");
+        var msg = P.failText(null, err);
+        say(host, msg); prog.fail(msg);
         done();
       });
   }, true);

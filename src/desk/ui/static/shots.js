@@ -7,22 +7,29 @@
   var TYPES = "PNG, JPEG, WebP or GIF";
 
   function upload(el, file) {
-    var fd = new FormData();
+    var fd = new FormData(), P = window.DeskProgress;
     fd.append("file", file, file.name || "image.png"); fd.append("token", el.getAttribute("data-token"));
-    return fetch(el.getAttribute("data-attach"), { method: "POST", body: fd, headers: { "Accept": "application/json" } })
-      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }, function () { return { ok: false, j: {} }; }); })
+    var prog = P ? P.start(P.slotFor(el), { steps: ["Uploading", "Saving", "Done"] }) : null;  // the bar follows the bytes actually sent
+    return send(el.getAttribute("data-attach"), fd, prog)
       .then(function (x) {
         if (x.j.token) el.setAttribute("data-token", x.j.token);
-        if (!x.ok) throw new Error(x.j.error || "The upload failed. Only " + TYPES + " images are accepted.");
+        if (!x.ok) { var m = x.j.error || "The upload failed. Only " + TYPES + " images are accepted."; if (prog) prog.fail(m); throw new Error(m); }
+        if (prog) prog.done("Attached.");
         return { name: x.j.name, rel: x.j.rel, url: x.j.url, size: file.size };
-      }, function () { throw new Error("The upload failed: could not reach Desk."); });
+      }, function () { var m = "The upload failed: could not reach Desk."; if (prog) prog.fail(m); throw new Error(m); });
+  }
+
+  /* POST through the shared progress component when it is on the page, else plain fetch. */
+  function send(url, fd, prog) {
+    if (window.DeskProgress) return window.DeskProgress.post(url, fd, { progress: prog });
+    return fetch(url, { method: "POST", body: fd, headers: { "Accept": "application/json" } })
+      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }, function () { return { ok: false, j: {} }; }); });
   }
 
   function remove(el, name) {
     var fd = new FormData();
     fd.append("name", name); fd.append("token", el.getAttribute("data-token"));
-    return fetch(el.getAttribute("data-attach") + "/remove", { method: "POST", body: fd, headers: { "Accept": "application/json" } })
-      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }, function () { return { ok: false, j: {} }; }); })
+    return send(el.getAttribute("data-attach") + "/remove", fd, null)
       .then(function (x) {
         if (x.j.token) el.setAttribute("data-token", x.j.token);
         if (!x.ok) throw new Error(x.j.error || "Could not remove that screenshot.");

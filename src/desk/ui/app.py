@@ -45,6 +45,7 @@ FAVICON = quote(_MARK, safe="")
 MERMAID_CDN = "https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js"
 COMBO_WINDOW = dt.timedelta(minutes=30)
 BRAND_TYPES = {".svg", ".png", ".jpg", ".jpeg", ".webp", ".gif"}
+_SECTION_ANCHOR = {"Acceptance": "acceptance", "How to validate": "validate", "Evidence": "evidence", "Prompt": "prompt"}  # where a check box sits on the page
 _ASSET_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._ -]*$")
 IMAGE_TYPES = "PNG, JPEG, WebP or GIF"
 
@@ -219,7 +220,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         return error_page(
             f'<h1>Desk hit a bug</h1><p><b>{e(info["type"])}</b>: {e(info["message"])}</p>'
             f'<p>On <code>{e(info["method"])} {e(info["route"])}</code></p><p>First frame: <code>{e(info["frame"])}</code></p>'
-            f'<form method="post" action="/bugs/file"><input type="hidden" name="eid" value="{e(eid)}">'
+            f'<form method="post" action="/bugs/file" data-progress="none"><input type="hidden" name="eid" value="{e(eid)}">'
             '<button type="submit" style="font:inherit;padding:8px 16px">File as a bug</button></form>'
             '<p><a href="/">Back to Today</a></p>', 500)
 
@@ -305,11 +306,16 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         return templates.TemplateResponse(request, "settings.html", ctx(request, store(), saved=bool(saved), styles=styles.STYLES, dogs=styles.DOGS))
 
     @app.post("/settings")
-    def post_settings(name: str = Form("plain"), dog: str = Form("drew"), profanity: str = Form("on"), autorefresh: str = Form("on")):
+    def post_settings(request: Request, name: str = Form("plain"), dog: str = Form("drew"), profanity: str = Form("on"), autorefresh: str = Form("on")):
+        js = "application/json" in request.headers.get("accept", "")
         try:
             styles.save(store().home, name, dog, profanity != "off", autorefresh != "off")
         except ValueError:
+            if js:
+                return JSONResponse({"error": "That style is not one Desk knows. Reload the page and pick again."}, status_code=400)
             return HTMLResponse("<p>Unknown style</p>", status_code=400)
+        if js:
+            return JSONResponse({"ok": True, "message": "Saved. Other pages show it the next time you open them."})
         return RedirectResponse("/settings?saved=1", status_code=303)
 
     @app.get("/board", response_class=HTMLResponse)
@@ -437,7 +443,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         out = f' <a class="rv-open" href="/ticket/{e(tid)}">Open</a>'
         if status == "review":
             for action, label in (("approve", "Approve"), ("changes", "Send back")):
-                out += (f'<form class="rv-form post-once" method="post" action="/ticket/{e(tid)}/decide">'
+                out += (f'<form class="rv-form post-once" method="post" action="/ticket/{e(tid)}/decide" data-inplace="refresh" data-progress="Sending,Saving,Done">'
                         f'<input type="hidden" name="token" value="{tokens.issue()}"><input type="hidden" name="action" value="{action}"><input type="hidden" name="next" value="/ticket/{e(review_id)}">'
                         f'<input type="text" name="words" placeholder="{"why not" if action == "changes" else "in your words"}" required minlength="4">'
                         f'<button class="btn small" type="submit">{label}</button></form>')
@@ -467,11 +473,14 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
             return HTMLResponse("<p>No such asset</p>", status_code=404)
         return FileResponse(str(target))
 
-    def _back(t_id: str, error: str | None = None, next_: str = "", ok: str = "", dup: bool = False) -> RedirectResponse:
+    def _back(t_id: str, error: str | None = None, next_: str = "", ok: str = "", dup: bool = False, anchor: str = "") -> RedirectResponse:
+        """The no-JavaScript fallback of every form: redirect back to the ticket at the part of the page the form sits in (#comments,
+        #acceptance, ...), so the browser lands where the person was and not at the top (DESK-0141)."""
+        frag = f"#{anchor}" if anchor else ""
         if next_ and re.fullmatch(r"/ticket/[A-Za-z0-9-]+", next_):
             if ok and not error:  # review-week actions come back to the review ticket with the same confirmation line
-                return RedirectResponse(f"{next_}?done={ok}&at={dt.datetime.now().strftime('%H:%M')}", status_code=303)
-            return RedirectResponse(next_, status_code=303)
+                return RedirectResponse(f"{next_}?done={ok}&at={dt.datetime.now().strftime('%H:%M')}{frag}", status_code=303)
+            return RedirectResponse(next_ + frag, status_code=303)
         url = f"/ticket/{t_id}"
         if error:
             url += f"?error={quote(error)}"
@@ -479,7 +488,15 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
             url += "?dup=1"
         elif ok:
             url += f"?done={ok}&at={dt.datetime.now().strftime('%H:%M')}"
-        return RedirectResponse(url, status_code=303)
+        return RedirectResponse(url + frag, status_code=303)
+
+    def wants_json(request: Request) -> bool:
+        return "application/json" in request.headers.get("accept", "")
+
+    def refused(e: BaseException | str, code: int = 422) -> JSONResponse:
+        """A refusal for the in-place path: the sentence for the person and a fresh one-time key, since the form's own was spent."""
+        msg = e.args[0] if isinstance(e, KeyError) and e.args else str(e)
+        return JSONResponse({"error": msg, "token": tokens.issue()}, status_code=404 if isinstance(e, KeyError) else code)
 
     def _spent(ticket_id: str) -> HTMLResponse:
         e = html.escape(ticket_id)
@@ -489,9 +506,11 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
             f"Nothing more was written.</p><p><a href=\"/ticket/{e}\">Back to {e}</a></p></body>", status_code=409)
 
     @app.post("/ticket/{ticket_id}/decide")
-    def post_decide(ticket_id: str, action: str = Form(...), words: str = Form(""), next: str = Form(""), token: str = Form("")):
+    def post_decide(request: Request, ticket_id: str, action: str = Form(...), words: str = Form(""), next: str = Form(""), token: str = Form("")):
+        """Approve or send back. A form post redirects; with `Accept: application/json` the reply is `{ok, message}` (or `{error, token}`)."""
+        js = wants_json(request)
         if not tokens.use(token):
-            return _spent(ticket_id)
+            return refused("That form was already sent; reload the page.", 409) if js else _spent(ticket_id)
         s = store()
         try:
             t = s.get(ticket_id)
@@ -499,8 +518,10 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
             ops.decide(s, t, approve=(action == "approve"), reason=words, actor=s.owner)
             s.sync_after(f"desk: decide {t.id}")
         except (KeyError, RuleError, ValueError) as e:
-            return _back(ticket_id, str(e), next)
-        return _back(ticket_id, None, next, ok="decide")
+            return refused(e) if js else _back(ticket_id, str(e), next, anchor="decision")
+        if js:
+            return JSONResponse({"ok": True, "message": "Decision recorded in your words.", "stamp": str(ev.ticket_stamp(s, t.id))})
+        return _back(ticket_id, None, next, ok="decide", anchor="decision")
 
     @app.post("/ticket/{ticket_id}/check")
     def post_check(request: Request, ticket_id: str, section: str = Form(...), index: int = Form(...), checked: str = Form(""), state: str = Form(""), reason: str = Form(""), severity: str = Form(""), evidence: list[str] = Form([]), token: str = Form("")):
@@ -524,13 +545,13 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         except (KeyError, RuleError, ValueError) as e:
             if wants_json:
                 return JSONResponse({"error": str(e).strip("'\"")}, status_code=404 if isinstance(e, KeyError) else 422)
-            return _back(ticket_id, str(e))
+            return _back(ticket_id, str(e), anchor=_SECTION_ANCHOR.get(section, ""))
         if wants_json:
-            text = t.validate_steps() if section == "How to validate" else t.section(section)
+            text =t.validate_steps() if section == "How to validate" else t.section(section)
             fresh = ctx(request, s, t=t)["render"](text, t, section)  # the section again, with new states and new one-time tokens
             return JSONResponse({"ok": True, "state": check_states(t.sections.get(section) or "")[index][1], "html": fresh,
                                  "summary_html": summary_html(t.section("Acceptance")), "stamp": str(ev.ticket_stamp(s, t.id))})
-        return _back(ticket_id, ok="check")
+        return _back(ticket_id, ok="check", anchor=_SECTION_ANCHOR.get(section, ""))
 
     posted: OrderedDict[str, tuple[str, int, "int | None"]] = OrderedDict()  # a post's key -> (ticket id, comment index, Acceptance line it put evidence on)
     post_lock = threading.Lock()
@@ -554,8 +575,8 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
                 if res.added:
                     s.sync_after(f"desk: comment {t.id}")
             except (KeyError, RuleError, ValueError) as e:
-                return _back(ticket_id, str(e))
-            return _back(ticket_id, ok="comment", dup=not res.added)
+                return _back(ticket_id, str(e), anchor="comments")
+            return _back(ticket_id, ok="comment", dup=not res.added, anchor="comments")
 
         def refuse(msg: str, code: int):
             body = {"error": msg}
@@ -637,7 +658,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         def fail(msg: str, code: int = 400):
             if wants_json:
                 return JSONResponse({"error": msg, "token": tokens.issue()}, status_code=code)
-            return _back(ticket_id, msg)
+            return _back(ticket_id, msg, anchor="attachments")
 
         if not tokens.use(token):
             return JSONResponse({"error": "That form was already sent; reload the page.", "token": tokens.issue()}, status_code=409) if wants_json else _spent(ticket_id)
@@ -670,9 +691,11 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
             except (KeyError, RuleError, ValueError, OSError) as e:
                 return fail(str(e))
         if wants_json:
+            t = s.get(ticket_id)
             return JSONResponse({"markdown": f"![{dest.stem}](assets/{t.id}/{dest.name})", "name": dest.name, "rel": f"assets/{t.id}/{dest.name}",
-                                 "url": f"/assets/{t.id}/{dest.name}", "token": tokens.issue()})
-        return _back(ticket_id, ok="attach")
+                                 "url": f"/assets/{t.id}/{dest.name}", "token": tokens.issue(), "message": "Image attached.",
+                                 "attachments_html": ctx(request, s, t=t)["render"](t.section("Attachments")), "stamp": str(ev.ticket_stamp(s, t.id))})
+        return _back(ticket_id, ok="attach", anchor="attachments")
 
     @app.post("/ticket/{ticket_id}/attach/remove")
     def post_attach_remove(ticket_id: str, name: str = Form(""), token: str = Form("")):
@@ -694,9 +717,10 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         return JSONResponse({"ok": True, "token": tokens.issue()})
 
     @app.post("/ticket/{ticket_id}/move")
-    def post_move(ticket_id: str, to: str = Form(...), reason: str = Form(""), token: str = Form("")):
+    def post_move(request: Request, ticket_id: str, to: str = Form(...), reason: str = Form(""), token: str = Form("")):
+        js = wants_json(request)
         if not tokens.use(token):
-            return _spent(ticket_id)
+            return refused("That form was already sent; reload the page.", 409) if js else _spent(ticket_id)
         s = store()
         try:
             t = s.get(ticket_id)
@@ -711,8 +735,10 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
                 ops.move(s, t, to, actor=s.owner, reason=reason)
             s.sync_after(f"desk: move {t.id}")
         except (KeyError, RuleError, ValueError) as e:
-            return _back(ticket_id, str(e))
-        return _back(ticket_id, ok="move")
+            return refused(e) if js else _back(ticket_id, str(e), anchor="decision")
+        if js:
+            return JSONResponse({"ok": True, "message": f"Moved to {s.get(ticket_id).status}.", "stamp": str(ev.ticket_stamp(s, t.id))})
+        return _back(ticket_id, ok="move", anchor="decision")
 
     return app
 

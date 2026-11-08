@@ -20,7 +20,7 @@
     <div class="card section"><span class="label">{{ name }}</span><div class="md">{{ render(t.section(name))|safe }}</div></div>
     {% endif %}{% endfor %}
 
-    <div class="card section">
+    <div class="card section" id="acceptance">
       <div class="row" style="justify-content:space-between"><span class="label">Acceptance (this ticket's outcome)</span></div>
       {% set summary = check_summary(t.section('Acceptance')) %}{% if summary %}<div id="chk-summary" class="chk-summary" role="status" aria-live="polite">{{ summary }}</div>{% endif %}
       {% if t.section('Acceptance') %}<div class="md" data-check-section="Acceptance">{{ render(t.section('Acceptance'), t, 'Acceptance')|safe }}</div>{% else %}<p class="muted">No acceptance lines yet.</p>{% endif %}
@@ -37,11 +37,11 @@
       {% else %}<p class="muted">This ticket lists no DoD modules. Add `dod:` to its frontmatter.</p>{% endfor %}
     </div>
 
-    <div class="card section"><span class="label">How to validate</span>
+    <div class="card section" id="validate"><span class="label">How to validate</span>
       {% if t.validate_steps() %}<div class="md" data-check-section="How to validate">{{ render(t.validate_steps(), t, 'How to validate')|safe }}</div>{% else %}<p class="muted">Not written yet. A ticket cannot be handed over for review without it.</p>{% endif %}</div>
 
     {% if t.section('Prompt') %}
-    <div class="card section"><span class="label">Prompt (paste this to execute)</span><div class="md" data-check-section="Prompt">{{ render(t.section('Prompt'), t, 'Prompt')|safe }}</div></div>
+    <div class="card section" id="prompt"><span class="label">Prompt (paste this to execute)</span><div class="md" data-check-section="Prompt">{{ render(t.section('Prompt'), t, 'Prompt')|safe }}</div></div>
     {% endif %}
 
     <div class="card section">
@@ -52,12 +52,10 @@
     </div>
 
     {% if t.section('Evidence') or t.meta.get('evidence') %}
-    <div class="card section"><span class="label">Evidence</span>{% if t.meta.get('evidence') %}<p style="margin:6px 0">{{ t.meta.get('evidence') }}</p>{% endif %}{% if t.section('Evidence') %}<div class="md" data-check-section="Evidence">{{ render(t.section('Evidence'), t, 'Evidence')|safe }}</div>{% endif %}</div>
+    <div class="card section" id="evidence"><span class="label">Evidence</span>{% if t.meta.get('evidence') %}<p style="margin:6px 0">{{ t.meta.get('evidence') }}</p>{% endif %}{% if t.section('Evidence') %}<div class="md" data-check-section="Evidence">{{ render(t.section('Evidence'), t, 'Evidence')|safe }}</div>{% endif %}</div>
     {% endif %}
 
-    {% if t.section('Attachments') %}
-    <div class="card section"><span class="label">Attachments</span><div class="md attachments">{{ render(t.section('Attachments'))|safe }}</div></div>
-    {% endif %}
+    <div class="card section" id="attachments"{% if not t.section('Attachments') %} hidden{% endif %}><span class="label">Attachments</span><div class="md attachments" id="attachments-body">{% if t.section('Attachments') %}{{ render(t.section('Attachments'))|safe }}{% endif %}</div></div>
 
     {% for name in ['Docs to update','Out of scope'] %}{% if t.section(name) %}
     <div class="card section"><span class="label">{{ name }}</span><div class="md">{{ render(t.section(name))|safe }}</div></div>
@@ -73,21 +71,21 @@
     <div class="card section"><span class="label">Mentioned in</span>
       {% if mentions %}<ul class="mentions">{% for m in mentions %}<li><a class="tid" href="/ticket/{{ m.id }}" data-status="{{ m.status }}">{{ m.id }}</a> {{ m.meta.get('title') }}</li>{% endfor %}</ul>{% else %}<p class="muted">No other ticket mentions {{ t.id }}.</p>{% endif %}</div>
 
-    <div class="card section"><span class="label">Decision</span>
+    <div class="card section" id="decision"><span class="label">Decision</span>
       {% if t.section('Decision') %}<div class="md">{{ render(t.section('Decision'))|safe }}</div>{% else %}<p class="muted">Nothing decided yet.</p>{% endif %}</div>
 
-    <div class="card section"><span class="label">Talk (Comments)</span>
+    <div class="card section" id="comments"><span class="label">Talk (Comments)</span>
       <div class="md" data-comments>{% if t.section('Comments') %}{{ comments_html(t.section('Comments'))|safe }}{% else %}<p class="muted">No comments.</p>{% endif %}</div>
-      <form class="post-once composer" id="composer" method="post" action="/ticket/{{ t.id }}/comment" data-timeout-ms="10000" data-posting="Posting…">
+      <form class="post-once composer" id="composer" method="post" action="/ticket/{{ t.id }}/comment" data-timeout-ms="10000" data-posting="Posting…" data-progress="Sending,Saving,Done">
         <input type="hidden" name="token" value="{{ token() }}">
         <div class="kinds sevs" role="radiogroup" aria-label="Kind of comment">{% for k in ['Question','Suggestion','Concern','FYI'] %}<label class="sevpill"><input type="radio" name="kind" value="{{ k }}"{% if loop.first %} checked{% endif %}><span>{{ k }}</span></label>{% endfor %}</div>
         <label>Comment<textarea name="text" rows="3" id="comment-text" data-attach="/ticket/{{ t.id }}/attach" data-token="{{ token() }}" placeholder="Paste or drop a screenshot here to attach it. Ctrl Enter posts."></textarea></label>
         <div class="shots" id="shots" hidden></div>
         <label class="evline" id="evline" hidden>Evidence for <select name="line"><option value="">No line</option>{% for n, txt in acc_lines %}<option value="{{ n }}">Line {{ n }}: {{ txt[:48] }}{% if txt|length > 48 %}…{% endif %}</option>{% endfor %}</select></label>
         <div class="attach-note" id="attach-note" role="status"></div>
-        <div class="composer-foot"><input type="text" name="who" placeholder="who (default {{ owner }})" aria-label="Who is posting"><span id="post-status" class="post-status" role="status" aria-live="polite"></span><button class="btn ball post-btn" type="submit">Post</button></div>
+        <div class="composer-foot"><input type="text" name="who" placeholder="who (default {{ owner }})" aria-label="Who is posting"><span class="dp-slot"></span><span id="post-status" class="post-status" role="status" aria-live="polite"></span><button class="btn ball post-btn" type="submit">Post</button></div>
       </form>
-      <form class="post-once attach-form" method="post" action="/ticket/{{ t.id }}/attach" enctype="multipart/form-data">
+      <form class="post-once attach-form" method="post" action="/ticket/{{ t.id }}/attach" enctype="multipart/form-data" data-inplace="attach" data-progress="Uploading,Saving,Done">
         <input type="hidden" name="token" value="{{ token() }}">
         <label class="muted" style="font-size:13px">Or attach an image <input type="file" name="file" accept="image/png,image/jpeg,image/gif,image/webp" required></label>
         <button class="btn small" type="submit">Attach</button>
@@ -100,7 +98,7 @@
       <h2 style="margin:0 0 8px">Your call</h2>
       {% if t.status == 'review' %}
       <p style="font-size:14px;color:#4A4A45;margin:0 0 10px">Approving records your exact words, the time and the proof you saw. "Looks good" in a chat doesn't count.</p>
-      <form class="post-once" method="post" action="/ticket/{{ t.id }}/decide" style="display:flex;flex-direction:column;gap:10px">
+      <form class="post-once" method="post" action="/ticket/{{ t.id }}/decide" data-inplace="refresh" data-progress="Sending,Saving,Done" style="display:flex;flex-direction:column;gap:10px">
         <input type="hidden" name="token" value="{{ token() }}">
         <label>In your words<textarea name="words" rows="3" placeholder="Approve: ship it. Or: send back, because…" required minlength="4"></textarea></label>
         <div class="row">
@@ -111,7 +109,7 @@
       </form>
       {% else %}
       <p class="muted" style="font-size:14px">Approve and Send back appear when the ticket is <b>{{ screen('review') }}</b> (review). It is {{ screen(t.status) }} now.</p>
-      <form class="post-once" method="post" action="/ticket/{{ t.id }}/move" style="display:flex;flex-direction:column;gap:8px">
+      <form class="post-once" method="post" action="/ticket/{{ t.id }}/move" data-inplace="refresh" data-progress="Sending,Saving,Done" style="display:flex;flex-direction:column;gap:8px">
         <input type="hidden" name="token" value="{{ token() }}">
         <label>Move to
           <select name="to">
