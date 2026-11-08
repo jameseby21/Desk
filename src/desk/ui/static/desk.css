@@ -230,3 +230,23 @@ li.task-list-item:focus-visible{outline:3px solid var(--focus);outline-offset:2p
 .hcard{position:absolute;z-index:40;width:max-content;max-width:340px;padding:10px 12px;border:1.5px solid var(--ink);border-radius:12px;background:var(--card);color:var(--ink);box-shadow:4px 4px 0 var(--ball);font-size:13.5px;line-height:1.4}
 .hcard p{margin:6px 0 0}.hcard .hc-top{display:flex;flex-wrap:wrap;gap:6px;align-items:center}.hcard .hc-id{font-family:var(--font-mono);font-size:13px}
 .hcard .hc-title{font-weight:700}.hcard .hc-body{color:var(--muted)}.hcard .hc-facts{font:12px var(--font-mono);color:var(--muted)}.hcard .hc-links{display:flex;gap:10px;align-items:center}
+
+/* search (DESK-0113) */
+header .search-open{margin:0;flex:0 1 240px}
+header .search-open input{width:100%;font:inherit;padding:6px 10px;border:1px solid var(--line);border-radius:999px;background:var(--paper);color:var(--ink)}
+.palette{position:fixed;inset:0;z-index:50;background:rgba(20,20,20,.45);display:flex;align-items:flex-start;justify-content:center;padding:10vh 12px 0}
+.palette[hidden]{display:none}
+.pal-box{width:min(720px,100%);background:var(--card);border:2px solid var(--ink);border-radius:14px;box-shadow:6px 6px 0 var(--ball);padding:12px;max-height:75vh;display:flex;flex-direction:column}
+.pal-box input{width:100%;font:inherit;font-size:18px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--paper);color:var(--ink)}
+.pal-status{font-size:12.5px;padding:6px 4px}
+.pal-list{overflow:auto}
+.pal-group{font:600 12px var(--font-mono);text-transform:uppercase;letter-spacing:.04em;padding:8px 4px 2px}
+.pal-item{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center;padding:8px;border-radius:8px;text-decoration:none}
+.pal-item.sel,.pal-item:hover{background:var(--ball);color:#141414}
+.pal-item.sel .chip{border-color:#141414}
+.pal-title{font-weight:600;flex:1 1 40%}
+.pal-snip{flex-basis:100%;font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pal-item.sel .pal-snip,.pal-item.sel .muted{color:#141414}
+.pal-list mark,.card mark{background:var(--ball);color:#141414;border-radius:3px}
+.pal-none{padding:12px 4px}
+body.pal-open{overflow:hidden}

@@ -293,6 +293,30 @@ def cmd_brand_check(args):
             print(f"already open {i}")
 
 
+def cmd_search(args):
+    from . import search as srch
+
+    s = _store(args)
+    ix = srch.open_index(s)
+    ix.refresh(s)
+    res = ix.search(" ".join(args.query), limit=args.limit)
+    if args.json:
+        print(json.dumps(res.as_json(), indent=2, ensure_ascii=False))
+        return
+    if res.query.empty:
+        _die("Give words to find, filters like status:review, or both. See docs/COMMANDS.md for the grammar.")
+    note = " (closest spellings; nothing matched exactly)" if res.fuzzy and not any(not h.fuzzy for _, _, hs in res.groups for h in hs) else ""
+    print(f"{res.total}{'+' if res.capped else ''} match(es) for: {res.query.raw}{note}")
+    for project, n, hits in res.groups:
+        print(f"{chr(10)}{project} ({n})")
+        for h in hits:
+            print(f"  {h.id}  {h.status}  {h.priority}  {h.title[:70]}" + (f"  [{h.assignee}]" if h.assignee else ""))
+            if h.snippet:
+                print(f"      {h.snippet[:110]}")
+        if n > len(hits):
+            print(f"  ... {n - len(hits)} more in {project}: add project:{project} and --limit {n}")
+
+
 def cmd_index(args):
     s = _store(args)
     print(s.index())
@@ -456,6 +480,10 @@ def _home_or_none(args) -> Path | None:
 def cmd_bench(args):
     from . import bench
 
+    if args.search_rows:
+        r = bench.search_scale(args.search_rows)
+        print(f"search over {r['rows']} synthetic rows (index built in {r['built_s']} s): p50 {r['p50_ms']} ms, p95 {r['p95_ms']} ms over {r['n']} queries; budget {bench.load_budgets()['budgets_ms']['search']} ms")
+        return
     result = bench.run(args.tickets, runs=args.runs, progress=lambda m: print(m, file=sys.stderr))
     print(bench.table(result))
     for f in bench.budget_failures(result):
@@ -663,6 +691,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--tickets", type=int, default=1000)
     sp.add_argument("--runs", type=int, default=7, help="timed requests per page path")
     sp.add_argument("--out", help="write the results as JSON here")
+    sp.add_argument("--search-rows", type=int, default=0, metavar="N", help="instead: time search over N synthetic rows in memory (50000 for the budget case)")
     sp.add_argument("--save-baseline", action="store_true", help="record these numbers in desk/bench/baseline.json for this ticket count")
     sp.set_defaults(fn=cmd_bench)
 
@@ -803,6 +832,12 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--create", action="store_true", help="open one chore per missing project in project `brand`")
     sp.add_argument("--assignee", default="chaz")
     sp.set_defaults(fn=cmd_brand_check)
+
+    sp = sub.add_parser("search", help="find tickets by part of an id or title, typos allowed, with filters (project: status: type: tag: ask: owner: assignee: track: sprint: priority: is:stale|open|closed before: after:); grouped by project")
+    sp.add_argument("query", nargs="+")
+    sp.add_argument("--json", action="store_true")
+    sp.add_argument("--limit", type=int, default=12, help="most tickets shown per project (default 12)")
+    sp.set_defaults(fn=cmd_search)
 
     sp = sub.add_parser("index", help="rebuild .desk/index.sqlite from the files")
     sp.set_defaults(fn=cmd_index)

@@ -14,6 +14,7 @@
 {% endif %}<header>
   <a class="mark" href="/"><i></i>Desk</a>
   <nav><a href="/">Today</a><a href="/board">Board</a><a href="/projects">Projects</a><a href="/about">About</a><a href="/settings">Settings</a></nav>
+  <form class="search-open" action="/search" method="get" role="search" data-progress="none"><input type="search" name="q" id="search-open" placeholder="Search tickets  (Ctrl K)" aria-label="Search tickets" autocomplete="off"></form>
   <span class="home">{{ home }} · owner {{ owner }}</span>
 </header>
 <div id="reload-bar" class="reload-bar" role="status" hidden>Changes available. <a href="" onclick="location.reload();return false">Reload</a></div>
@@ -24,6 +25,7 @@
 <footer><a href="/about">About Desk: why it counts proof</a> · <span class="build">{{ build }}</span></footer>
 <script src="/static/progress.js"></script>
 <script src="/static/hovercard.js" defer></script>
+<script src="/static/search.js" defer></script>
 <script>
 /* A page that saves in place (check boxes, comments) tells the auto-refresh the file stamp of its own write, so it does not reload itself. */
 window.DeskLive = { own: "0", mine: function (stamp) { if (stamp && BigInt(stamp) > BigInt(this.own)) this.own = String(stamp); } };

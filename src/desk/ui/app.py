@@ -19,7 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from .. import timing
-from .. import asks, nav as navmod, buildstamp as bs, comments as cm, docs as docsmod, ops, profanity, review as rv, style as styles, tracks as trk, version as ver
+from .. import asks, search as srch, nav as navmod, buildstamp as bs, comments as cm, docs as docsmod, ops, profanity, review as rv, style as styles, tracks as trk, version as ver
 from ..config import find_home
 from ..rules import RuleError
 from ..store import Store, id_parts, split_profile
@@ -295,6 +295,31 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         """Server-sent events for the Today, board and projects pages: the tickets directory's latest mtime."""
         s = store()
         return sse(lambda: ev.tickets_stamp(s), since, timeout)
+
+    search_ix: dict = {}  # one index per store path, kept for the life of the process
+
+    def search_for(s: Store, text: str, limit: int):
+        ix = search_ix.get(str(s.home))
+        if ix is None:
+            ix = search_ix[str(s.home)] = srch.open_index(s)
+        ix.refresh(s, every=1.0)  # a stat of each ticket file at most once a second
+        return ix.search(text, limit=limit)
+
+    @app.get("/search.json")
+    def search_json(q: str = "", limit: int = srch.PER_GROUP):
+        """The palette's data: groups by project, each with its count and top hits. Status labels follow the words setting."""
+        res = search_for(store(), q[:300], min(max(limit, 1), 100))
+        out = res.as_json()
+        for g in out["groups"]:
+            for h in g["hits"]:
+                h["status_label"] = screen(h["status"])
+        return JSONResponse(out)
+
+    @app.get("/search", response_class=HTMLResponse)
+    def search_page(request: Request, q: str = ""):
+        s = store()
+        res = search_for(s, q[:300], 50) if q.strip() else None
+        return templates.TemplateResponse(request, "search.html", ctx(request, s, q=q, res=res, snippet_html=lambda x: Markup(srch.snippet_html(x))))
 
     @app.get("/about", response_class=HTMLResponse)
     def about(request: Request):
