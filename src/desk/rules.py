@@ -7,7 +7,7 @@ import re
 from typing import TYPE_CHECKING
 
 from .store import id_parts
-from .ticket import CLOSED, ID_LISTS_LOOSE, ID_LISTS_STRICT, PRIORITIES, REQUIRED, LEGACY_TYPES, SIZES, STATUSES, TYPES, Ticket, canon_type
+from .ticket import CLOSED, ID_LISTS_LOOSE, ID_LISTS_STRICT, PRIORITIES, REQUIRED, LEGACY_TYPES, SIZES, STATUSES, TYPES, Ticket, canon_type, parse_checks
 
 if TYPE_CHECKING:
     from .store import Store
@@ -151,6 +151,9 @@ def validate_ticket(t: Ticket, store: "Store", known_ids: set[str] | None = None
         warnings.append(f"{where}: size `l` should be split before leaving triage")
     if canon_type(m["type"]) in ("feature", "upgrade") and status in ("ready", "claimed", "in_progress") and not t.acceptance():
         warnings.append(f"{where}: a ready {m['type']} should have Acceptance checkboxes")
+    legacy = sum(1 for name in ("Acceptance", "How to validate", "Prompt", "Evidence") for c in parse_checks(t.sections.get(name) or "") if c.legacy)
+    if legacy:
+        warnings.append(f"{where}: {legacy} inline `not accepted` line(s) (the older form, still read); `drew migrate checks --dry-run` shows the quoted-reason form")
     return errors, warnings
 
 
