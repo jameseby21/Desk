@@ -90,7 +90,7 @@ def test_board_and_today_filter_by_sprint_and_show_the_chip(store, capsys):
     a = _mk(store, "Inside", sprint=NAME, status="in_progress")  # in hand, so Today lists it as a row (DESK-0040)
     _mk(store, "Outside", status="in_progress")
     c = TestClient(create_app(store.home))
-    board = c.get("/board?sprint=sprint-6-2026").text
+    board = c.get("/board?company=unsorted&sprint=sprint-6-2026").text  # DESK-0183: inside a company a filter opens what is left
     assert "Inside" in board and "Outside" not in board and 'name="sprint" value="sprint-6-2026"' in board
     assert "Outside" in c.get("/board?open=*&g=*").text and 'name="sprint" value="sprint-6-2026"' in c.get("/board?open=*&g=*").text  # the dropdown offers it
     today = c.get("/?sprint=sprint-6-2026").text
