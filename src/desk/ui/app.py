@@ -19,7 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from .. import timing
-from .. import asks, buildstamp as bs, comments as cm, docs as docsmod, ops, profanity, review as rv, style as styles, tracks as trk, version as ver
+from .. import asks, nav as navmod, buildstamp as bs, comments as cm, docs as docsmod, ops, profanity, review as rv, style as styles, tracks as trk, version as ver
 from ..config import find_home
 from ..rules import RuleError
 from ..store import Store, id_parts, split_profile
@@ -392,7 +392,28 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         mermaid = any(has_mermaid(t.section(name)) for name in t.sections)
         return templates.TemplateResponse(request, "ticket.html", ctx(request, s, t=t, deps=deps, stale=s.is_stale(t), error=error, s=s,
                                                              formerly=s.formerly(t), mermaid=mermaid, mentions=docsmod.mentioned_in(list(by_id.values()), ticket_id=t.id),
-                                                             owning=docsmod.owning_docs(s, t), source_doc=source_doc(s, t), acc_lines=[(i + 1, c.text) for i, c in enumerate(parse_checks(t.section("Acceptance")))], dod=dod_view(s, t), reply_ask=reply_ask(s, t), events_url=f"/events/{t.id}", events_since=ev.ticket_stamp(s, t.id)))
+                                                             owning=docsmod.owning_docs(s, t), source_doc=source_doc(s, t), acc_lines=[(i + 1, c.text) for i, c in enumerate(parse_checks(t.section("Acceptance")))], dod=dod_view(s, t), reply_ask=reply_ask(s, t), **nav_view(s, t), events_url=f"/events/{t.id}", events_since=ev.ticket_stamp(s, t.id)))
+
+    def nav_view(s: Store, t) -> dict:
+        """Previous and Next for this ticket in the walk this person chose (scope and order, kept in .desk/settings.toml)."""
+        scope, order = styles.load_nav(s.home)
+        every = s.tickets()
+        return {"walk": navmod.neighbours(every, t.id, scope, order), "nav_scopes": navmod.SCOPES, "nav_orders": navmod.ORDERS,
+                "nav_has_sprints": any(navmod.sprint_of(x) for x in every)}
+
+    @app.post("/nav")
+    def post_nav(request: Request, scope: str = Form(""), order: str = Form(""), back: str = Form(""), token: str = Form("")):
+        """Remember which walk Previous and Next follow. JSON for the page; a plain post redirects back to the ticket."""
+        js = wants_json(request)
+        if not tokens.use(token):
+            return refused("That form was already sent; reload the page.", 409) if js else _spent(back or "")
+        try:
+            styles.save_nav(store().home, scope, order)
+        except ValueError:
+            return refused("That is not a way Desk can line the tickets up. Reload the page and pick again.") if js else HTMLResponse("<p>Unknown order</p>", status_code=400)
+        if js:
+            return JSONResponse({"ok": True, "message": f"Walking {navmod.SCOPES[scope].lower()}, {navmod.ORDERS[order].lower()}."})
+        return RedirectResponse(f"/ticket/{back}" if re.fullmatch(r"[A-Za-z0-9-]+", back or "") else "/", status_code=303)
 
     def reply_ask(s: Store, t) -> dict | None:
         """The question to draw a reply box for: a decision ticket the store's owner holds, waiting for the answer (ready, or in review)."""

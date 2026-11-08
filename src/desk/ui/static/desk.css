@@ -221,3 +221,8 @@ li.task-list-item:focus-visible{outline:3px solid var(--focus);outline-offset:2p
 .reply .opts{display:flex;flex-direction:column;gap:8px;align-items:flex-start}.reply .opts .btn{text-align:left;white-space:normal;max-width:100%}
 .reply .note{font-size:12.5px}
 .vh{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
+/* DESK-0148: Previous and Next */
+.tnav{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:0 0 12px;font-size:13.5px}
+.tnav .pos{font-weight:600;font-variant-numeric:tabular-nums}.tnav .btn.off{opacity:.45;cursor:default}
+.navpick{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-left:auto}.navpick label{display:inline-flex;align-items:center;gap:6px;color:var(--muted)}
+.navpick select{width:auto;padding:4px 8px;font-size:13px}

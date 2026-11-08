@@ -3,6 +3,18 @@
 {% block body %}
 <p style="font-size:14px"><a href="/">Today</a> › <a href="/board?project={{ t.project }}">{{ titles.get(t.project, t.project) }}</a> › <code>{{ t.id }}</code>{% if formerly %} <span class="muted">(formerly {{ formerly }})</span>{% endif %}</p>
 {% if error %}<div class="error">{{ error }}</div>{% endif %}
+<nav class="tnav" id="tnav" aria-label="Ticket navigation">
+  {% if walk.prev %}<a class="btn small" rel="prev" href="/ticket/{{ walk.prev }}" title="Previous ticket (k or the left arrow)">&larr; Previous</a>{% else %}<span class="btn small off" aria-disabled="true">&larr; Previous</span>{% endif %}
+  <span class="pos" aria-live="polite">{{ walk.text }}</span>
+  {% if walk.next %}<a class="btn small" rel="next" href="/ticket/{{ walk.next }}" title="Next ticket (j or the right arrow)">Next &rarr;</a>{% else %}<span class="btn small off" aria-disabled="true">Next &rarr;</span>{% endif %}
+  {% if not walk.prev %}<span class="muted">{{ walk.prev_note }}</span>{% elif not walk.next %}<span class="muted">{{ walk.next_note }}</span>{% endif %}
+  <form class="navpick post-once" method="post" action="/nav" data-inplace="refresh" data-progress="Sending,Saving,Done">
+    <input type="hidden" name="token" value="{{ token() }}"><input type="hidden" name="back" value="{{ t.id }}">
+    <label>Walk <select name="scope" aria-label="Which tickets Previous and Next walk through">{% for k, label in nav_scopes.items() %}<option value="{{ k }}"{% if k == walk.scope %} selected{% endif %}{% if k == 'sprint' and not nav_has_sprints %} disabled{% endif %}>{{ label }}{% if k == 'sprint' and not nav_has_sprints %} (no sprints yet){% endif %}</option>{% endfor %}</select></label>
+    <label>Order <select name="order" aria-label="How Previous and Next line the tickets up">{% for k, label in nav_orders.items() %}<option value="{{ k }}"{% if k == walk.order %} selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+    <noscript><button class="btn small" type="submit">Go</button></noscript><span class="dp-slot"></span>
+  </form>
+</nav>
 {% set brand = s.brand_for(t.project) if s is defined else None %}
 <div class="row"{% if brand and brand.accent %} style="border-left:6px solid {{ brand.accent }};padding-left:10px"{% endif %}>
   {% if brand and brand.mark_url %}<img src="{{ brand.mark_url }}" width="24" height="24" alt="{{ titles.get(t.project, t.project) }}">{% else %}<span class="initial" title="{{ titles.get(t.project, t.project) }}">{{ (titles.get(t.project, t.project) or '?')[0]|upper }}</span>{% endif %}
@@ -162,6 +174,7 @@
   </aside>
 </div>
 <noscript><style>.nr-panel[hidden]{display:block}</style></noscript>
+<script src="/static/nav.js" defer></script>
 <script src="/static/shots.js" defer></script>
 <script src="/static/checks.js" defer></script>
 <script src="/static/composer.js" defer></script>

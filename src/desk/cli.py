@@ -8,7 +8,7 @@ import json
 import sys
 from pathlib import Path
 
-from . import accept_migrate, check_migrate, ops, profanity, retype, review as rv, style as styles, tests_migrate, tracks as trk, version as ver
+from . import accept_migrate, check_migrate, nav, ops, profanity, retype, review as rv, style as styles, tests_migrate, tracks as trk, version as ver
 from .config import HomeNotFound, find_home
 from .rules import RuleError, validate_store
 from .store import Store
@@ -99,8 +99,29 @@ def cmd_list(args):
     print(_table(rows, ["id", "project", "type", "status", "pri", "size", "owner", "assignee", "title"]))
 
 
+def cmd_next_after(args, s):
+    """`drew next --after ID`: the ticket after (or with --previous, before) ID in the walk this person chose in the UI."""
+    saved = styles.load_nav(s.home)
+    scope, order = args.scope or saved[0], args.order or saved[1]
+    try:
+        n = nav.neighbours(s.tickets(), args.after, scope, order)
+    except KeyError:
+        _die(f"No ticket {args.after}.")
+    except ValueError as e:
+        _die(str(e))
+    target = n.prev if args.previous else n.next
+    print(n.text)
+    if target is None:
+        print(n.prev_note if args.previous else n.next_note)
+        return
+    t = s.get(target)
+    print(f"{t.id}  {t.status}  {t.meta.get('title')}")
+
+
 def cmd_next(args):
     s = _store(args)
+    if args.after:
+        return cmd_next_after(args, s)
     t = s.next_ready(args.project)
     if args.json:
         ctx = t.render() if t else f"No ready ticket for project {args.project or '(any)'}."
@@ -687,6 +708,10 @@ def build_parser() -> argparse.ArgumentParser:
     sp = sub.add_parser("next", help="the highest-priority ready ticket, printed in full")
     sp.add_argument("--project")
     sp.add_argument("--json", action="store_true", help="SessionStart hook format")
+    sp.add_argument("--after", metavar="ID", help="instead: the ticket after ID in the walk chosen in the UI (Previous and Next)")
+    sp.add_argument("--previous", action="store_true", help="with --after: the one before")
+    sp.add_argument("--scope", choices=list(nav.SCOPES), help="with --after: project, track, company or sprint (default: the saved choice)")
+    sp.add_argument("--order", choices=list(nav.ORDERS), help="with --after: date, priority or review (default: the saved choice)")
     sp.set_defaults(fn=cmd_next)
 
     sp = sub.add_parser("show", help="print a ticket")
