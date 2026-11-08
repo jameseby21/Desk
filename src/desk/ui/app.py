@@ -545,7 +545,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
 
     def notice(ok: str, at: str, dup: int) -> str:
         if dup:
-            return "That comment is already on the ticket"
+            return ops.NEAR_NOTICE if dup == 2 else ops.DUP_NOTICE
         if ok in _OK_TEXT:
             return f"{_OK_TEXT[ok]} {at}" if _AT.fullmatch(at) else _OK_TEXT[ok]
         return ""
@@ -585,7 +585,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
             return HTMLResponse("<p>No such asset</p>", status_code=404)
         return FileResponse(str(target))
 
-    def _back(t_id: str, error: str | None = None, next_: str = "", ok: str = "", dup: bool = False, anchor: str = "") -> RedirectResponse:
+    def _back(t_id: str, error: str | None = None, next_: str = "", ok: str = "", dup: int = 0, anchor: str = "") -> RedirectResponse:
         """The no-JavaScript fallback of every form: redirect back to the ticket at the part of the page the form sits in (#comments,
         #acceptance, ...), so the browser lands where the person was and not at the top (DESK-0141)."""
         frag = f"#{anchor}" if anchor else ""
@@ -597,7 +597,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         if error:
             url += f"?error={quote(error)}"
         elif dup:
-            url += "?dup=1"
+            url += f"?dup={int(dup)}"
         elif ok:
             url += f"?done={ok}&at={dt.datetime.now().strftime('%H:%M')}"
         return RedirectResponse(url + frag, status_code=303)
@@ -693,7 +693,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
                                  "summary_html": summary_html(t.section("Acceptance")), "stamp": str(ev.ticket_stamp(s, t.id))})
         return _back(ticket_id, ok="check", anchor=_SECTION_ANCHOR.get(section, ""))
 
-    posted: OrderedDict[str, tuple[str, int, "int | None"]] = OrderedDict()  # a post's key -> (ticket id, comment index, Acceptance line it put evidence on)
+    posted: OrderedDict[str, tuple[str, int, "int | None", str]] = OrderedDict()  # a post's key -> (ticket id, comment index, Acceptance line it put evidence on, notice)
     post_lock = threading.Lock()
 
     @app.post("/ticket/{ticket_id}/comment")
@@ -716,7 +716,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
                     s.sync_after(f"desk: comment {t.id}")
             except (KeyError, RuleError, ValueError) as e:
                 return _back(ticket_id, str(e), anchor="comments")
-            return _back(ticket_id, ok="comment", dup=not res.added, anchor="comments")
+            return _back(ticket_id, ok="comment", dup=0 if res.added else (2 if res.near else 1), anchor="comments")
 
         def refuse(msg: str, code: int):
             body = {"error": msg}
@@ -758,16 +758,16 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
                         ops.add_evidence(s, t.id, "Acceptance", pick, rels)
                     if res.added or pick is not None:
                         s.sync_after(f"desk: comment {t.id}")
-                    idx = ops.locate_comment(res.ticket, who_, body)
+                    idx = res.existing if (duplicate and res.existing is not None) else ops.locate_comment(res.ticket, who_, body)
                     tokens.use(token)
-                    posted[token] = (t.id, -1 if idx is None else idx, pick)
+                    posted[token] = (t.id, -1 if idx is None else idx, pick, res.message)
                     while len(posted) > MAX_TOKENS:
                         posted.popitem(last=False)
                 t = s.get(ticket_id)
-                _, idx, pick = posted[token]
+                _, idx, pick, message = posted[token]
                 lines = ops.comment_lines(t)
                 render = ctx(request, s, t=t)["render"]
-                out = {"ok": True, "repeat": repeat, "duplicate": duplicate, "index": idx, "line": lines[idx] if 0 <= idx < len(lines) else "",
+                out = {"ok": True, "repeat": repeat, "duplicate": duplicate, "message": message, "index": idx, "line": lines[idx] if 0 <= idx < len(lines) else "",
                        "html": ctx(request, s, t=t)["comments_html"](t.section("Comments")), "stamp": str(ev.ticket_stamp(s, t.id)), "token": tokens.issue()}
                 if pick is not None:  # the Acceptance line changed too: send it again with its summary
                     out["check_html"] = render(t.section("Acceptance"), t, "Acceptance")

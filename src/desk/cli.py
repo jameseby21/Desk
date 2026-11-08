@@ -279,7 +279,7 @@ def cmd_comment(args):
     except (KeyError, RuleError, ValueError) as e:
         _die(str(e))
     if not res.added:
-        print(f"{res.id}: that comment is already on the ticket; nothing written")
+        print(f"{res.id}: {res.message.lower()}; nothing written")
         return
     s.sync_after(f"desk: comment {res.id}")
     print(f"{res.id} -> {res.status} ({screen(res.status)})")

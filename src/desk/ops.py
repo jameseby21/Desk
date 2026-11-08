@@ -24,12 +24,15 @@ _KEY = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 _SAFE_NAME = re.compile(r"[^A-Za-z0-9._-]+")
 
 
-def _stamp(actor: str, what: str, at_time: bool = False) -> str:
-    when = dt.datetime.now().strftime("%Y-%m-%d %H:%M") if at_time else today()
+def _stamp(actor: str, what: str, at_time: bool = False, now: dt.datetime | None = None) -> str:
+    when = (now or dt.datetime.now()).strftime("%Y-%m-%d %H:%M") if at_time else today()
     return f"- {when} · {actor} · {what}"
 
 
-DUPLICATE_WINDOW = dt.timedelta(minutes=10)
+DUPLICATE_WINDOW = dt.timedelta(minutes=10)  # byte-for-byte repeats (case and spacing aside) by one author
+NEAR_WINDOW = dt.timedelta(seconds=60)  # near repeats: punctuation, brackets, a trailing counter or a typo or two (DESK-0142)
+DUP_NOTICE = "That comment is already on the ticket"
+NEAR_NOTICE = "That is almost the same as a comment you just posted, so it was ignored; the earlier one is highlighted"
 _COMMENT_LINE = re.compile(r"^- (\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}) · (.+?) · (.*)$")
 
 
@@ -221,10 +224,17 @@ def reject(store: Store, t: Ticket, reason: str, actor: str | None = None) -> Ti
 
 
 class CommentResult:
-    """What `comment` did: `added` is False when an identical recent comment made it a duplicate."""
+    """What `comment` did: `added` is False when an identical or nearly identical recent comment made it a duplicate. `existing` is the
+    index (in `comment_lines`) of the comment already there, `near` says it was a variant and not a repeat."""
 
-    def __init__(self, ticket: Ticket, added: bool):
-        self.ticket, self.added = ticket, added
+    def __init__(self, ticket: Ticket, added: bool, existing: int | None = None, near: bool = False):
+        self.ticket, self.added, self.existing, self.near = ticket, added, existing, near
+
+    @property
+    def message(self) -> str:
+        if self.added:
+            return ""
+        return NEAR_NOTICE if self.near else DUP_NOTICE
 
     @property
     def id(self) -> str:
@@ -245,21 +255,77 @@ def split_comment_kind(rest: str) -> tuple[str | None, str]:
     return (m.group(1), rest[:m.start()]) if m else (None, rest)
 
 
-def is_duplicate_comment(t: Ticket, actor: str, text: str, now: dt.datetime | None = None) -> bool:
-    """True when the same author posted the same (whitespace and case normalized) text within 10 minutes; the kind does not matter."""
-    now = now or dt.datetime.now()
-    want = (_norm(actor), _norm(text))
-    for line in t.section("Comments").splitlines():
-        m = _COMMENT_LINE.match(line)
-        if not m:
-            continue
-        try:
-            when = dt.datetime.fromisoformat(f"{m.group(1)}T{m.group(2)}")
-        except ValueError:
-            continue
-        if (_norm(m.group(3)), _norm(split_comment_kind(m.group(4))[1])) == want and abs(now - when) <= DUPLICATE_WINDOW:
+def _squash(text: str) -> str:
+    """The comment with punctuation and brackets turned to spaces, case folded, spaces collapsed: `Dup test # 2 ()` is `dup test 2`."""
+    return " ".join(re.sub(r"[^\w\s]|_", " ", text.casefold()).split())
+
+
+def norm_comment(text: str) -> tuple[str, str]:
+    """(normalized, normalized without its trailing counter). `Dup test # 2 ()` gives (`dup test 2`, `dup test`)."""
+    full = _squash(text)
+    return full, re.sub(r"(?:\s+\d+)+$", "", full)
+
+
+def _distance(a: str, b: str, limit: int) -> int:
+    """Edit distance between a and b, or limit + 1 as soon as it is certain to be more."""
+    if abs(len(a) - len(b)) > limit:
+        return limit + 1
+    prev = list(range(len(b) + 1))
+    for i, ca in enumerate(a, 1):
+        cur = [i]
+        for j, cb in enumerate(b, 1):
+            cur.append(min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (ca != cb)))
+        if min(cur) > limit:
+            return limit + 1
+        prev = cur
+    return prev[-1]
+
+
+def near_same(a: str, b: str) -> bool:
+    """True when two comments are the same after normalizing, or differ by at most 2 edits (1 under 8 characters, none under 5, so
+    `ok` and `no` stay two comments). The trailing counter is ignored: `Dup test #3` is `Dup test #2` again."""
+    (fa, ca), (fb, cb) = norm_comment(a), norm_comment(b)
+    if not fa or not fb:
+        return False
+    for x, y in ((fa, fb), (ca, cb)):
+        k = 2 if min(len(x), len(y)) >= 8 else 1 if min(len(x), len(y)) >= 5 else 0
+        if x and y and _distance(x, y, k) <= k:
             return True
     return False
+
+
+def _lines(t: Ticket):
+    """(index in comment_lines, when, author, text) for each comment line of the ticket."""
+    for i, line in enumerate(comment_lines(t)):
+        m = _COMMENT_LINE.match(line)
+        if m:
+            try:
+                yield i, dt.datetime.fromisoformat(f"{m.group(1)}T{m.group(2)}"), m.group(3), split_comment_kind(m.group(4))[1]
+            except ValueError:
+                continue
+
+
+def find_duplicate(t: Ticket, actor: str, text: str, now: dt.datetime | None = None) -> tuple[int, bool] | None:
+    """(index of the comment already there, whether it is only a near repeat) when this person, or one named the same way (`james`,
+    `James`, `james1`, `james_`), posted the same words within 10 minutes or nearly the same words within 60 seconds; else None.
+    The kind does not matter."""
+    from .people import same_person
+
+    now = now or dt.datetime.now()
+    near = None
+    for i, when, who, body in _lines(t):
+        if not same_person(who, actor):
+            continue
+        age = abs(now - when)
+        if age <= DUPLICATE_WINDOW and _norm(body) == _norm(text):
+            return i, False
+        if near is None and age <= NEAR_WINDOW and near_same(body, text):
+            near = i
+    return (near, True) if near is not None else None
+
+
+def is_duplicate_comment(t: Ticket, actor: str, text: str, now: dt.datetime | None = None) -> bool:
+    return find_duplicate(t, actor, text, now) is not None
 
 
 def canon_kind(kind: str | None) -> str:
@@ -272,15 +338,16 @@ def canon_kind(kind: str | None) -> str:
     raise ValueError(f"A comment is one of: {', '.join(COMMENT_KINDS[:-1])} or {COMMENT_KINDS[-1]}.")
 
 
-def comment(store: Store, t: Ticket, text: str, actor: str | None = None, kind: str | None = None) -> CommentResult:
+def comment(store: Store, t: Ticket, text: str, actor: str | None = None, kind: str | None = None, now: dt.datetime | None = None) -> CommentResult:
     """Append a dated comment. It always has a kind (Question unless said otherwise), kept at the end of the line as `<!-- kind: X -->`."""
     kind = canon_kind(kind)
     if not text.strip():
         raise RuleError("An empty comment says nothing.")
     who = actor or "desk"
-    if is_duplicate_comment(t, who, text):
-        return CommentResult(t, False)
-    t.append_line("Comments", _stamp(who, f"{text.strip()} <!-- kind: {kind} -->", at_time=True))
+    dup = find_duplicate(t, who, text, now)
+    if dup:
+        return CommentResult(t, False, existing=dup[0], near=dup[1])
+    t.append_line("Comments", _stamp(who, f"{text.strip()} <!-- kind: {kind} -->", at_time=True, now=now))
     store.save(t)
     _acted(store, t, who)
     return CommentResult(t, True)
