@@ -20,6 +20,13 @@
   </div>
 </div>
 
+{% if combos %}
+<div class="card hold" style="margin:18px 0 0">
+  <span class="label">Combos</span>
+  {% for a, b in combos %}<p style="margin:6px 0 0">"{{ a.meta.get('title') }}" and "{{ b.meta.get('title') }}" completed together, +100 for efficiency!</p>{% endfor %}
+</div>
+{% endif %}
+
 <h2>In your mouth <small>Claimed or being fetched. One ball per person or agent.</small></h2>
 {% if mouth %}<div class="grid">{% for t in mouth %}{{ card(t, s, hold=True) }}{% endfor %}</div>
 {% else %}<p class="muted">Nothing is being fetched right now.</p>{% endif %}

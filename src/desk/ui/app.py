@@ -9,64 +9,67 @@ import re
 from pathlib import Path
 
 from fastapi import FastAPI, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
+from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from .. import ops
 from ..config import find_home
 from ..rules import RuleError
-from ..store import Store
+from ..store import Store, id_parts
 from ..ticket import SECTIONS, STATUSES
 from ..words import screen
+from .markdown import has_mermaid, render as md_html
 
 TEMPLATES = Path(__file__).parent / "templates"
+STATIC = Path(__file__).parent / "static"
+MERMAID_CDN = "https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js"
+COMBO_WINDOW = dt.timedelta(minutes=30)
+_ASSET_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._ -]*$")
 
 
-def md_html(text: str) -> str:
-    """A deliberately tiny markdown subset: paragraphs, bullets, checkboxes, inline code, links."""
-    out: list[str] = []
-    in_list = False
-    for raw in text.splitlines():
-        line = raw.rstrip()
-        m = re.match(r"^\s*[-*]\s*(?:\[( |x|X)\]\s*)?(.*)$", line)
-        if m:
-            if not in_list:
-                out.append("<ul>")
-                in_list = True
-            box = ""
-            if m.group(1) is not None:
-                checked = m.group(1).lower() == "x"
-                box = f'<input type="checkbox" disabled{" checked" if checked else ""}> '
-            out.append(f"<li>{box}{_inline(m.group(2))}</li>")
+def by_project(tickets):
+    """Group for display: the current project key first, then the id."""
+    return sorted(tickets, key=lambda t: (t.project, t.id))
+
+
+def combos_for(tickets, on: dt.date | None = None) -> list[tuple]:
+    """Pairs of tagged tickets done within 30 minutes of each other on `on` (today), from `done_at`."""
+    on = on or dt.date.today()
+    done = []
+    for t in tickets:
+        if t.status != "done" or not t.tags:
             continue
-        if in_list:
-            out.append("</ul>")
-            in_list = False
-        if line.strip():
-            out.append(f"<p>{_inline(line)}</p>")
-    if in_list:
-        out.append("</ul>")
-    return "\n".join(out)
-
-
-def _inline(s: str) -> str:
-    s = html.escape(s)
-    s = re.sub(r"`([^`]+)`", r"<code>\1</code>", s)
-    s = re.sub(r"\[([^\]]+)\]\((https?://[^)\s]+)\)", r'<a href="\2">\1</a>', s)
-    s = re.sub(r"\*\*([^*]+)\*\*", r"<b>\1</b>", s)
-    return s
+        try:
+            when = dt.datetime.fromisoformat(str(t.meta.get("done_at") or ""))
+        except ValueError:
+            continue
+        if when.date() == on:
+            done.append((when, t))
+    done.sort(key=lambda x: x[0])
+    out = []
+    for i, (wa, a) in enumerate(done):
+        for wb, b in done[i + 1:]:
+            if wb - wa <= COMBO_WINDOW:
+                out.append((a, b))
+    return out
 
 
 def create_app(home: Path | None = None) -> FastAPI:
     app = FastAPI(title="Desk")
     templates = Jinja2Templates(directory=str(TEMPLATES))
-    templates.env.globals.update(screen=screen, md=md_html, statuses=STATUSES, sections=SECTIONS)
+    mermaid_src = "/static/mermaid.min.js" if (STATIC / "mermaid.min.js").exists() else MERMAID_CDN
+    templates.env.globals.update(screen=screen, md=md_html, has_mermaid=has_mermaid, statuses=STATUSES,
+                                 sections=SECTIONS, mermaid_src=mermaid_src, by_project=by_project)
+    if STATIC.exists():
+        app.mount("/static", StaticFiles(directory=str(STATIC)), name="static")
 
     def store() -> Store:
         return Store(home or find_home())
 
     def ctx(request: Request, st: Store, **kw) -> dict:
-        return {"request": request, "owner": st.owner, "home": str(st.home), "today": dt.date.today().isoformat(), **kw}
+        return {"request": request, "owner": st.owner, "home": str(st.home), "today": dt.date.today().isoformat(),
+                "titles": {k: st.project_title(k) for k in st.projects()}, **kw}
 
     @app.get("/", response_class=HTMLResponse)
     def today(request: Request, cap: str = "normal"):
@@ -81,14 +84,16 @@ def create_app(home: Path | None = None) -> FastAPI:
         decided = [t for t in ts if t.status in ("approved", "done", "rejected", "changes_requested") and str(t.meta.get("updated", "")) >= week]
         if cap == "rough":
             stale = []
-        return templates.TemplateResponse(request, "today.html", ctx(request, s, mouth=mouth, feet=feet + decisions, others=others, stale=stale,
-                                                             decided=decided, cap=cap, s=s))
+        combos = combos_for(ts) if s.combos else []
+        return templates.TemplateResponse(request, "today.html", ctx(request, s, mouth=by_project(mouth), feet=by_project(feet + decisions),
+                                                             others=by_project(others), stale=by_project(stale),
+                                                             decided=by_project(decided), cap=cap, s=s, combos=combos))
 
     @app.get("/board", response_class=HTMLResponse)
     def board(request: Request, project: str | None = None):
         s = store()
         ts = [t for t in s.tickets() if not project or t.project == project]
-        cols = [(st, [t for t in ts if t.status == st]) for st in STATUSES]
+        cols = [(st, by_project([t for t in ts if t.status == st])) for st in STATUSES]
         return templates.TemplateResponse(request, "board.html", ctx(request, s, cols=cols, project=project, projects=sorted(s.projects()), s=s))
 
     @app.get("/projects", response_class=HTMLResponse)
@@ -100,7 +105,8 @@ def create_app(home: Path | None = None) -> FastAPI:
             mine = [t for t in ts if t.project == key]
             counts = {st: len([t for t in mine if t.status == st]) for st in STATUSES}
             last = max((str(t.meta.get("updated", "")) for t in mine), default="")
-            rows.append({"key": key, "title": s.project_title(key), "counts": counts, "open": len([t for t in mine if t.is_open]),
+            rows.append({"key": key, "title": s.project_title(key), "prefix": s.key_for(key), "aliases": s.aliases_for(key),
+                         "counts": counts, "open": len([t for t in mine if t.is_open]),
                          "blocked": len([t for t in mine if t.status == "blocked"]), "last": last})
         return templates.TemplateResponse(request, "projects.html", ctx(request, s, rows=rows))
 
@@ -116,7 +122,20 @@ def create_app(home: Path | None = None) -> FastAPI:
         for d in t.meta.get("depends_on") or []:
             dep = by_id.get(str(d))
             deps.append((str(d), dep.status if dep else "missing"))
-        return templates.TemplateResponse(request, "ticket.html", ctx(request, s, t=t, deps=deps, stale=s.is_stale(t), error=error))
+        mermaid = any(has_mermaid(t.section(name)) for name in t.sections)
+        return templates.TemplateResponse(request, "ticket.html", ctx(request, s, t=t, deps=deps, stale=s.is_stale(t), error=error,
+                                                             formerly=s.formerly(t), mermaid=mermaid))
+
+    @app.get("/assets/{ticket_id}/{filename}")
+    def asset(ticket_id: str, filename: str):
+        s = store()
+        if not id_parts(ticket_id.upper()) or not _ASSET_NAME.match(filename) or ".." in filename:
+            return HTMLResponse("<p>No such asset</p>", status_code=404)
+        root = s.ticket_assets_dir(ticket_id).resolve()
+        target = (root / filename).resolve()
+        if target.parent != root or not target.is_file():
+            return HTMLResponse("<p>No such asset</p>", status_code=404)
+        return FileResponse(str(target))
 
     def _back(t_id: str, error: str | None = None) -> RedirectResponse:
         url = f"/ticket/{t_id}" + (f"?error={html.escape(error)}" if error else "")

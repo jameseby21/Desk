@@ -2,8 +2,8 @@
 {% block title %}Desk · Board{% endblock %}
 {% block body %}
 <div class="row" style="justify-content:space-between">
-  <h1>The board{% if project %} · {{ project }}{% endif %}</h1>
-  <div class="row"><a class="btn" href="/board">All</a>{% for p in projects %}<a class="btn{% if p == project %} ball{% endif %}" href="/board?project={{ p }}">{{ p }}</a>{% endfor %}</div>
+  <h1>The board{% if project %} · {{ titles.get(project, project) }} <span class="chip">{{ project }}</span>{% endif %}</h1>
+  <div class="row"><a class="btn" href="/board">All</a>{% for p in projects %}<a class="btn{% if p == project %} ball{% endif %}" href="/board?project={{ p }}" title="{{ titles.get(p, p) }}">{{ p }}</a>{% endfor %}</div>
 </div>
 <div class="board">
 {% for st, items in cols %}
@@ -12,9 +12,9 @@
     <h3><span>{{ screen(st) }} <span class="muted" style="font-weight:400">{{ st }}</span></span><span>{{ items|length }}</span></h3>
     {% for t in items %}
     <a href="/ticket/{{ t.id }}" style="text-decoration:none"><div class="card">
-      <span class="chip">{{ t.id }}</span> <span class="chip">{{ t.meta.get('priority') }}</span>{% if s.is_stale(t) %} <span class="chip red">{{ screen('stale') }}</span>{% endif %}
+      <span class="chip">{{ t.id }}</span>{% if s.formerly(t) %} <span class="muted formerly">(formerly {{ s.formerly(t) }})</span>{% endif %} <span class="chip">{{ t.meta.get('priority') }}</span>{% if s.is_stale(t) %} <span class="chip red">{{ screen('stale') }}</span>{% endif %}
       <div style="font-weight:600;margin-top:6px">{{ t.meta.get('title') }}</div>
-      <div class="muted" style="font-size:12.5px">{{ t.project }} · {{ t.meta.get('owner') }}</div>
+      <div class="muted" style="font-size:12.5px" title="{{ titles.get(t.project, t.project) }}">{{ t.project }} · {{ t.meta.get('owner') }}</div>
     </div></a>
     {% endfor %}
   </div>

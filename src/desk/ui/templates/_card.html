@@ -2,8 +2,8 @@
 <a href="/ticket/{{ t.id }}" style="text-decoration:none">
 <div class="card{% if hold %} hold{% endif %}">
   <div class="row">
-    <span class="chip">{{ t.id }}</span>
-    <span class="chip">{{ t.project }}</span>
+    <span class="chip">{{ t.id }}</span>{% if s.formerly(t) %}<span class="muted formerly">(formerly {{ s.formerly(t) }})</span>{% endif %}
+    <span class="chip" title="{{ s.project_title(t.project) }}">{{ t.project }}</span>
     <span class="chip">{{ t.meta.get('type') }}</span>
     <span class="chip {% if t.status == 'review' %}ball{% elif t.status == 'blocked' %}red{% endif %}">{{ screen(t.status) }}</span>
     {% if s.is_stale(t) %}<span class="chip red">{{ screen('stale') }}</span>{% endif %}
@@ -13,6 +13,7 @@
     {{ t.meta.get('priority') }} · {{ t.meta.get('size') }} · {{ t.meta.get('owner') }}
     {% if t.meta.get('review_by') %} · review by {{ t.meta.get('review_by') }}{% endif %}
     {% if t.status == 'blocked' %} · on {{ t.meta.get('blocked_on') }}{% endif %}
+    {% if t.tags %} · {% for tag in t.tags %}<span class="tag">#{{ tag }}</span> {% endfor %}{% endif %}
   </div>
   {% if t.meta.get('smallest_step') %}<div style="font-size:13.5px;margin-top:6px"><span class="label">Smallest step</span><br>{{ t.meta.get('smallest_step') }}</div>{% endif %}
 </div>

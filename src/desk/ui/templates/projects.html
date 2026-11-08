@@ -2,12 +2,13 @@
 {% block title %}Desk · Projects{% endblock %}
 {% block body %}
 <h1>Projects</h1>
-<p class="muted">One row per <code>projects/&lt;key&gt;.md</code>. Counts come from the ticket files.</p>
+<p class="muted">One row per <code>projects/&lt;key&gt;.md</code>. Counts come from the ticket files. Old keys and prefixes a project still answers to are listed as aliases.</p>
 <table>
-<tr><th>Project</th><th>Open</th><th>Thrown</th><th>Fetching</th><th>Dropped</th><th>Stuck</th><th>Fetched</th><th>Last activity</th></tr>
+<tr><th>Project</th><th>Prefix</th><th>Open</th><th>Thrown</th><th>Fetching</th><th>Dropped</th><th>Stuck</th><th>Fetched</th><th>Last activity</th></tr>
 {% for r in rows %}
 <tr>
-  <td><a href="/board?project={{ r.key }}">{{ r.title }}</a> <span class="chip">{{ r.key }}</span></td>
+  <td><a href="/board?project={{ r.key }}">{{ r.title }}</a> <span class="chip">{{ r.key }}</span>{% if r.aliases %} <span class="muted" style="font-size:12.5px">formerly {{ r.aliases|join(', ') }}</span>{% endif %}</td>
+  <td><code>{{ r.prefix }}</code></td>
   <td>{{ r.open }}</td>
   <td>{{ r.counts['ready'] }}</td>
   <td>{{ r.counts['claimed'] + r.counts['in_progress'] }}</td>
