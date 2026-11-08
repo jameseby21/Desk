@@ -1,0 +1,60 @@
+flowchart LR
+  owner(["Owner · web browser"])
+  agent(["AI agent or project session · Claude Code"])
+  hooks["Claude Code hooks + pre-commit<br/>documented in README, no config shipped"]
+  handoff["Hand-off package · folder or .zip"]
+
+  subgraph local["Owner's machine · Python 3.11+"]
+    cli["CLI · desk, also drew<br/>argparse · src/desk/cli.py"]
+    server["UI server · desk-ui, also drew-ui<br/>uvicorn on 127.0.0.1:8765, DESK_UI_PORT<br/>store from DESK_HOME or nearest desk.toml<br/>src/desk/ui/app.py"]
+    ui["Web UI · FastAPI + Jinja2 templates<br/>plain HTML forms, no JavaScript, no htmx<br/>src/desk/ui/templates/"]
+    subgraph core["Shared core · src/desk/"]
+      ops["ops.py · every write operation"]
+      rules["rules.py · allowed moves + validation"]
+      store["store.py · Store: ids, stale, index, git sync"]
+      ticket["ticket.py · YAML frontmatter + fixed sections · PyYAML"]
+      config["config.py · find the store, read desk.toml · tomllib"]
+    end
+  end
+
+  subgraph storeRepo["Ticket store = DESK_HOME"]
+    storeNote["A separate git repo outside this one,<br/>e.g. the owner's private umbrella store.<br/>Path differs per machine, not in code."]
+    toml["desk.toml · owner, approval, git.sync, stale.days"]
+    tickets["tickets/KEY-0001-slug.md · one Markdown file per ticket"]
+    projects["projects/key.md · project profiles, optional prefix"]
+    intake["intake/date-topic/ · copied hand-offs"]
+    decisions["DECISIONS.md · created by desk init"]
+    sqlite[(".desk/index.sqlite · SQLite, derived, gitignored<br/>written by desk index, not read by CLI or UI")]
+  end
+
+  remote["Store's git remote<br/>unclear: host is not named in code"]
+
+  subgraph dev["This repo's build and test"]
+    gh["GitHub · jameseby21/desk · source only"]
+    uv["uv + uv.lock · hatchling build backend"]
+    pytest["pytest + httpx TestClient · tests/"]
+    noci["CI · none in repo"]
+  end
+
+  owner -->|"HTTP GET pages, POST forms"| server
+  server --> ui
+  ui -->|"reads tickets and projects"| store
+  ui -->|"decide, comment, move"| ops
+  owner -->|"shell commands"| cli
+  agent -->|"shell commands"| cli
+  hooks -->|"desk next --json, desk validate, desk index"| cli
+  cli --> ops
+  cli -->|"--home, then DESK_HOME, then nearest desk.toml upward"| config
+  ops --> rules
+  ops --> store
+  store --> ticket
+  config -->|"reads"| toml
+  ticket -->|"read and write UTF-8"| tickets
+  store -->|"reads"| projects
+  store -->|"desk init creates"| decisions
+  handoff -->|"desk intake · private files refused"| ops
+  ops -->|"copies package"| intake
+  store -->|"desk index rebuilds"| sqlite
+  store <-->|"pull before, commit + push after, if git.sync"| remote
+  gh -.->|"clone, then uv tool install ."| cli
+  uv --> pytest

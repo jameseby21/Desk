@@ -1,0 +1,62 @@
+flowchart TB
+  subgraph hookBox["Agent and repo hooks · README only, no config shipped"]
+    hStart["SessionStart · desk next --project KEY --json"]
+    hStop["Stop · desk validate"]
+    hPre["pre-commit · desk validate, then desk index"]
+  end
+
+  subgraph cliCmds["CLI commands · src/desk/cli.py"]
+    cSetup["init · home<br/>create the store, print its path"]
+    cCreate["new · intake<br/>next id per project prefix"]
+    cRead["list · show · board · next, next --json"]
+    cFlow["claim · start · report · done"]
+    cDecide["decide --approve or --changes · reject"]
+    cOther["block · unblock · move · comment"]
+    cCheck["validate, exit 1 on errors · index"]
+  end
+
+  subgraph uiPages["Web UI · src/desk/ui/app.py + templates/"]
+    pToday["Today · GET / · today.html<br/>In your mouth, Dropped at your feet, Other balls in play,<br/>Chewed back, Decided this week<br/>Good, Normal, Rough switch"]
+    pBoard["Board · GET /board, filter by project · board.html"]
+    pProjects["Projects · GET /projects · projects.html"]
+    pTicket["Ticket · GET /ticket/ID · ticket.html<br/>Acceptance count, red Not run tag on an empty Report"]
+    pPosts["POST /ticket/ID/decide, /comment, /move<br/>acts as the configured owner"]
+  end
+
+  subgraph coreOps["Shared operations · src/desk/ops.py"]
+    oMove["move · claim · start · report · decide · done<br/>block · unblock · reject · comment"]
+    oNew["new · intake<br/>private-file guard, unsafe zip path guard"]
+  end
+
+  subgraph rulesBox["Rules · src/desk/rules.py"]
+    rTrans["check_transition<br/>allowed moves, who may ready, claim, approve,<br/>Report before review, words for decisions,<br/>dependencies done before done"]
+    rValid["validate_ticket + validate_store<br/>required fields, enum values, dates, lists,<br/>id prefix matches project, project file exists,<br/>dangling or self depends_on, duplicate ids,<br/>status needs its Decision or Report line<br/>warnings: size l outside triage, slice without Acceptance"]
+  end
+
+  subgraph storeBox["Store and format · store.py, ticket.py, config.py, words.py"]
+    sFiles["Ticket files<br/>canonical frontmatter order + 8 fixed sections"]
+    sDerived["next_ready by priority then created<br/>is_stale · index to SQLite"]
+    sSync["git sync before and after each write<br/>called by CLI write commands and UI POST handlers"]
+    sWords["Drew's screen words for statuses<br/>used by CLI output and every UI page"]
+  end
+
+  hStart --> cRead
+  hStop --> cCheck
+  hPre --> cCheck
+  cCreate --> oNew
+  cFlow --> oMove
+  cDecide --> oMove
+  cOther --> oMove
+  pTicket --> pPosts
+  pPosts --> oMove
+  oMove --> rTrans
+  oMove -->|"Store.save runs validate_ticket"| rValid
+  oNew --> rValid
+  cCheck --> rValid
+  rValid --> sFiles
+  cSetup --> sFiles
+  cRead --> sDerived
+  cCheck --> sDerived
+  pToday --> sDerived
+  pBoard -->|"reads"| sFiles
+  pProjects -->|"reads"| sFiles
