@@ -103,6 +103,6 @@ async function until(f,n){for(var i=0;i<(n||100)&&!f();i++){await sleep(100);}re
 def test_n_more_fills_the_column_in_place_and_five_columns_fit(store):
     for i in range(15):
         _mk(store, f"Ready {i:02d}", track="Big", status="ready")
-    got = drive(store, MORE, "/board?project=desk")
+    got = drive(store, MORE, "/board?company=unsorted&project=desk")
     assert got["hasLink"] and got["before"] == 12 and got["after"] == 15 and got["linkGone"] and got["sameDocument"], got
     assert got["five"] == 5 and got["fits"], got

@@ -9,18 +9,33 @@
 {% block body %}
 <div class="row" style="justify-content:space-between">
   <div><h1 style="margin:0">Board</h1>
-    <p class="muted" style="margin:2px 0 0">{{ total }} ticket{{ 's' if total != 1 }} match{{ '' if total != 1 else 'es' }}{% if tokens %} the filter{% endif %} · {{ open_n }} open</p></div>
-  <div class="row"><span class="label">Group by</span>
+    <nav class="crumbs" aria-label="Where you are"><a href="{{ links.top }}"{% if level == 'company' %} aria-current="page"{% endif %}>jeby</a>{% if crumb %} <span aria-hidden="true">&rsaquo;</span> <a href="{{ links.company }}" aria-current="page">{{ crumb }}</a>{% endif %}
+    <span class="muted">· {{ total }} ticket{{ 's' if total != 1 }}{% if tokens %} match the filter{% endif %} · {{ open_n }} open</span></nav></div>
+  {% if level != 'company' %}<div class="row"><span class="label">Group by</span>
     <a class="btn{% if by == 'track' %} ball{% endif %}" href="{{ links.track }}">Tracks</a><a class="btn{% if by == 'sprint' %} ball{% endif %}" href="{{ links.sprint }}">Sprints</a>
-    <a class="btn" href="{{ links.expand }}">Expand all</a><a class="btn" href="{{ links.collapse }}">Collapse all</a></div>
+    <a class="btn" href="{{ links.expand }}">Expand all</a><a class="btn" href="{{ links.collapse }}">Collapse all</a></div>{% endif %}
 </div>
 <div class="row filters" id="filters">
   {% for name, label, plural in (('project', 'Project', 'projects'), ('assignee', 'Assignee', 'people'), ('track', 'Track', 'tracks'), ('sprint', 'Sprint', 'sprints')) %}{% if show[name] or name in ('project','assignee','track') %}
   {{ dropdown(label, name, opts[name], plural, tokens|selectattr('facet', 'equalto', name)|map(attribute='label')|list, fhidden, clear[name]) }}{% endif %}{% endfor %}
   {% for tk in tokens %}<a class="tok" href="{{ tk.href }}" title="Remove {{ tk.label }}">{{ tk.label }} <span aria-hidden="true">&times;</span><span class="vh"> remove</span></a>{% endfor %}
-  <span class="views">Views: <a href="{{ mine_url }}">Mine</a>{% if tokens %} <a href="{{ '/board' ~ ('?by=sprint' if by == 'sprint' else '') }}">Clear all</a>{% endif %}</span>
+  <span class="views">Views: <a href="{{ mine_url }}">Mine</a>{% if tokens %} <a href="{{ links.clear_all }}">Clear all</a>{% endif %}</span>
 </div>
-<p class="muted" style="margin:2px 0 10px">Projects first. Open a project to see its {{ 'tracks' if by == 'track' else 'sprints' }}, open one of those to see its tickets. Close what you do not need; what is open stays in the address.</p>
+{% if level == 'company' %}
+<p class="muted" style="margin:2px 0 10px">Companies first. Open one to see its projects.</p>
+<div class="bboard bcomps" id="bcomps">
+{% for c in comps %}
+<a class="bcomp" href="{{ c.href }}" data-slug="{{ c.slug }}">
+  <span class="initial">{{ (c.title or '?')[0]|upper }}</span>
+  <span class="bctitle"><b class="bname" title="{{ c.name }}">{{ c.title }}</b>{% if c.subtitle %}<span class="muted bsub" title="{{ c.subtitle }}">{{ c.subtitle }}</span>{% endif %}</span>
+  <span class="bcounts" title="{{ c.projects }} project{{ 's' if c.projects != 1 }}; done is a share of every ticket not let go">{{ c.projects }} project{{ 's' if c.projects != 1 }} · {{ c.open }} open · {{ c.in_hand }} in hand · {{ c.review }} review · {{ c.done_pct }}% done</span>
+  {% if c.top %}<span class="chip {% if c.top == 'p0' %}red{% elif c.top == 'p1' %}ball{% endif %}" title="Highest priority among the open tickets here, and how many carry it">top {{ c.top }} &times;{{ c.top_n }}</span>{% endif %}
+</a>
+{% else %}<p class="muted">No tickets match. {% if tokens %}<a href="/board">Clear the filters</a>.{% endif %}</p>
+{% endfor %}
+</div>
+{% else %}
+<p class="muted" style="margin:2px 0 10px">Open a project to see its {{ 'tracks' if by == 'track' else 'sprints' }}, open one of those to see its tickets. Close what you do not need; what is open stays in the address, and Back closes it again.</p>
 <div class="bboard" id="bboard" data-by="{{ by }}" data-filters="{{ filter_q }}">
 {% for r in rows %}
 {% set brand = s.brand_for(r.key) %}
@@ -41,24 +56,28 @@
   {% endfor %}
   </div>
 </details>
-{% else %}<p class="muted">No tickets match. {% if tokens %}<a href="/board">Clear the filters</a>.{% endif %}</p>
+{% else %}<p class="muted">No tickets match. {% if tokens %}<a href="{{ links.clear_all }}">Clear the filters</a>.{% endif %}</p>
 {% endfor %}
 </div>
+{% endif %}
 <script src="/static/board-filter.js" defer></script>
 <script>
 (function () {
   /* What is open lives in the address (open= for projects, g= for groups as project:slug) so a view can be shared and reopened.
      A group the server drew closed has no tickets in the page; opening one fetches its columns, no reload. */
   var board = document.getElementById("bboard");
-  function sync() {
+  if (!board) return;  /* the company level (DESK-0183) is plain links */
+  function sync() {  /* each open or close is a history step, so Back closes the last level opened (DESK-0183) */
     var u = new URL(location.href), open = [], gs = [];
     board.querySelectorAll("details.bproj[open]").forEach(function (d) { open.push(d.dataset.val); });
     board.querySelectorAll("details.bgroup[open]").forEach(function (d) { gs.push(d.dataset.val); });
+    var was = (u.searchParams.get("open") || "") + "|" + (u.searchParams.get("g") || "");
     ["open", "g"].forEach(function (k) { u.searchParams.delete(k); });
     if (open.length) u.searchParams.set("open", open.join(","));
     if (gs.length) u.searchParams.set("g", gs.join(","));
-    history.replaceState(null, "", u);
+    if (open.join(",") + "|" + gs.join(",") !== was) history.pushState({ board: 1 }, "", u);
   }
+  addEventListener("popstate", function () { location.reload(); });  /* the server draws the level the address names */
   board.addEventListener("click", function (e) {  /* "N more" fills in place; without script the link is a page */
     var a = e.target.closest && e.target.closest("a[data-more]");
     if (!a || e.ctrlKey || e.metaKey || e.shiftKey) return;

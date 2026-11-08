@@ -3,7 +3,7 @@
 <a class="trow" href="/ticket/{{ t.id }}">
   <span class="tr-lead">{% if lead.startswith('ask:') %}<span class="ask {{ 'ask-do' if lead == 'ask:Do' else '' }}">{{ lead[4:] }}</span>{% else %}{{ lead }}{% endif %}</span>
   <span class="tr-title">{% if t.meta.get('priority') == 'p0' %}<span class="badge urgent">Urgent</span>{% endif %}{% if t.meta.get('type') == 'bug' %}<span class="badge bug">Bug</span>{% endif %}{{ t.meta.get('title') }}{% if step %}<span class="tr-step">Smallest step: {{ step }}</span>{% endif %}</span>
-  <span class="tr-id">{{ t.id }}{% if s.formerly(t) %} (formerly {{ s.formerly(t) }}){% endif %}{% if due %} · {{ due }}{% endif %}</span>
+  <span class="tr-id">{% if placeof is defined %}{% set pl = placeof(t) %}<span class="tr-place" title="{{ pl[0] }} › {{ pl[1] }}">{{ pl[0] }} › {{ pl[1] }}</span> · {% endif %}{{ t.id }}{% if s.formerly(t) %} (formerly {{ s.formerly(t) }}){% endif %}{% if due %} · {{ due }}{% endif %}</span>
 </a>
 {%- endmacro %}
 {% macro dropdown(label, name, options, current, base, hidden) -%}

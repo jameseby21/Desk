@@ -20,7 +20,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from .. import timing
-from .. import asks, boardfilter as bf, boardview as bv, commands, identity as idmod, ladder, sprints as sprintmod, todayview as tv, people as peoplemod, search as srch, nav as navmod, buildstamp as bs, comments as cm, docs as docsmod, ops, profanity, review as rv, style as styles, tracks as trk, version as ver
+from .. import asks, boardfilter as bf, boardview as bv, commands, companies as compmod, identity as idmod, ladder, sprints as sprintmod, todayview as tv, people as peoplemod, search as srch, nav as navmod, buildstamp as bs, comments as cm, docs as docsmod, ops, profanity, review as rv, style as styles, tracks as trk, version as ver
 from ..config import find_home
 from ..rules import RuleError
 from ..store import Store, id_parts, split_profile
@@ -70,6 +70,16 @@ def sprint_chips(tickets) -> list[tuple[str, str, int]]:
         if n:
             slug = sprintmod.slugify(n, 60)
             seen[slug] = (seen[slug][0], seen[slug][1] + 1) if slug in seen else (n, 1)
+    return sorted(((slug, n, k) for slug, (n, k) in seen.items()), key=lambda r: r[1].lower())
+
+
+def company_chips(tickets, of: dict) -> list[tuple[str, str, int]]:
+    """(slug, company title, tickets) for every company the tickets fall in, for Today's Company dropdown (DESK-0183)."""
+    seen: dict = {}
+    for t in tickets:
+        name = of.get(t.project) or compmod.UNSORTED
+        slug = compmod.slug(name)
+        seen[slug] = (seen[slug][0], seen[slug][1] + 1) if slug in seen else (compmod.title(name), 1)
     return sorted(((slug, n, k) for slug, (n, k) in seen.items()), key=lambda r: r[1].lower())
 
 
@@ -337,11 +347,15 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         return RedirectResponse(f"/ticket/{t.id}", status_code=303)
 
     @app.get("/", response_class=HTMLResponse)
-    def today(request: Request, cap: str = "normal", track: str = "", sprint: str = ""):
+    def today(request: Request, cap: str = "normal", track: str = "", sprint: str = "", company: str = ""):
         s = store()
         ts = s.tickets()
         chips = trk.track_chips(ts)
         schips = sprint_chips(ts)
+        of = compmod.by_project(s)  # DESK-0183: every card says company > project; the Company dropdown narrows the page
+        cchips = company_chips(ts, of)
+        if company:
+            ts = [t for t in ts if compmod.slug(of.get(t.project) or compmod.of(s, t.project)) == company]
         if track:
             ts = [t for t in ts if trk.track_slug(trk.track_of(t)) == track and trk.track_of(t)]
         if sprint:
@@ -359,7 +373,9 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         now = dt.date.today()
         return templates.TemplateResponse(request, "today.html", ctx(request, s, asked=asked, v=view, stale=sorted(stale, key=tv.queue_key), decided=by_project(decided),
                                                              cap=cap, s=s, combos=combos, review_line=review_line, long_today=f"{now.strftime('%A, %B')} {now.day}",
-                                                             chips=chips, track=track, schips=schips, sprint=sprint, events_url="/events", events_since=ev.tickets_stamp(s)))
+                                                             chips=chips, track=track, schips=schips, sprint=sprint, cchips=cchips, company=company,
+                                                             placeof=lambda t: (compmod.title(of.get(t.project) or compmod.of(s, t.project)), s.project_title(t.project)),
+                                                             events_url="/events", events_since=ev.tickets_stamp(s)))
 
     def sse(stamp, since: str, timeout: float) -> StreamingResponse:
         return StreamingResponse(ev.stream(stamp, int(since) if since.isdigit() else None, poll, min(max(timeout, 0), 3600), stopping=lambda: app.state.stopping), media_type="text/event-stream",
@@ -434,7 +450,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
 
     @app.get("/board", response_class=HTMLResponse)
     def board(request: Request, project: list[str] = Query([]), track: list[str] = Query([]), assignee: list[str] = Query([]), sprint: list[str] = Query([]),
-              by: str = "track", open: str = "", g: str = ""):
+              by: str = "track", open: str = "", g: str = "", company: str = ""):
         """The broad-context board (DESK-0084): projects, then tracks or sprints with counts and the top priority, then (when opened) the
         tickets. `open` lists the projects drawn open, `g` the groups as `project:slug` (`*` for all). The four dropdowns (DESK-0034)
         hold their values in the address; a filter narrows the board and opens what is left, since asking for it means wanting to see
@@ -444,17 +460,35 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         sel = board_sel(project, assignee, track, sprint)
         every = s.tickets()
         ts = bf.apply(every, sel)
-        rows = bv.build(s, ts, by, open, g, expand_all=any(sel.values()))
+        of = compmod.by_project(s)
+        names = {compmod.slug(n): n for n in of.values()}
+        if not company:  # an address that opens a project or a group (an old link, a reload) opens its company too
+            keys = [x.split(":")[0] for x in bf.split(open) + bf.split(g) if x not in (bv.WIDE, "-")]
+            company = compmod.slug(of[keys[0]]) if keys and keys[0] in of else (compmod.ALL if bv.WIDE in bf.split(open) + bf.split(g) else "")
+        if company and company != compmod.ALL and company not in names:
+            company = ""  # a company that no longer exists: back to the top
+        level = "project" if company else "company"
+        if level == "company":  # DESK-0183: the board opens at companies and shows nothing else; the filters narrow their counts
+            rows, comps = [], bv.companies(s, bv.build(s, ts, by))
+        else:
+            ts = ts if company == compmod.ALL else [t for t in ts if of.get(t.project) == names[company]]
+            rows, comps = bv.build(s, ts, by, open, g, expand_all=any(sel.values())), []
         opts = bf.options(s, every, sel, peoplemod.load(s.home))
         by_extra = {"by": by} if by != "track" else {}
-        keep = {**sel, **by_extra}
+        here = {**by_extra, **({"company": company} if company else {})}  # what every link and form carries so the drill survives a filter
+        keep = {**sel, **here}
         links = {"track": board_url(**{**keep, "by": ""}), "sprint": board_url(**{**keep, "by": "sprint"}), "expand": board_url(**keep, open="*", g="*"),
-                 "collapse": board_url(**keep, open="-"), "all_projects": board_url(**{**sel, "project": [], **by_extra})}
+                 "collapse": board_url(**keep, open="-"), "all_projects": board_url(**{**sel, "project": [], **here}),
+                 "top": board_url(**sel, **by_extra), "company": board_url(**keep), "clear_all": board_url(**here)}
+        for c in comps:
+            c.href = board_url(**sel, **by_extra, company=c.slug)
+        crumb = ("All companies" if company == compmod.ALL else compmod.title(names[company])) if company else ""
         mine = peoplemod.load(s.home).get(s.owner)
-        clear = {f: board_url(**{**sel, f: [], **by_extra}) for f in bf.FACETS}
-        return templates.TemplateResponse(request, "board.html", ctx(request, s, rows=rows, by=by, links=links, s=s, sel=sel, opts=opts, tokens=bf.tokens(sel, opts, by_extra),
-                                                           show={f: any(g for _h, g in opts[f]) for f in bf.FACETS}, hidden=by_extra, fhidden={**sel, **by_extra}, clear=clear, filter_q=bf.query({**sel, "project": []}), total=len(ts), open_n=sum(1 for t in ts if t.is_open),
-                                                           mine_url=board_url(assignee=[mine.key if mine else s.owner], **by_extra), events_url="/events", events_since=ev.tickets_stamp(s)))
+        clear = {f: board_url(**{**sel, f: [], **here}) for f in bf.FACETS}
+        return templates.TemplateResponse(request, "board.html", ctx(request, s, rows=rows, comps=comps, level=level, company=company, crumb=crumb, by=by, links=links, s=s, sel=sel, opts=opts,
+                                                           tokens=bf.tokens(sel, opts, here),
+                                                           show={f: any(g for _h, g in opts[f]) for f in bf.FACETS}, hidden=here, fhidden={**sel, **here}, clear=clear, filter_q=bf.query({**sel, "project": []}), total=len(ts), open_n=sum(1 for t in ts if t.is_open),
+                                                           mine_url=board_url(assignee=[mine.key if mine else s.owner], **here), events_url="/events", events_since=ev.tickets_stamp(s)))
 
     @app.get("/board/group", response_class=HTMLResponse)
     def board_group(request: Request, project: str, slug: str, by: str = "track", track: list[str] = Query([]), assignee: list[str] = Query([]), sprint: list[str] = Query([])):

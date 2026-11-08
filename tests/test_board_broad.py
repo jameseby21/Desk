@@ -31,7 +31,7 @@ def _fx(store):
 
 def test_board_opens_at_projects_only_no_ticket_cards(store):
     a, b, c, d, cl = _fx(store)
-    page = cl.get("/board").text
+    page = cl.get("/board?company=unsorted").text  # DESK-0183: the project level is one click below the companies
     assert 'class="bproj"' in page and "Desk" in page and "jRE" in page
     assert _cards(page) == []  # no ticket card until someone drills in
     assert "top p0" in page and "top p1" in page  # the top priority of each project
@@ -84,15 +84,15 @@ def test_group_by_sprint_uses_the_sprint_field_and_a_sprint_track(store):
     rows = bv.build(store, store.tickets(), by="sprint")
     names = {g.name for g in rows[0].groups}
     assert names == {"sprint 6 2026", "Sprint 0007", "No sprint"}
-    page = TestClient(create_app(store.home)).get("/board?by=sprint").text
+    page = TestClient(create_app(store.home)).get("/board?company=unsorted&by=sprint").text
     assert "sprint 6 2026" in page and "No sprint" in page
 
 
 def test_filters_still_narrow_and_open(store):
     a, b, c, d, cl = _fx(store)
-    page = cl.get("/board?track=second").text
+    page = cl.get("/board?company=unsorted&track=second").text
     assert _cards(page) == ["Gamma in second"] and 'name="track" value="first-real-use"' in page
-    assert _cards(cl.get("/board?project=jre").text) == ["Delta untracked"]
+    assert _cards(cl.get("/board?company=unsorted&project=jre").text) == ["Delta untracked"]
 
 
 def test_calm_cards_at_most_two_chips_plus_n_and_clamped_title(store):
@@ -142,7 +142,7 @@ async function until(f,n){for(var i=0;i<(n||100)&&!f();i++){await sleep(100);}re
 @pytest.mark.skipif(browser() is None, reason="no Edge or Chrome installed")
 def test_drilling_in_loads_cards_in_place_and_keeps_state_in_the_address(store):
     _mk(store, "Alpha in first", track="First real use", priority="p0", status="ready")
-    got = drive(store, DRILL, "/board")
+    got = drive(store, DRILL, "/board?company=unsorted")
     assert got["cardsAtStart"] == 0 and got["loaded"] and got["cards"] == 1 and got["sameDocument"], got
     assert "open=desk" in got["url"] and "g=desk:first-real-use" in got["url"].replace("%3A", ":"), got
     assert "g=" not in got["urlAfterClose"] and "open=desk" in got["urlAfterClose"], got

@@ -43,14 +43,14 @@ def test_the_filter_lives_in_the_url_and_shows_as_removable_tokens(store):
     _mk(store, "In jre", "jre", assignee="main", status="ready")
     _mk(store, "In jeby-us", "jeby-us", assignee="chaz", status="ready")
     cl = _client(store)
-    page = cl.get("/board?project=desk,jre").text
+    page = cl.get("/board?company=unsorted&project=desk,jre").text  # DESK-0183: filters open what is left inside a company
     assert sorted(_cards(page)) == ["In desk", "In jre"]
     toks = re.findall(r'<a class="tok" href="([^"]*)"[^>]*>([^<]*)', page)
     assert [label.strip() for _h, label in toks] == ["desk", "jre"]
     gone = [h for h, label in toks if label.strip() == "jre"][0]  # removing a token is a plain link to the address without it
-    assert gone == "/board?project=desk"
-    assert sorted(_cards(cl.get("/board?project=desk&project=jre").text)) == ["In desk", "In jre"]  # a form posts repeated keys
-    assert _cards(cl.get("/board?project=desk,jre&assignee=chaz").text) == ["In desk"]
+    assert gone == "/board?project=desk&amp;company=unsorted"  # the drill stays when a token goes (DESK-0183)
+    assert sorted(_cards(cl.get("/board?company=unsorted&project=desk&project=jre").text)) == ["In desk", "In jre"]  # a form posts repeated keys
+    assert _cards(cl.get("/board?company=unsorted&project=desk,jre&assignee=chaz").text) == ["In desk"]
     assert 'value="chaz" checked' in cl.get("/board?assignee=chaz").text
 
 
@@ -65,8 +65,8 @@ def test_dropdown_counts_follow_the_other_filters(store):
 def test_projects_level_view_is_unchanged_and_filter_opens_the_columns(store):
     _mk(store, "Only", track="T", status="ready")
     cl = _client(store)
-    assert 'class="bproj"' in cl.get("/board").text and not _cards(cl.get("/board").text)
-    assert _cards(cl.get("/board?project=desk").text) == ["Only"]
+    assert 'class="bproj"' in cl.get("/board?company=unsorted").text and not _cards(cl.get("/board?company=unsorted").text)  # DESK-0183: one click below companies
+    assert _cards(cl.get("/board?company=unsorted&project=desk").text) == ["Only"]
 
 
 # -- a real browser: typing in a dropdown narrows its list; opening one closes the others ---------------------------------------------

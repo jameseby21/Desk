@@ -13,7 +13,7 @@ from __future__ import annotations
 import datetime as dt
 from dataclasses import dataclass, field
 
-from . import nav as navmod
+from . import companies as comp, nav as navmod
 from .store import Store
 from .todayview import queue_key
 from .ticket import CLOSED, PRIORITIES, STATUSES, Ticket
@@ -53,6 +53,33 @@ class ProjectRow:
     counts: dict
     groups: list[Group]
     is_open: bool = False
+    prio: dict = field(default_factory=dict)  # open tickets per priority (p0..p3), for the company row's top count
+
+
+@dataclass
+class CompanyRow:
+    """One company (DESK-0183): the sums of its projects' rows, so a company row always equals the sum of what it opens to."""
+    name: str
+    slug: str
+    title: str
+    subtitle: str
+    projects: int
+    total: int
+    open: int
+    in_hand: int  # claimed and in progress
+    review: int
+    done: int
+    let_go: int
+    top: str  # best priority among the open tickets, or ""
+    top_n: int  # open tickets at that priority
+    top_ticket: Ticket | None
+    href: str = ""  # the board address that opens this company, set by the page
+
+    @property
+    def done_pct(self) -> int:
+        """Done as a share of every ticket not let go."""
+        base = self.total - self.let_go
+        return round(100 * self.done / base) if base else 0
 
 
 def _best(ts: list[Ticket]) -> Ticket | None:
@@ -102,10 +129,30 @@ def build(store: Store, tickets: list[Ticket], by: str = "track", open_spec: str
             gs.append(Group(name, slug, len(ts), n_open, top, top_t, counts, sorted(ts, key=lambda t: t.id) if on else [], on))
         n_open, top, top_t, counts = _stats(mine)
         on = WIDE in projects or key in projects or any(g.is_open for g in gs)  # an open group keeps its project open
-        rows.append(ProjectRow(key, store.project_title(key), str(meta.get("area") or ""), len(mine), n_open, top, top_t, counts, gs, on))
+        prio = {p: sum(1 for t in mine if t.status not in CLOSED and t.meta.get("priority") == p) for p in PRIORITIES}
+        rows.append(ProjectRow(key, store.project_title(key), str(meta.get("area") or ""), len(mine), n_open, top, top_t, counts, gs, on, prio))
     rows = [r for r in rows if r.total]
     rows.sort(key=lambda r: (PRIORITIES.index(r.top) if r.top in PRIORITIES else len(PRIORITIES), -r.open, r.key))  # the most urgent project first
     return rows
+
+
+def companies(store: Store, rows: list[ProjectRow]) -> list[CompanyRow]:
+    """One row per company that has a project in `rows`, summed from those rows; the most in hand first, then the most open."""
+    buckets: dict[str, list[ProjectRow]] = {}
+    for r in rows:
+        buckets.setdefault(comp.of(store, r.key), []).append(r)
+    out = []
+    for name, rs in buckets.items():
+        top = next((p for p in PRIORITIES if any(r.prio.get(p) for r in rs)), "")
+        tops = [r.top_ticket for r in rs if r.top_ticket is not None and r.top == top]
+        top_t = sorted(tops, key=queue_key)[0] if tops else None
+        c = {st: sum(r.counts.get(st, 0) for r in rs) for st in STATUSES}
+        title, sub = comp.split(name)
+        out.append(CompanyRow(name, comp.slug(name), title, sub, len(rs), sum(r.total for r in rs), sum(r.open for r in rs),
+                              c.get("claimed", 0) + c.get("in_progress", 0), c.get("review", 0), c.get("done", 0), c.get("rejected", 0),
+                              top, sum(r.prio.get(top, 0) for r in rs) if top else 0, top_t))
+    out.sort(key=lambda c: (-c.in_hand, -c.open, c.name == comp.UNSORTED, c.title.lower()))
+    return out
 
 
 def by_status(tickets: list[Ticket]) -> list[tuple[str, list[Ticket]]]:
