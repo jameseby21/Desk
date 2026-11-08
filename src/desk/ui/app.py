@@ -29,7 +29,7 @@ from urllib.parse import quote
 from markupsafe import Markup
 
 from . import events as ev
-from .markdown import has_mermaid, render as md_html
+from .markdown import has_mermaid, render as md_html, summary_html
 
 TEMPLATES = Path(__file__).parent / "templates"
 STAMP_DIR = TEMPLATES  # where .build-stamp sits; looked up at request time
@@ -126,7 +126,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
     templates.TemplateResponse = timing.timed_render(templates.TemplateResponse)
     mermaid_src = "/static/mermaid.min.js" if (STATIC / "mermaid.min.js").exists() else MERMAID_CDN
     templates.env.globals.update(screen=screen, md=md_html, has_mermaid=has_mermaid, statuses=STATUSES,
-                                 sections=SECTIONS, mermaid_src=mermaid_src, by_project=by_project, token=tokens.issue, track_slug=trk.track_slug, track_of=trk.track_of,
+                                 sections=SECTIONS, mermaid_src=mermaid_src, by_project=by_project, token=tokens.issue, check_summary=lambda text: Markup(summary_html(text)), track_slug=trk.track_slug, track_of=trk.track_of,
                                  build=ver.describe())
     shown = {"censor": None}  # the profanity filter for the request being rendered; None when the person switched it off
 
@@ -510,7 +510,10 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
                 return JSONResponse({"error": str(e).strip("'\"")}, status_code=404 if isinstance(e, KeyError) else 422)
             return _back(ticket_id, str(e))
         if wants_json:
-            return JSONResponse({"ok": True, "state": check_states(t.sections.get(section) or "")[index][1]})
+            text = t.validate_steps() if section == "How to validate" else t.section(section)
+            fresh = ctx(request, s, t=t)["render"](text, t, section)  # the section again, with new states and new one-time tokens
+            return JSONResponse({"ok": True, "state": check_states(t.sections.get(section) or "")[index][1], "html": fresh,
+                                 "summary_html": summary_html(t.section("Acceptance")), "stamp": str(ev.ticket_stamp(s, t.id))})
         return _back(ticket_id, ok="check")
 
     @app.post("/ticket/{ticket_id}/comment")

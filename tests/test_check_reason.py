@@ -144,7 +144,7 @@ subs.length=0;var l2=lis[2],p2=l2.querySelector('.nr-panel');l2.querySelector('[
 out.editOpensPrefilled=!p2.hidden&&p2.querySelector('textarea').value==='nope'&&p2.querySelector('[value=should]').checked;
 p2.hidden=true;l0.querySelector('[data-act=no]').click();ta.value='keep me';out.opensAgain=!p0.hidden;
 document.querySelector('h1').click();out.clickElsewhereCloses=p0.hidden&&ta.value==='keep me'&&document.activeElement!==l0.querySelector('[data-act=no]');
-fetch('/m',{method:'POST',body:JSON.stringify(out)});});</script>"""
+__f('/m',{method:'POST',body:JSON.stringify(out)});});</script>"""
 
 
 @pytest.mark.skipif(browser() is None, reason="no Edge or Chrome installed")
@@ -157,6 +157,6 @@ def test_reason_panel_in_a_real_browser(store):
     js = (STATIC / "checks.js").read_text(encoding="utf-8")
     html = re.sub(r'<link rel="stylesheet" href="/static/desk.css">', lambda m: f"<style>{css}</style>", html)
     html = re.sub(r'<link rel="stylesheet" href="https://fonts[^>]*>|<link rel="preconnect"[^>]*>', "", html)
-    html = html.replace('<script src="/static/checks.js" defer></script>', f"<script>{js}</script>").replace("</body>", PANEL_JS + "</body>")
+    html = html.replace('<script src="/static/checks.js" defer></script>', f"<script>window.__f=window.fetch;window.fetch=undefined</script><script>{js}</script>").replace("</body>", PANEL_JS + "</body>")  # no fetch: the form post runs and the test records it
     got = run_in_browser(html, 1280)
     assert got and all(got.values()), {k: v for k, v in got.items() if not v}

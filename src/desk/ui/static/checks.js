@@ -70,5 +70,47 @@
     var btn = li.querySelector(':scope > .chk2 [data-act="' + (k === "d" ? "done" : "no") + '"]');
     if (btn) { e.preventDefault(); btn.click(); }
   });
+  /* Save in place (DESK-0121): a box click posts with Accept: application/json and the reply carries the section again (new states,
+     new one-time tokens) and the summary line, so the page changes without a reload. A failure leaves the page as it was and says why.
+     Without fetch, or if anything here throws, the plain form post and redirect still work. */
+  function say(host, msg) {
+    var s = document.getElementById("chk-status");
+    if (!s) { s = document.createElement("div"); s.id = "chk-status"; s.className = "chk-status"; s.setAttribute("role", "status"); host.parentNode.insertBefore(s, host); }
+    s.textContent = msg || "";
+  }
+  document.addEventListener("submit", function (e) {
+    var f = e.target;
+    if (!window.fetch || !f.classList || !f.classList.contains("chk")) return;
+    var host = f.closest("[data-check-section]"); if (!host) return;
+    e.preventDefault(); e.stopImmediatePropagation();
+    if (f.getAttribute("data-busy")) return;  // a second click while the first is out does nothing
+    f.setAttribute("data-busy", "1");
+    var idx = f.querySelector('[name="index"]').value, sub = e.submitter, act = sub ? sub.getAttribute("data-act") : "";
+    var fd = new FormData(f); if (sub && sub.name) fd.set(sub.name, sub.value);
+    var btns = host.querySelectorAll("button"); btns.forEach(function (b) { b.disabled = true; });
+    host.setAttribute("aria-busy", "true"); say(host, "");
+    function done() { f.removeAttribute("data-busy"); host.removeAttribute("aria-busy"); }
+    fetch(f.action, { method: "POST", body: fd, headers: { "Accept": "application/json" } })
+      .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }, function () { return { ok: false, j: {} }; }); })
+      .then(function (x) {
+        if (!x.ok) {
+          btns.forEach(function (b) { b.disabled = false; });
+          var err = f.querySelector(".nr-err"), msg = x.j.error || "Desk could not save that. Nothing was changed.";
+          if (err) { err.textContent = msg; } else { say(host, msg); }
+          return done();
+        }
+        host.innerHTML = x.j.html;
+        var sum = document.getElementById("chk-summary"); if (sum && host.getAttribute("data-check-section") === "Acceptance") sum.innerHTML = x.j.summary_html;
+        if (window.DeskLive) window.DeskLive.mine(x.j.stamp);
+        var li = host.querySelectorAll("li.task-list-item")[parseInt(idx, 10)];
+        if (li) li.focus();
+        done();
+      })
+      .catch(function () {
+        btns.forEach(function (b) { b.disabled = false; });
+        say(host, "Could not reach Desk. Nothing was changed.");
+        done();
+      });
+  }, true);
   window.DeskChecks = { openPanel: openPanel, closePanel: closePanel };
 })();

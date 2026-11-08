@@ -174,3 +174,9 @@ li.task-list-item:focus-visible{outline:3px solid var(--focus);outline-offset:2p
 .nr-actions{justify-content:flex-end}
 .box.pending{background:var(--red);border-color:var(--red);color:var(--on-red)}
 .box.pending svg{opacity:1}
+/* DESK-0121: the summary line and bar above the Acceptance list */
+.chk-summary{margin:8px 0 2px;font-size:14px;color:#4A4A45}.chk-summary b{color:var(--ink)}
+.chk-bar{display:flex;height:6px;border-radius:3px;overflow:hidden;background:#EEEBE2;margin:8px 0 4px}
+.b-done{background:var(--ball)}.b-no{background:var(--red)}
+.chk-status{font-size:13px;font-weight:600;color:#8E1218;margin:4px 0}.chk-status:empty{display:none}
+[aria-busy=true] .hit{cursor:progress;opacity:.7}

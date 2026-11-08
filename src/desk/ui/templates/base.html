@@ -23,6 +23,8 @@
 </main>
 <footer><a href="/about">About Desk: why it counts proof</a> · <span class="build">{{ build }}</span></footer>
 <script>
+/* A page that saves in place (check boxes, comments) tells the auto-refresh the file stamp of its own write, so it does not reload itself. */
+window.DeskLive = { own: "0", mine: function (stamp) { if (stamp && BigInt(stamp) > BigInt(this.own)) this.own = String(stamp); } };
 document.addEventListener("submit", function (e) {
   var f = e.target;
   if (!f.classList || !f.classList.contains("post-once")) return;
@@ -55,7 +57,8 @@ window.addEventListener("pageshow", function () {
     return false;
   }
   var es = new EventSource({{ events.url|tojson }}{% if events.since %} + "?since={{ events.since }}"{% endif %});
-  es.addEventListener("change", function () {
+  es.addEventListener("change", function (e) {
+    try { if (e.data && BigInt(e.data) <= BigInt(window.DeskLive.own)) return; } catch (err) { /* old browser: fall through to a reload */ }
     if (typing()) { bar.hidden = false; return; }
     location.reload();
   });

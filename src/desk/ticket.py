@@ -221,6 +221,15 @@ def parse_checks(text: str) -> list[Check]:
     return out
 
 
+def check_counts(text: str) -> dict:
+    """{"done", "no", "open", "total"} for the checkbox lines in a section's text (nested lines count; fenced code does not)."""
+    checks = parse_checks(text)
+    n = {"done": 0, "no": 0, "open": 0}
+    for c in checks:
+        n[{"x": "done", "!": "no", " ": "open"}[c.state]] += 1
+    return {**n, "total": len(checks)}
+
+
 def render_check(c: Check) -> list[str]:
     """The lines for one check in the current file format (a legacy inline reason becomes a quoted line)."""
     byline = f"  <!-- by {c.who} {c.when} -->" if c.who and c.when else ""

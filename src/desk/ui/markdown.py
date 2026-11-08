@@ -345,6 +345,19 @@ def render(text: str, *, known: dict | None = None, check: dict | None = None, a
     return out
 
 
+def summary_html(text: str) -> str:
+    """The line and the bar above an Acceptance list: `2 of 4 done · 1 not accepted · 1 open`, lime for done, red for not accepted.
+    Empty when the section has no checkbox lines. The page and the JSON reply of a box click both come from here."""
+    from ..ticket import check_counts
+
+    c = check_counts(text)
+    if not c["total"]:
+        return ""
+    pct = lambda k: round(100 * c[k] / c["total"])  # noqa: E731
+    return (f'<span class="chk-line"><b>{c["done"]} of {c["total"]} done</b> · {c["no"]} not accepted · {c["open"]} open</span>'
+            f'<div class="chk-bar" aria-hidden="true"><span class="b-done" style="width:{pct("done")}%"></span><span class="b-no" style="width:{pct("no")}%"></span></div>')
+
+
 def _shots(n: int) -> str:
     return f"{n} screenshot{'' if n == 1 else 's'}"
 

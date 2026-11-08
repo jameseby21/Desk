@@ -90,7 +90,7 @@ submits.length=0;lis[1].focus();key('d');out.dOnDoneSubmitsOpen=JSON.stringify(s
 submits.length=0;lis[2].focus();key('n');out.nOnNotAcceptedSubmitsOpen=JSON.stringify(submits)===JSON.stringify([['2',' ']]);
 submits.length=0;lis[2].focus();key('d');out.dOnNotAcceptedSubmitsX=JSON.stringify(submits)===JSON.stringify([['2','x']]);
 submits.length=0;li.focus();li.dispatchEvent(new KeyboardEvent('keydown',{key:'d',ctrlKey:true,bubbles:true}));out.ctrlDIgnored=submits.length===0;
-fetch('/m',{method:'POST',body:JSON.stringify(out)});});</script>"""
+__f('/m',{method:'POST',body:JSON.stringify(out)});});</script>"""
 
 
 @pytest.mark.skipif(browser() is None, reason="no Edge or Chrome installed")
@@ -104,6 +104,6 @@ def test_keyboard_d_n_esc_in_a_real_browser(store):
     js = (STATIC / "checks.js").read_text(encoding="utf-8")
     html = re.sub(r'<link rel="stylesheet" href="/static/desk.css">', lambda m: f"<style>{css}</style>", html)
     html = re.sub(r'<link rel="stylesheet" href="https://fonts[^>]*>|<link rel="preconnect"[^>]*>', "", html)
-    html = html.replace('<script src="/static/checks.js" defer></script>', f"<script>{js}</script>").replace("</body>", KEYS + "</body>")
+    html = html.replace('<script src="/static/checks.js" defer></script>', f"<script>window.__f=window.fetch;window.fetch=undefined</script><script>{js}</script>").replace("</body>", KEYS + "</body>")  # no fetch: the form post runs and the test records it
     got = run_in_browser(html, 1280)
     assert got and all(got.values()), {k: v for k, v in got.items() if not v}

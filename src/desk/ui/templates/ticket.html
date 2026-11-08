@@ -21,9 +21,9 @@
     {% endif %}{% endfor %}
 
     <div class="card section">
-      <div class="row" style="justify-content:space-between"><span class="label">Acceptance (this ticket's outcome)</span>
-        {% set acc = t.acceptance() %}{% if acc %}<span class="muted" style="font-size:13px">{{ acc|selectattr(0)|list|length }} of {{ acc|length }} true</span>{% endif %}</div>
-      {% if t.section('Acceptance') %}<div class="md">{{ render(t.section('Acceptance'), t, 'Acceptance')|safe }}</div>{% else %}<p class="muted">No acceptance lines yet.</p>{% endif %}
+      <div class="row" style="justify-content:space-between"><span class="label">Acceptance (this ticket's outcome)</span></div>
+      {% set summary = check_summary(t.section('Acceptance')) %}{% if summary %}<div id="chk-summary" class="chk-summary" role="status" aria-live="polite">{{ summary }}</div>{% endif %}
+      {% if t.section('Acceptance') %}<div class="md" data-check-section="Acceptance">{{ render(t.section('Acceptance'), t, 'Acceptance')|safe }}</div>{% else %}<p class="muted">No acceptance lines yet.</p>{% endif %}
     </div>
 
     <div class="card section" id="done-means">
@@ -38,10 +38,10 @@
     </div>
 
     <div class="card section"><span class="label">How to validate</span>
-      {% if t.validate_steps() %}<div class="md">{{ render(t.validate_steps(), t, 'How to validate')|safe }}</div>{% else %}<p class="muted">Not written yet. A ticket cannot be handed over for review without it.</p>{% endif %}</div>
+      {% if t.validate_steps() %}<div class="md" data-check-section="How to validate">{{ render(t.validate_steps(), t, 'How to validate')|safe }}</div>{% else %}<p class="muted">Not written yet. A ticket cannot be handed over for review without it.</p>{% endif %}</div>
 
     {% if t.section('Prompt') %}
-    <div class="card section"><span class="label">Prompt (paste this to execute)</span><div class="md">{{ render(t.section('Prompt'), t, 'Prompt')|safe }}</div></div>
+    <div class="card section"><span class="label">Prompt (paste this to execute)</span><div class="md" data-check-section="Prompt">{{ render(t.section('Prompt'), t, 'Prompt')|safe }}</div></div>
     {% endif %}
 
     <div class="card section">
@@ -52,7 +52,7 @@
     </div>
 
     {% if t.section('Evidence') or t.meta.get('evidence') %}
-    <div class="card section"><span class="label">Evidence</span>{% if t.meta.get('evidence') %}<p style="margin:6px 0">{{ t.meta.get('evidence') }}</p>{% endif %}{% if t.section('Evidence') %}<div class="md">{{ render(t.section('Evidence'), t, 'Evidence')|safe }}</div>{% endif %}</div>
+    <div class="card section"><span class="label">Evidence</span>{% if t.meta.get('evidence') %}<p style="margin:6px 0">{{ t.meta.get('evidence') }}</p>{% endif %}{% if t.section('Evidence') %}<div class="md" data-check-section="Evidence">{{ render(t.section('Evidence'), t, 'Evidence')|safe }}</div>{% endif %}</div>
     {% endif %}
 
     {% if t.section('Attachments') %}
