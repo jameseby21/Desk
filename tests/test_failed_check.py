@@ -33,7 +33,7 @@ def test_two_boxes_right_aligned_done_and_not_accepted_with_reason(store):
     store.save(t)
     c = TestClient(create_app(store.home))
     page = c.get(f"/ticket/{t.id}").text
-    assert page.count('class="chk2"') == 3 and page.count("> Done</label>") == 3 and page.count("Not accepted</summary>") == 3
+    assert page.count('class="chk2"') == 3 and page.count('data-act="done"') == 3 and page.count('data-act="no"') == 3
     assert 'name="section" value="How to validate"' in page
     # Done writes [x]; only that line changes
     assert _post(c, t, index=1, state="x").status_code == 303

@@ -22,6 +22,9 @@ _md.use(tasklists_plugin, enabled=False)  # checkboxes render disabled; the file
 ID_RE = re.compile(r"(?<![A-Za-z0-9-])[A-Z]{2,10}-\d{4}(?!\d)")
 _CHECKBOX = re.compile(r'<input class="task-list-item-checkbox"[^>]*>')
 _COMMENT_LINE = re.compile(r"^[ 	]*<!--.*?-->[ 	]*$", re.M)
+_CHECK_HEAD = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+\[[ xX!]\]\s*")
+_TICK = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#141414" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>'
+_CROSS = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="3.6" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>'
 
 
 _WIKI = re.compile(r"\[\[([^\[\]\n]{1,80})\]\]")
@@ -259,13 +262,16 @@ def render(text: str, *, known: dict | None = None, check: dict | None = None, a
     from ..ticket import check_states, split_reason
 
     states = check_states(text)
+    lines = text.split("\n")
     reasons: dict[int, str] = {}  # box index -> the reason written after ` — not accepted:` on a `[!]` line
-    if any(st == "!" for _, st in states):  # `[!]` is ours, not the task-list plugin's: render it as done, then restyle it below
-        lines = text.split("\n")
-        for i, (n, st) in enumerate(states):
-            if st == "!":
-                body, reasons[i] = split_reason(lines[n])
-                lines[n] = body.replace("[!]", "[x]", 1)
+    labels: dict[int, str] = {}  # box index -> the line's own words, for the buttons' accessible names
+    for i, (n, st) in enumerate(states):
+        body, why = split_reason(lines[n])
+        labels[i] = " ".join(re.sub(_CHECK_HEAD, "", body).split())[:120]
+        if st == "!":  # `[!]` is ours, not the task-list plugin's: render it as done, then restyle it below
+            reasons[i] = why
+            lines[n] = body.replace("[!]", "[x]", 1)
+    if reasons:
         text = "\n".join(lines)
     out = _md.render(_COMMENT_LINE.sub("", text), {"known": known or {}, "docs": docs, "resolve": resolve, "glossary": glossary or {},
                                                   "seen": seen if seen is not None else set(), "ids": ids, "censor": censor})
@@ -276,35 +282,49 @@ def render(text: str, *, known: dict | None = None, check: dict | None = None, a
     if len(_CHECKBOX.findall(out)) != n:  # cannot map boxes to lines safely: leave them read-only
         return out
     counter = iter(range(n))
-    pending: dict[str, str] = {}  # marker -> the reason to show under the line whose checkbox carries that marker
+    pending: dict[str, str] = {}  # marker -> what to show under the line whose checkbox carries that marker
     e = html.escape
 
     def box(m):
         i = next(counter)
         st = states[i][1]
         mark = ""
+        under = ""
         if st == "!":
-            mark = f"@@NR{i}@@"
             why = (censor(reasons[i]) if censor else reasons[i])
-            pending[mark] = f'<div class="nr-reason">Not accepted: {e(why)}</div>' if why else '<div class="nr-reason">Not accepted</div>'
+            under = f'<div class="nr-reason">Not accepted: {e(why)}</div>' if why else '<div class="nr-reason">Not accepted</div>'
         if not check:
-            return f'<span class="chk-failed" role="img" aria-label="not accepted">&#10007;</span>{mark}' if st == "!" else m.group(0)
+            if st == "!":
+                mark = f"@@NR{i}@@"
+                pending[mark] = under
+                return f'<span class="chk-failed" role="img" aria-label="not accepted">&#10007;</span>{mark}'
+            return m.group(0)
         sec, tid = e(check["section"]), e(check["id"])
+        what = e(labels[i])
         tok = lambda: check["token"]() if check.get("token") else ""  # noqa: E731
-        head = f'<form class="chk post-once" method="post" action="/ticket/{tid}/check"><input type="hidden" name="token" value="{tok()}"><input type="hidden" name="section" value="{sec}"><input type="hidden" name="index" value="{i}">'
-        done = (f'{head}<input type="hidden" name="state" value="{" " if st == "x" else "x"}"><label class="chk-lab"><input type="checkbox" class="chk-box" aria-label="Done"'
-                f'{" checked" if st == "x" else ""} onchange="this.form.requestSubmit()"> Done</label></form>')
+        head = (f'<form class="chk post-once" method="post" action="/ticket/{tid}/check"><input type="hidden" name="token" value="{tok()}">'
+                f'<input type="hidden" name="section" value="{sec}"><input type="hidden" name="index" value="{i}">')
+        done = (f'{head}<input type="hidden" name="state" value="{" " if st == "x" else "x"}"><button type="submit" class="hit" data-act="done" '
+                f'aria-pressed="{"true" if st == "x" else "false"}" aria-label="Done: {what}"><span class="box{" on-done" if st == "x" else ""}">{_TICK}</span></button></form>')
         if st == "!":
-            na = (f'{head}<input type="hidden" name="state" value=" "><label class="chk-lab bad"><input type="checkbox" class="chk-box" aria-label="Not accepted" checked '
-                  f'onchange="this.form.requestSubmit()"> Not accepted</label></form>')
+            na = (f'{head}<input type="hidden" name="state" value=" "><button type="submit" class="hit" data-act="no" aria-pressed="true" '
+                  f'aria-label="Not accepted: {what}"><span class="box on-no">{_CROSS}</span></button></form>')
         else:
-            na = (f'<details class="chk-na"><summary class="chk-lab"><span class="chk-box fake"></span> Not accepted</summary>'
-                  f'{head}<input type="hidden" name="state" value="!"><textarea name="reason" rows="2" required placeholder="What is wrong?" aria-label="Reason it is not accepted"></textarea>'
-                  f'<button class="btn small" type="submit">Save</button></form></details>')
+            na = (f'<button type="button" class="hit" data-act="no" aria-pressed="false" aria-label="Not accepted: {what}" aria-expanded="false">'
+                  f'<span class="box">{_CROSS}</span></button>')
+            panel = (f'{head}<label>Why isn&#39;t this accepted?<textarea name="reason" rows="2" required minlength="3" placeholder="Say what is missing or wrong."></textarea></label>'
+                     f'<div class="row"><span style="margin-left:auto" class="row"><button type="button" class="btn small" data-act="cancel">Cancel</button>'
+                     f'<button type="submit" class="btn small ink" name="state" value="!">Save reason</button></span></div></form>')
+            under = f'<div class="nr-panel" hidden data-line="{i}">{panel}</div>'
+        mark = f"@@NR{i}@@"
+        pending[mark] = under
         return f'<span class="chk2">{done}{na}</span>{mark}'
 
     out = _CHECKBOX.sub(box, out)
     out = _place_reasons(out, pending)
+    if check and n:
+        first = "Acceptance line" if check["section"] == "Acceptance" else "Line"
+        out = f'<div class="chk-head" aria-hidden="true"><span>{first}</span><span>Done</span><span>Not accepted</span></div>' + out
     if actions and known:
         def li(m):
             ids = re.findall(r'href="/ticket/([A-Z0-9-]+)"', m.group(0))
