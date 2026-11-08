@@ -27,6 +27,13 @@
 <p style="margin:14px 0 0"><span class="label">Ticket review</span> <a href="/ticket/{{ review_line[0].id }}">{{ review_line[0].meta.get('title') }}</a> · {{ review_line[1] }} waiting</p>
 {% endif %}
 
+<div class="card asked" id="asked" style="margin:14px 0 0">
+  <span class="label">{{ owner|capitalize }} asked</span>
+  {% if asked %}<b>{{ asked|length }} waiting for an answer</b> <span class="muted">(your comments with no later reply from patch and no later change to the ticket)</span>
+  <ul class="mentions">{% for c in asked[:8] %}<li><a class="tid" href="/ticket/{{ c.ticket_id }}#comments">{{ c.ticket_id }}</a> <span class="muted">{{ c.when.strftime('%b %d %H:%M') }}</span> {{ c.text[:140] }}{% if c.text|length > 140 %}…{% endif %}</li>{% endfor %}{% if asked|length > 8 %}<li class="muted">and {{ asked|length - 8 }} more: <code>drew comments --author {{ owner }} --unanswered</code></li>{% endif %}</ul>
+  {% else %}<span class="muted">Nothing waiting for an answer.</span>{% endif %}
+</div>
+
 {% if combos %}
 <div class="card hold" style="margin:18px 0 0">
   <span class="label">Combos</span>

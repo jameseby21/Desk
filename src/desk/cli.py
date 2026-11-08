@@ -171,6 +171,30 @@ def cmd_decide(args):
     _write_cmd(args, lambda s, t: ops.decide(s, t, approve, reason, actor=args.as_), "decide")
 
 
+def cmd_comments(args):
+    from . import comments as cm
+
+    s = _store(args)
+    if args.mark_sweep and not (args.author or args.since or args.unanswered):
+        print(f"sweep marked at {cm.mark_sweep(s.home).isoformat(sep=' ')}")
+        return
+    try:
+        since = cm.parse_since(args.since, s.home)
+    except ValueError as e:
+        _die(str(e))
+    rows = cm.query(s, author=args.author, since=since, unanswered=args.unanswered, answerers=tuple(args.answered_by or cm.ANSWERERS))
+    if args.json:
+        print(json.dumps([r.as_json() for r in rows], indent=2, ensure_ascii=False))
+    else:
+        for r in rows:
+            mark = "" if r.answered else "  [open]"
+            kind = f" {r.kind}" if r.kind else ""
+            print(f"{r.ticket_id}  {r.when.strftime('%Y-%m-%d %H:%M')}  {r.author}{kind}{mark}\n    {r.text}")
+        print(f"{len(rows)} comment(s)")
+    if args.mark_sweep:
+        cm.mark_sweep(s.home)
+
+
 def cmd_done(args):
     _write_cmd(args, lambda s, t: ops.done(s, t, args.commit), "done")
 
@@ -722,6 +746,15 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--kind", default="Question", help="Question (default), Suggestion, Concern or FYI")
     actor(sp)
     sp.set_defaults(fn=cmd_comment)
+
+    sp = sub.add_parser("comments", help="list comments across the store (James's notes are work): --author, --since, --unanswered, --json")
+    sp.add_argument("--author", help="only comments by this person (case does not matter)")
+    sp.add_argument("--since", help="YYYY-MM-DD, YYYY-MM-DD HH:MM, or last-sweep (from .desk/state; everything when none is marked)")
+    sp.add_argument("--unanswered", action="store_true", help="no later line by patch in the ticket, and the ticket has not changed on a later day")
+    sp.add_argument("--answered-by", action="append", help="who counts as answering (default patch; repeat for more)")
+    sp.add_argument("--json", action="store_true", help="a JSON list: ticket, title, when, author, kind, text, answered")
+    sp.add_argument("--mark-sweep", action="store_true", help="after listing, record now as the last sweep (alone: just record it)")
+    sp.set_defaults(fn=cmd_comments)
 
     sp = sub.add_parser("validate", help="schema, lifecycle rules, dangling depends_on (exit 1 on errors)")
     sp.set_defaults(fn=cmd_validate)

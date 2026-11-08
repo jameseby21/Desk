@@ -179,6 +179,8 @@ def render_block(items: list, initial: list[str], assignees: dict | None = None)
 # ---- generation ---------------------------------------------------------------
 
 def compute(store: Store, review: Ticket, today: dt.date | None = None) -> dict:
+    from . import comments as cm  # here, not at the top: comments imports ops, and ops imports this module
+
     today = today or dt.date.today()
     monday = week_of(review)
     owner = str(review.meta.get("owner") or store.owner)
@@ -216,6 +218,8 @@ def compute(store: Store, review: Ticket, today: dt.date | None = None) -> dict:
         "waiting": len(waiting),
         "median_days": statistics.median(ages) if ages else None,
         "oldest": oldest,
+        "comments_open": len(cm.query(store, author=owner, unanswered=True)),
+        "comments_owner": owner,
     }
     return {"items": items, "initial": initial, "kpi": kpi, "added": added, "checked": newly_checked, "resolved": resolved}
 
@@ -230,6 +234,7 @@ def kpi_text(k: dict) -> str:
         f"- Still waiting: {k['waiting']}",
         f"- Median days in review: {med}",
         f"- Oldest waiting: {old}",
+        *([f"- Comments still open: {k['comments_open']} ({k['comments_owner']})"] if "comments_open" in k else []),
     ])
 
 
