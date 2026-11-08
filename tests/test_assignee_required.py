@@ -70,7 +70,7 @@ def test_dropdown_groups_main_as_patch_and_code_sessions_second(store):
     assert labels == ["People", "Code sessions"]
     people = re.findall(r"<option value=\"([^\"]*)\"[^>]*>([^<]*)<", block)
     keys = [k for k, _ in people]
-    assert keys[:9] == ["", "james", "main", "bigd", "bri", "chaz", "em", "joe", "lily"], keys  # James first, then Patch, then the rest by name
+    assert keys[:9] == ["", "james", "main", "chaz", "em", "bri", "joe", "lily", "bigd"], keys  # the order of the ticket: James, Patch, then the coworkers
     assert dict(people)["main"].startswith("Patch") and "code:jre" in keys and "(not assigned yet)" in block
 
 

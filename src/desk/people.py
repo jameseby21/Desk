@@ -116,15 +116,10 @@ class People:
         return NEUTRAL
 
     def groups(self) -> list[tuple[str, list[Person]]]:
-        """The dropdown: People (James first, then Patch and the coworkers), Code sessions, People outside the team."""
+        """The dropdown: People, Code sessions, People outside the team, each in the order of people.yaml (the built-in team lists James, Patch, then the coworkers)."""
         out = []
         for label, kinds in GROUPS:
-            ps = [p for p in self.list if p.kind in kinds]
-            if label == "People":
-                order = {"james": 0, "main": 1}
-                ps.sort(key=lambda p: (order.get(p.key, 2), p.name.lower()))
-            else:
-                ps.sort(key=lambda p: p.name.lower())
+            ps = [p for p in self.list if p.kind in kinds]  # the order of people.yaml, which is the order James reads them in
             if ps:
                 out.append((label, ps))
         return out
