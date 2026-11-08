@@ -123,7 +123,7 @@ class Store:
                         val = line.split(":", 1)[1].strip().strip('"').strip("'")
                         if val:
                             return val.upper()
-        return project.upper().replace("-", "")
+        return project.upper()
 
     def next_id(self, project: str) -> str:
         key = self.key_for(project)
