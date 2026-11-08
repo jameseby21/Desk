@@ -143,7 +143,7 @@ def parse_block(text: str) -> dict:
     for line in inner.splitlines():
         m = re.match(r"^\*\*(.+?)\*\*\s*$", line.strip())
         if m:
-            group = m.group(1)
+            group = m.group(1).split(" \u00b7 ")[0]  # `**Review · chaz**` is the Review group, sub-headed by assignee
             continue
         m = _ITEM.match(line.strip())
         if m:
@@ -157,14 +157,22 @@ def waiting_count(t: Ticket) -> int:
     return sum(1 for chk, *_ in parse_block(t.section("Acceptance"))["items"] if not chk)
 
 
-def render_block(items: list, initial: list[str]) -> str:
+def render_block(items: list, initial: list[str], assignees: dict | None = None) -> str:
+    """The checkbox list. The Review group is sub-headed by assignee (`**Review · chaz**`) when any of its tickets has one."""
+    assignees = assignees or {}
     lines = [f"<!-- initial: {','.join(initial)} -->"]
     groups = GROUPS + sorted({i[3] for i in items} - set(GROUPS))
     for g in groups:
         mine = [i for i in items if i[3] == g]
-        if mine:
-            lines.append(f"\n**{g}**\n")
-            lines += [f"- [{'x' if c else ' '}] {i} · {r}" for c, i, r, _ in mine]
+        if not mine:
+            continue
+        parts = [(g, mine)]
+        if g == "Review" and any(assignees.get(i[1]) for i in mine):
+            names = sorted({assignees.get(i[1]) or "" for i in mine}, key=lambda n: (n == "", n.lower()))
+            parts = [(f"Review \u00b7 {n or 'unassigned'}", [i for i in mine if (assignees.get(i[1]) or "") == n]) for n in names]
+        for head, rows in parts:
+            lines.append(f"\n**{head}**\n")
+            lines += [f"- [{'x' if c else ' '}] {i} · {r}" for c, i, r, _ in rows]
     return "\n".join(lines)
 
 
@@ -225,9 +233,13 @@ def kpi_text(k: dict) -> str:
     ])
 
 
+def ops_assignee(t: Ticket) -> str:
+    return " ".join(str(t.meta.get("assignee") or "").split())
+
+
 def apply(store: Store, review: Ticket, today: dt.date | None = None) -> dict:
     res = compute(store, review, today)
-    review.set_section("Acceptance", _replace_block(review.section("Acceptance"), ACC_START, ACC_END, render_block(res["items"], res["initial"])))
+    review.set_section("Acceptance", _replace_block(review.section("Acceptance"), ACC_START, ACC_END, render_block(res["items"], res["initial"], {t.id: ops_assignee(t) for t in store.tickets()})))
     review.set_section("Report", _replace_block(review.section("Report"), KPI_START, KPI_END, kpi_text(res["kpi"])))
     store.save(review)
     return res

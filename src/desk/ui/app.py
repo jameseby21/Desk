@@ -46,6 +46,16 @@ BRAND_TYPES = {".svg", ".png", ".jpg", ".jpeg", ".webp", ".gif"}
 _ASSET_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._ -]*$")
 
 
+def assignee_chips(tickets) -> list[tuple[str, int]]:
+    """(assignee, open tickets) for every name that has at least one ticket, for the filter chips."""
+    names: dict = {}
+    for t in tickets:
+        n = ops.assignee_of(t)
+        if n:
+            names[n] = names.get(n, 0) + t.is_open
+    return sorted(names.items(), key=lambda kv: kv[0].lower())
+
+
 def by_project(tickets):
     """Group for display: the current project key first, then the id."""
     return sorted(tickets, key=lambda t: (t.project, t.id))
@@ -161,7 +171,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         done_kind = qp.get("done") or qp.get("ok") or ""
         events_url, events_since = kw.pop("events_url", ""), kw.pop("events_since", "")
         events = {"url": events_url, "since": events_since} if events_url and styles.load(st.home)["autorefresh"] else None
-        return {"build_stale": bs.stale(STAMP_DIR), "stale_text": bs.STALE_TEXT, "events": events, "notice": notice(done_kind, qp.get("at", ""), int(qp.get("dup") or 0) if str(qp.get("dup") or "0").isdigit() else 0), "render": render, "request": request, "owner": st.owner, "style": styles.load(st.home), "favicon": FAVICON, "home": str(st.home), "today": dt.date.today().isoformat(),
+        return {"build_stale": bs.stale(STAMP_DIR), "stale_text": bs.STALE_TEXT, "assign_dod": ops.ASSIGN_DOD, "events": events, "notice": notice(done_kind, qp.get("at", ""), int(qp.get("dup") or 0) if str(qp.get("dup") or "0").isdigit() else 0), "render": render, "request": request, "owner": st.owner, "style": styles.load(st.home), "favicon": FAVICON, "home": str(st.home), "today": dt.date.today().isoformat(),
                 "titles": {k: st.project_title(k) for k in st.projects()}, **kw}
 
     held: OrderedDict[str, dict] = OrderedDict()  # unhandled errors a person may file as a bug, by one-time id
@@ -290,28 +300,34 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         return RedirectResponse("/settings?saved=1", status_code=303)
 
     @app.get("/board", response_class=HTMLResponse)
-    def board(request: Request, project: str | None = None, track: str = ""):
+    def board(request: Request, project: str | None = None, track: str = "", assignee: str = ""):
         s = store()
         ts = [t for t in s.tickets() if not project or t.project == project]
+        achips = assignee_chips(ts)
+        if assignee:
+            ts = [t for t in ts if ops.assignee_of(t).lower() == assignee.lower()]
         chips = trk.track_chips(ts)
         if track:
             ts = [t for t in ts if trk.track_of(t) and trk.track_slug(trk.track_of(t)) == track]
         cols = [(st, by_project([t for t in ts if t.status == st])) for st in STATUSES]
         return templates.TemplateResponse(request, "board.html", ctx(request, s, cols=cols, project=project, projects=sorted(s.projects()), s=s,
-                                                           chips=chips, track=track, chip_base="/board", chip_extra=f"project={project}" if project else "", events_url="/events", events_since=ev.tickets_stamp(s)))
+                                                           chips=chips, track=track, chip_base="/board", chip_extra="&".join(x for x in (f"project={project}" if project else "", f"assignee={quote(assignee)}" if assignee else "") if x),
+                                                           achips=achips, assignee=assignee, abase="/board", aextra=f"project={project}" if project else "", events_url="/events", events_since=ev.tickets_stamp(s)))
 
     @app.get("/projects", response_class=HTMLResponse)
-    def projects(request: Request, p: str = "", t: str = "", k: str = ""):
+    def projects(request: Request, p: str = "", t: str = "", k: str = "", assignee: str = ""):
         """Project > track > ticket > peek. What is open lives in the URL: ?p=<project>&t=<track slug>&k=<ticket id>."""
         s = store()
-        rows = trk.hierarchy(s, s.tickets())
+        every = s.tickets()
+        achips = assignee_chips(every)
+        rows = trk.hierarchy(s, [x for x in every if ops.assignee_of(x).lower() == assignee.lower()] if assignee else every)
         peek_html = ""
         if k:
             try:
                 peek_html = peek_panel(s, s.get(k))
             except KeyError:
                 pass
-        return templates.TemplateResponse(request, "projects.html", ctx(request, s, rows=rows, sel_p=p, sel_t=t, sel_k=k.upper(), peek_html=peek_html, s=s, events_url="/events", events_since=ev.tickets_stamp(s)))
+        return templates.TemplateResponse(request, "projects.html", ctx(request, s, rows=rows, sel_p=p, sel_t=t, sel_k=k.upper(), peek_html=peek_html, s=s, achips=achips, assignee=assignee, abase="/projects", aextra="", events_url="/events", events_since=ev.tickets_stamp(s)))
 
     def peek_panel(s: Store, t) -> str:
         """The small panel under a ticket row: summary, acceptance, the latest report line, a link to the full page."""

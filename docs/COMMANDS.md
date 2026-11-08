@@ -8,7 +8,8 @@ Every command a person or an agent runs day to day, with what it does and when. 
 | `drew-ui` | starts the web UI on http://127.0.0.1:8765 (`DESK_UI_PORT` to change, `DESK_HOME` for the store) | every session |
 | `uv run --no-sync pytest -q` | runs the whole test suite | before every report |
 | `drew validate` | schema, lifecycle rules, dependencies, track values; exit 1 on errors | before every commit |
-| `drew list [--project] [--status] [--all]` | table of open tickets | start of a session |
+| `drew list [--project] [--status] [--assignee NAME] [--all]` | table of open tickets, with an assignee column | start of a session |
+| `drew assign <ID> --to NAME [--note "..."] [--handoff URL_OR_DOC_ID] [--as WHO]` | sets `assignee` and `assigned_at`, optional `handoff`, appends `- <date> · <actor> · assigned to <name>: <note>` to Comments. Done means: assignee named and notified; the hand-off record linked | handing a ticket to someone |
 | `drew comment ID "text" [--as name]` | adds a dated, timed comment; an identical comment from the same author within 10 minutes is refused as a duplicate | any time |
 
 ## Data and environment
@@ -42,7 +43,7 @@ Every command a person or an agent runs day to day, with what it does and when. 
 | `drew decide <ID> --approve "why"` / `--changes "why"` | the owner's decision, in words |
 | `drew done <ID>` | approved to done, after the merge |
 | `drew snap <ID>` / `drew attach <ID> file` | attach a screenshot or file as evidence |
-| `drew stats`, `drew board`, `drew show <ID> [--raw]` | look at the store; `show` censors profanity (f*****g) unless `--raw` or `[style] profanity_filter = false` |
+| `drew stats` (includes a per-assignee table: open, done this week), `drew board`, `drew show <ID> [--raw]` | look at the store; `show` censors profanity (f*****g) unless `--raw` or `[style] profanity_filter = false` |
 | `drew brand-check [--create]` | projects missing a brand mark |
 
 ## In the UI

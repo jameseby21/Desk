@@ -124,6 +124,30 @@ def toggle_check(store: Store, ticket_id: str, section: str, index: int, checked
     return t
 
 
+# James's Definition of Done line for handing a ticket to someone; shown by `drew assign` and on the ticket page.
+ASSIGN_DOD = "assignee named and notified; the hand-off record linked"
+
+
+def assign(store: Store, t: Ticket, to: str, note: str = "", handoff: str = "", actor: str | None = None) -> Ticket:
+    """Hand a ticket to someone: sets `assignee` and `assigned_at` (ISO timestamp), optionally `handoff` (a URL or Drive doc id for
+    the hand-off record), and appends `- <date> · <actor> · assigned to <name>: <note>` to Comments."""
+    to = " ".join((to or "").split())
+    if not to:
+        raise RuleError("assign needs a name: --to <name>")
+    t.meta["assignee"] = to
+    t.meta["assigned_at"] = dt.datetime.now().replace(microsecond=0).isoformat()
+    if handoff.strip():
+        t.meta["handoff"] = handoff.strip()
+    note = " ".join((note or "").split())
+    t.append_line("Comments", _stamp(actor or "desk", f"assigned to {to}" + (f": {note}" if note else "")))
+    store.save(t)
+    return t
+
+
+def assignee_of(t: Ticket) -> str:
+    return " ".join(str(t.meta.get("assignee") or "").split())
+
+
 def done(store: Store, t: Ticket, commit: str | None = None) -> Ticket:
     check_transition(t, "done", store)
     if commit:
@@ -430,7 +454,14 @@ def stats(store: Store, since: str | None = None, project: str | None = None) ->
     by = lambda key: dict(sorted(_count(key(t) for t in tickets).items()))  # noqa: E731
     created_week = _count(_week(str(t.meta.get("created", ""))) for t in tickets)
     done_week = _count(_week(str(t.meta.get("done_at") or t.meta.get("updated", ""))) for t in tickets if t.status == "done")
+    week = week_ago()
+    by_assignee: dict = {}
+    for t in tickets:
+        row = by_assignee.setdefault(assignee_of(t) or "(unassigned)", {"open": 0, "done_this_week": 0})
+        row["open"] += t.is_open
+        row["done_this_week"] += t.status == "done" and str(t.meta.get("done_at") or t.meta.get("updated", ""))[:10] >= week
     return {
+        "by_assignee": dict(sorted(by_assignee.items())),
         "total": len(tickets),
         "done": sum(t.status == "done" for t in tickets),
         "in_review": sum(t.status == "review" for t in tickets),

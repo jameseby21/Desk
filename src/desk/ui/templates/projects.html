@@ -1,9 +1,10 @@
 {% extends "base.html" %}
-{% from "_chips.html" import bar %}
+{% from "_chips.html" import bar, abar %}
 {% block title %}Desk · Projects{% endblock %}
 {% block body %}
 <h1>Projects</h1>
 <p class="muted">Project, then track, then ticket, then a peek at the details. One row per <code>projects/&lt;key&gt;.md</code>; tracks come from each ticket's <code>track:</code> line. What is open stays in the address, so you can share it.</p>
+{{ abar(achips, assignee, abase, aextra) }}
 <div class="tree">
 {% for r in rows %}
 {% set brand = s.brand_for(r.key) %}

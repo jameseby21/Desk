@@ -85,16 +85,18 @@ def cmd_list(args):
             continue
         if args.owner and str(t.meta.get("owner")) != args.owner:
             continue
+        if args.assignee and ops.assignee_of(t).lower() != args.assignee.lower():
+            continue
         if args.stale and not stale:
             continue
         if not args.all and not t.is_open and not args.status:
             continue
         rows.append([_id_label(s, t), t.project, t.meta.get("type", ""), t.status + (" (stale)" if stale else ""), t.meta.get("priority", ""),
-                     t.meta.get("size", ""), str(t.meta.get("owner", "")), str(t.meta.get("title", ""))[:60]])
+                     t.meta.get("size", ""), str(t.meta.get("owner", "")), ops.assignee_of(t), str(t.meta.get("title", ""))[:60]])
     if not rows:
         print("No tickets match.")
         return
-    print(_table(rows, ["id", "project", "type", "status", "pri", "size", "owner", "title"]))
+    print(_table(rows, ["id", "project", "type", "status", "pri", "size", "owner", "assignee", "title"]))
 
 
 def cmd_next(args):
@@ -187,6 +189,16 @@ def cmd_reject(args):
 
 def cmd_move(args):
     _write_cmd(args, lambda s, t: ops.move(s, t, args.to, actor=args.as_, reason=args.reason), "move")
+
+
+def cmd_assign(args):
+    def run(s, t):
+        t = ops.assign(s, t, args.to, note=args.note or "", handoff=args.handoff or "", actor=args.as_)
+        print(f"{t.id} assigned to {t.meta['assignee']} at {t.meta['assigned_at']}")
+        print(f"Done means: {ops.ASSIGN_DOD}" + ("" if t.meta.get("handoff") else "   (no --handoff given yet: link the hand-off record)"))
+        return t
+
+    _write_cmd(args, run, "assign")
 
 
 def cmd_comment(args):
@@ -332,6 +344,8 @@ def cmd_stats(args):
         print(f"\nBy {label}")
         rows = [[str(k), str(v)] for k, v in table.items()] or [["(none)", "0"]]
         print(_table(rows, [label, "count"]))
+    print("\nBy assignee")
+    print(_table([[k, str(v["open"]), str(v["done_this_week"])] for k, v in st["by_assignee"].items()] or [["(none)", "0", "0"]], ["assignee", "open", "done this week"]))
     print("\nDecisions per week")
     print(_table([[k, str(v)] for k, v in st["decisions_per_week"].items()], ["week of", "tickets decided"]))
     print(f"\nReview weeks: {st['review_weeks']['created']} created, {st['review_weeks']['closed']} closed")
@@ -539,6 +553,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--project")
     sp.add_argument("--status", choices=STATUSES)
     sp.add_argument("--owner")
+    sp.add_argument("--assignee", help="only tickets assigned to this name")
     sp.add_argument("--stale", action="store_true", help="only tickets untouched past the stale window")
     sp.add_argument("--all", action="store_true")
     sp.set_defaults(fn=cmd_list)
@@ -605,6 +620,14 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--reason")
     actor(sp)
     sp.set_defaults(fn=cmd_move)
+
+    sp = sub.add_parser("assign", help="hand a ticket to someone: sets assignee and assigned_at, logs it in Comments")
+    sp.add_argument("id")
+    sp.add_argument("--to", required=True, help="who: main, james, codex, a project key, or any name")
+    sp.add_argument("--note", help="what you are handing over, in a line")
+    sp.add_argument("--handoff", help="the hand-off record: a URL or a Drive doc id")
+    actor(sp)
+    sp.set_defaults(fn=cmd_assign)
 
     sp = sub.add_parser("comment", help="append a dated comment")
     sp.add_argument("id")

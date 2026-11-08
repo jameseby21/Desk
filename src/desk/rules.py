@@ -89,9 +89,11 @@ def validate_ticket(t: Ticket, store: "Store", known_ids: set[str] | None = None
             errors.append(f"{where}: tags must be a list of strings")
     if "track" in m and (not isinstance(m["track"], str) or not m["track"].strip()):
         errors.append(f"{where}: track must be a non-empty string when present")
-    for field_ in ("assignee", "cloned_from", "evidence"):
+    for field_ in ("assignee", "handoff", "cloned_from", "evidence"):
         if field_ in m and m[field_] not in (None, "") and not isinstance(m[field_], str):
             errors.append(f"{where}: {field_} must be a string")
+    if "assigned_at" in m and m["assigned_at"] not in (None, "") and not _datetime_ok(m["assigned_at"]):
+        errors.append(f"{where}: assigned_at must be an ISO date or timestamp")
     if "done_at" in m and m["done_at"] not in (None, "") and not _datetime_ok(m["done_at"]):
         errors.append(f"{where}: done_at must be an ISO date or timestamp (YYYY-MM-DD or YYYY-MM-DDTHH:MM:SS)")
     if len(str(m["title"])) > TITLE_MAX:
