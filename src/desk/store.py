@@ -118,7 +118,7 @@ class Store:
     @property
     def max_attach_mb(self) -> float:
         try:
-            return float(self.config.get("attachments", {}).get("max_mb", 8))
+            return float(self.config.get("attachments", {}).get("max_mb", 10))
         except (TypeError, ValueError):
             return 8.0
 

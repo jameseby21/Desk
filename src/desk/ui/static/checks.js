@@ -112,5 +112,18 @@
         done();
       });
   }, true);
+  /* The same paste or drop works in the reason: the screenshot is saved with the ticket at once, shown as a thumbnail, and its name goes
+     to the server with Save as evidence under the line. */
+  if (window.DeskShots) {
+    DeskShots.watch(".nr-panel textarea", function (el, shot) {
+      var f = el.closest("form"), box = f.querySelector(".shots"), err = f.querySelector(".nr-err");
+      var h = document.createElement("input"); h.type = "hidden"; h.name = "evidence"; h.value = shot.name;
+      var t = DeskShots.thumb(shot, function () {
+        DeskShots.remove(el, shot.name).then(function () { t.remove(); h.remove(); box.hidden = !box.querySelector(".shot"); },
+                                              function (e) { if (err) err.textContent = e.message; });
+      });
+      box.appendChild(t); box.appendChild(h); box.hidden = false; if (err) err.textContent = "";
+    }, function (el, msg) { var err = el.closest("form").querySelector(".nr-err"); if (err) err.textContent = msg; });
+  }
   window.DeskChecks = { openPanel: openPanel, closePanel: closePanel };
 })();

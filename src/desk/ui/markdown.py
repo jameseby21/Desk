@@ -323,7 +323,8 @@ def render(text: str, *, known: dict | None = None, check: dict | None = None, a
         cancel = ('<button type="submit" class="btn small" name="state" value=" " formnovalidate data-act="cancel-clear">Cancel</button>' if st == "x"
                   else '<button type="button" class="btn small" data-act="cancel">Cancel</button>')
         panel = (f'<div class="nr-panel" hidden data-line="{i}">{head()}<label>Why isn&#39;t this accepted?'
-                 f'<textarea name="reason" rows="2" required placeholder="Say what is missing or wrong.">{e(c.reason) if st == "!" else ""}</textarea></label>'
+                 f'<textarea name="reason" rows="2" required placeholder="Say what is missing or wrong. Paste a screenshot if it helps." data-attach="/ticket/{tid}/attach" data-token="{tok()}">{e(c.reason) if st == "!" else ""}</textarea></label>'
+                 f'<div class="shots" hidden></div>'
                  f'<div class="nr-err" role="alert"></div><div class="sevs" role="radiogroup" aria-label="How serious">{pills}</div>'
                  f'<div class="row nr-actions">{cancel}<button type="submit" class="btn small ink" name="state" value="!">Save reason</button></div></form></div>')
         pending[f"@@NR{i}@@"] = under + panel

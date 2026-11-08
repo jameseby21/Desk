@@ -23,7 +23,7 @@ from .. import buildstamp as bs, docs as docsmod, ops, profanity, review as rv, 
 from ..config import find_home
 from ..rules import RuleError
 from ..store import Store, id_parts, split_profile
-from ..ticket import SECTIONS, STATUSES, check_states
+from ..ticket import SECTIONS, STATUSES, check_states, parse_checks
 from ..words import screen
 from urllib.parse import quote
 
@@ -46,6 +46,7 @@ MERMAID_CDN = "https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js"
 COMBO_WINDOW = dt.timedelta(minutes=30)
 BRAND_TYPES = {".svg", ".png", ".jpg", ".jpeg", ".webp", ".gif"}
 _ASSET_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._ -]*$")
+IMAGE_TYPES = "PNG, JPEG, WebP or GIF"
 
 
 def assignee_chips(tickets) -> list[tuple[str, int]]:
@@ -380,7 +381,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         mermaid = any(has_mermaid(t.section(name)) for name in t.sections)
         return templates.TemplateResponse(request, "ticket.html", ctx(request, s, t=t, deps=deps, stale=s.is_stale(t), error=error, s=s,
                                                              formerly=s.formerly(t), mermaid=mermaid, mentions=docsmod.mentioned_in(list(by_id.values()), ticket_id=t.id),
-                                                             owning=docsmod.owning_docs(s, t), source_doc=source_doc(s, t), dod=dod_view(s, t), events_url=f"/events/{t.id}", events_since=ev.ticket_stamp(s, t.id)))
+                                                             owning=docsmod.owning_docs(s, t), source_doc=source_doc(s, t), acc_lines=[(i + 1, c.text) for i, c in enumerate(parse_checks(t.section("Acceptance")))], dod=dod_view(s, t), events_url=f"/events/{t.id}", events_since=ev.ticket_stamp(s, t.id)))
 
     @app.get("/doc/{path:path}", response_class=HTMLResponse)
     def doc(request: Request, path: str):
@@ -498,7 +499,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         return _back(ticket_id, None, next, ok="decide")
 
     @app.post("/ticket/{ticket_id}/check")
-    def post_check(request: Request, ticket_id: str, section: str = Form(...), index: int = Form(...), checked: str = Form(""), state: str = Form(""), reason: str = Form(""), severity: str = Form(""), token: str = Form("")):
+    def post_check(request: Request, ticket_id: str, section: str = Form(...), index: int = Form(...), checked: str = Form(""), state: str = Form(""), reason: str = Form(""), severity: str = Form(""), evidence: list[str] = Form([]), token: str = Form("")):
         """Set one box. A form post redirects back with a confirmation or an error line; with `Accept: application/json` the
         reply is JSON: 200 with the new state, 422 with the refusal (a reason under 3 characters, an unknown severity)."""
         wants_json = "application/json" in request.headers.get("accept", "")
@@ -508,7 +509,13 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         try:
             s.sync_before()
             want = state if state in (" ", "x", "!") else (None if checked == "" and state == "" else (checked not in ("0", "")))
-            t = ops.toggle_check(s, ticket_id, section, index, want, actor=s.owner, reason=reason, severity=severity)
+            real = s.get(ticket_id).id
+            names = [n for n in evidence if n]
+            for n in names:
+                if not _ASSET_NAME.match(n) or ".." in n or not (s.ticket_assets_dir(real) / n).is_file():
+                    raise ValueError(f"Screenshot {n} is not on this ticket. Paste it again.")
+            t = ops.toggle_check(s, ticket_id, section, index, want, actor=s.owner, reason=reason, severity=severity,
+                                 evidence=[f"assets/{real}/{n}" for n in names])
             s.sync_after(f"desk: check {t.id}")
         except (KeyError, RuleError, ValueError) as e:
             if wants_json:
@@ -521,14 +528,17 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
                                  "summary_html": summary_html(t.section("Acceptance")), "stamp": str(ev.ticket_stamp(s, t.id))})
         return _back(ticket_id, ok="check")
 
-    posted: OrderedDict[str, tuple[str, int]] = OrderedDict()  # a post's key -> (ticket id, index of the comment it made)
+    posted: OrderedDict[str, tuple[str, int, "int | None"]] = OrderedDict()  # a post's key -> (ticket id, comment index, Acceptance line it put evidence on)
     post_lock = threading.Lock()
 
     @app.post("/ticket/{ticket_id}/comment")
-    def post_comment(request: Request, ticket_id: str, text: str = Form(""), who: str = Form(""), token: str = Form("")):
+    def post_comment(request: Request, ticket_id: str, text: str = Form(""), who: str = Form(""), token: str = Form(""),
+                     evidence: list[str] = Form([]), line: str = Form("")):
         """Add a comment. A form post works once per token and redirects. With `Accept: application/json` the token is the post's
         KEY: the server stores at most one comment per key, a key that already made a comment returns that comment (`repeat`), and
-        a failed post leaves the key good so Try again works. The reply carries the Comments again and a fresh key."""
+        a failed post leaves the key good so Try again works. The reply carries the Comments again and a fresh key.
+        `evidence` names screenshots already uploaded to this ticket; they go into the comment as images, and with `line` (1-based, an
+        Acceptance line) as `> Evidence:` lines under that line too."""
         if "application/json" not in request.headers.get("accept", ""):
             if not tokens.use(token):
                 return _spent(ticket_id)
@@ -563,23 +573,41 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
                 if prior is None:
                     if not tokens.valid(token):
                         return refuse("This page is out of date, so nothing was posted. Reload it, then post again.", 409)
+                    names = [n for n in evidence if n]
+                    for n in names:
+                        if not _ASSET_NAME.match(n) or ".." in n or not (s.ticket_assets_dir(t.id) / n).is_file():
+                            return refuse(f"Screenshot {n} is not on this ticket. Paste it again.", 422)
+                    pick = None
+                    if line.strip():
+                        count = len(parse_checks(t.section("Acceptance")))
+                        if not line.strip().isdigit() or not 1 <= int(line) <= count:
+                            return refuse(f"This ticket has no Acceptance line {line.strip()[:12]}.", 422)
+                        pick = int(line) - 1
+                    rels = [f"assets/{t.id}/{n}" for n in names]
+                    body = text.strip() + "".join(f" ![{Path(n).stem}]({r})" for n, r in zip(names, rels)) + (f" (Evidence for line {pick + 1})" if pick is not None else "")
                     s.sync_before()
                     who_ = who or s.owner
-                    res = ops.comment(s, t, text, actor=who_)
+                    res = ops.comment(s, t, body, actor=who_)
                     duplicate = not res.added
-                    if res.added:
+                    if pick is not None:
+                        ops.add_evidence(s, t.id, "Acceptance", pick, rels)
+                    if res.added or pick is not None:
                         s.sync_after(f"desk: comment {t.id}")
-                    idx = ops.locate_comment(res.ticket, who_, text)
+                    idx = ops.locate_comment(res.ticket, who_, body)
                     tokens.use(token)
-                    posted[token] = (t.id, -1 if idx is None else idx)
+                    posted[token] = (t.id, -1 if idx is None else idx, pick)
                     while len(posted) > MAX_TOKENS:
                         posted.popitem(last=False)
                 t = s.get(ticket_id)
-                idx = posted[token][1]
+                _, idx, pick = posted[token]
                 lines = ops.comment_lines(t)
                 render = ctx(request, s, t=t)["render"]
-                return JSONResponse({"ok": True, "repeat": repeat, "duplicate": duplicate, "index": idx, "line": lines[idx] if 0 <= idx < len(lines) else "",
-                                     "html": render(t.section("Comments")), "stamp": str(ev.ticket_stamp(s, t.id)), "token": tokens.issue()})
+                out = {"ok": True, "repeat": repeat, "duplicate": duplicate, "index": idx, "line": lines[idx] if 0 <= idx < len(lines) else "",
+                       "html": render(t.section("Comments")), "stamp": str(ev.ticket_stamp(s, t.id)), "token": tokens.issue()}
+                if pick is not None:  # the Acceptance line changed too: send it again with its summary
+                    out["check_html"] = render(t.section("Acceptance"), t, "Acceptance")
+                    out["summary_html"] = summary_html(t.section("Acceptance"))
+                return JSONResponse(out)
             except (RuleError, ValueError) as e:
                 return refuse(str(e), 422)
 
@@ -621,15 +649,15 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
             data += chunk
             if len(data) > limit:
                 mb = f"{limit_mb:g}"
-                return fail(f"Image is larger than the {mb} MB limit (desk.toml [attachments] max_mb = {mb}).", 413)
+                return fail(f"That file is larger than the {mb} MB limit (desk.toml [attachments] max_mb = {mb}). Allowed: {IMAGE_TYPES}, up to {mb} MB.", 413)
         ext = sniff_image(bytes(data[:16]))
         if not ext:
-            return fail("Images only: png, jpg, gif or webp.", 415)
+            return fail(f"Only {IMAGE_TYPES} images are accepted, up to {limit_mb:g} MB.", 415)
         stem = re.sub(r"[^A-Za-z0-9_-]+", "-", Path(file.filename or "").stem).strip("-")
         if stem.lower() in ("", "image", "blob", "unnamed", "screenshot"):  # what a clipboard paste is called
-            stem = "screenshot-" + dt.datetime.now().strftime("%Y%m%d-%H%M%S")
+            stem = "screenshot"
         with tempfile.TemporaryDirectory(prefix="desk-attach-") as tmp:
-            src = Path(tmp) / f"{stem[:60]}{ext}"
+            src = Path(tmp) / f"{dt.datetime.now().strftime('%Y-%m-%d-%H%M')}-{stem[:60]}{ext}"  # e.g. 2026-11-08-0341-validate-run.png
             src.write_bytes(bytes(data))
             try:
                 s.sync_before()
@@ -638,8 +666,28 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
             except (KeyError, RuleError, ValueError, OSError) as e:
                 return fail(str(e))
         if wants_json:
-            return JSONResponse({"markdown": f"![{dest.stem}](assets/{t.id}/{dest.name})", "name": dest.name, "url": f"/assets/{t.id}/{dest.name}", "token": tokens.issue()})
+            return JSONResponse({"markdown": f"![{dest.stem}](assets/{t.id}/{dest.name})", "name": dest.name, "rel": f"assets/{t.id}/{dest.name}",
+                                 "url": f"/assets/{t.id}/{dest.name}", "token": tokens.issue()})
         return _back(ticket_id, ok="attach")
+
+    @app.post("/ticket/{ticket_id}/attach/remove")
+    def post_attach_remove(ticket_id: str, name: str = Form(""), token: str = Form("")):
+        """The remove button on a screenshot thumbnail: deletes the file and its Attachments line unless the ticket already uses it."""
+        if not tokens.use(token):
+            return JSONResponse({"error": "That form was already sent; reload the page.", "token": tokens.issue()}, status_code=409)
+        if not name or not _ASSET_NAME.match(name) or ".." in name:
+            return JSONResponse({"error": "No such screenshot.", "token": tokens.issue()}, status_code=400)
+        s = store()
+        try:
+            t = s.get(ticket_id)
+            s.sync_before()
+            ops.unattach(s, t, name)
+            s.sync_after(f"desk: remove screenshot {t.id}")
+        except KeyError:
+            return JSONResponse({"error": "No such screenshot.", "token": tokens.issue()}, status_code=404)
+        except (RuleError, ValueError) as e:
+            return JSONResponse({"error": str(e), "token": tokens.issue()}, status_code=409)
+        return JSONResponse({"ok": True, "token": tokens.issue()})
 
     @app.post("/ticket/{ticket_id}/move")
     def post_move(ticket_id: str, to: str = Form(...), reason: str = Form(""), token: str = Form("")):

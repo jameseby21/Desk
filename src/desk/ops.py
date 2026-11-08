@@ -103,7 +103,7 @@ def press(cur: str, which: str) -> tuple[str, bool]:
 
 
 def toggle_check(store: Store, ticket_id: str, section: str, index: int, checked: "bool | str | None" = None, actor: str | None = None,
-                 reason: str = "", severity: str = "") -> Ticket:
+                 reason: str = "", severity: str = "", evidence: "tuple | list" = ()) -> Ticket:
     """Set the `index`-th checkbox line of `section`; only that line (and the quoted lines under it) changes.
     `checked` is True/False (done/open), a state char (' ', 'x', '!'), or None to flip open <-> done.
     Not accepted (`!`) REQUIRES a reason of 3 or more non-space characters and takes a severity (must fix, the default, should, nit).
@@ -139,6 +139,7 @@ def toggle_check(store: Store, ticket_id: str, section: str, index: int, checked
     else:
         c.reason = c.severity = c.who = c.when = ""
         c.legacy = False
+    c.evidence += [e for e in evidence if e and e not in c.evidence]
     c.state = new
     parts = raw.split("\n")
     parts[c.first:c.last + 1] = render_check(c)
@@ -405,6 +406,38 @@ def attach(store: Store, t: Ticket, source: Path, caption: str | None = None, ac
     t.append_line("Attachments", line)
     store.save(t)
     return dest
+
+
+def add_evidence(store: Store, ticket_id: str, section: str, index: int, rels: "list[str]") -> Ticket:
+    """Add `> Evidence: <rel>` lines under the `index`-th checkbox line of `section` (a path already there is not added twice)."""
+    if section not in CHECK_SECTIONS:
+        raise ValueError(f"Evidence can only go on lines in {', '.join(CHECK_SECTIONS)}.")
+    t = store.get(ticket_id)
+    raw = t.sections.get(section) or ""
+    checks = parse_checks(raw)
+    if not 0 <= index < len(checks):
+        raise ValueError(f"{t.id} {section} has no checkbox line {index + 1}.")
+    c = checks[index]
+    c.evidence += [r for r in rels if r and r not in c.evidence]
+    parts = raw.split("\n")
+    parts[c.first:c.last + 1] = render_check(c)
+    t.sections[section] = "\n".join(parts)
+    store.save(t)
+    return t
+
+
+def unattach(store: Store, t: Ticket, name: str) -> None:
+    """Remove an uploaded file and its line under Attachments. Refuses a file that a comment, a report or an evidence line uses."""
+    rel = f"assets/{t.id}/{name}"
+    path = store.ticket_assets_dir(t.id) / name
+    if not path.is_file():
+        raise KeyError(name)
+    if any(rel in (body or "") for sec, body in t.sections.items() if sec != "Attachments"):
+        raise RuleError("That screenshot is already used by this ticket, so it stays.")
+    lines = [ln for ln in (t.sections.get("Attachments") or "").split("\n") if rel not in ln]
+    t.sections["Attachments"] = "\n".join(lines)
+    store.save(t)
+    path.unlink()
 
 
 def capture_screen(dest: Path) -> Path:
