@@ -357,6 +357,47 @@ def cmd_people(args):
             print(f"  {p.key:<16} {p.name:<18} {p.kind:<9} {p.colour or '-':<8} {p.role}")
 
 
+def cmd_outbox(args):
+    """DESK-0174: the entry that lists, for one coworker thread, the tickets to look at since the last entry."""
+    from . import comments as cm, outbox as ob, people
+
+    s = _store(args)
+    if not (args.for_ or args.all):
+        _die("Say whose: --for <actor> (chaz, em, lily, bri, joe, bigd) or --all.")
+    pe = people.load(s.home)
+    now = dt.datetime.now().replace(microsecond=0)
+    names = ob.actors(s) if args.all else [pe.resolve(args.for_)]
+    shared = cm.entries(s)
+    out = []
+    for actor in names:
+        try:
+            since, how = ob.parse_since(args.since, s.home, actor)
+        except ValueError as e:
+            _die(str(e))
+        lines = ob.collect(s, actor, since, shared)
+        out.append((actor, since, how, lines))
+    if args.json:
+        print(json.dumps([ob.as_json(s, a, ln, sn, hw) for a, sn, hw, ln in out], indent=2, ensure_ascii=False))
+    else:
+        shown = 0
+        for actor, since, how, lines in out:
+            if not lines:
+                if not args.all:
+                    print(f"Nothing new for {pe.display(actor)} since {since.strftime('%Y-%m-%d %H:%M')} ({how}).")
+                continue
+            if shown:
+                print(chr(10) + "-" * 60 + chr(10))
+            print(ob.render(s, actor, lines, since, how), end="")
+            shown += 1
+        if args.all and not shown:
+            print("Nothing new for any thread.")
+    if args.posted:
+        for actor, _, _, lines in out:
+            if lines:
+                ob.set_cutoff(s.home, actor, now)
+                print(f"cut-off for {actor} is now {now.isoformat()}", file=sys.stderr)
+
+
 def cmd_index(args):
     s = _store(args)
     print(s.index())
@@ -933,6 +974,14 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--json", action="store_true")
     sp.add_argument("--limit", type=int, default=12, help="most tickets shown per project (default 12)")
     sp.set_defaults(fn=cmd_search)
+
+    sp = sub.add_parser("outbox", help="the entry for a coworker thread's team folder: the tickets to look at since the last entry (assigned, changed by Patch or James, new and naming them), one line each, with the Tickets: header; the cut-off per actor is kept in .desk/state")
+    sp.add_argument("--for", dest="for_", metavar="ACTOR", help="chaz, em, lily, bri, joe, bigd (or any key or name in people.yaml)")
+    sp.add_argument("--all", action="store_true", help="one entry for every coworker thread that has changes")
+    sp.add_argument("--since", help="last-entry (default; a week back when there is none), YYYY-MM-DD or YYYY-MM-DD HH:MM")
+    sp.add_argument("--json", action="store_true", help="for the poster: actor, cut-off, the tickets with changes and ask, and the text")
+    sp.add_argument("--posted", action="store_true", help="after printing, move the cut-off to now (use it when the entry is posted)")
+    sp.set_defaults(fn=cmd_outbox)
 
     sp = sub.add_parser("assign-rules", help="show the auto-assignment rules (assign.yaml, or the built-in table); `assign-rules init` writes assign.yaml")
     sp.add_argument("action", nargs="?", choices=["list", "init"], default="list")
