@@ -49,9 +49,9 @@ def test_ui_pages_and_decide(store):
     assert "jRE" in client.get("/projects").text
     page = client.get(f"/ticket/{t.id}").text
     assert "Approve" in page and "Ran the build" in page
-    r = client.post(f"/ticket/{t.id}/decide", data={"action": "approve", "words": "ok"}, follow_redirects=False)
+    r = client.post(f"/ticket/{t.id}/decide", data={"token": client.app.state.tokens.issue(), "action": "approve", "words": "ok"}, follow_redirects=False)
     assert r.status_code == 303 and "error=" in r.headers["location"]
-    client.post(f"/ticket/{t.id}/decide", data={"action": "approve", "words": "Approve: ship it."}, follow_redirects=False)
+    client.post(f"/ticket/{t.id}/decide", data={"token": client.app.state.tokens.issue(), "action": "approve", "words": "Approve: ship it."}, follow_redirects=False)
     assert store.get(t.id).status == "approved"
-    client.post(f"/ticket/{t.id}/comment", data={"text": "Nice.", "who": "em"})
+    client.post(f"/ticket/{t.id}/comment", data={"token": client.app.state.tokens.issue(), "text": "Nice.", "who": "em"})
     assert "· em · Nice." in store.get(t.id).section("Comments")

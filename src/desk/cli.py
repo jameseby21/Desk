@@ -177,7 +177,17 @@ def cmd_move(args):
 
 
 def cmd_comment(args):
-    _write_cmd(args, lambda s, t: ops.comment(s, t, args.text, actor=args.as_), "comment")
+    s = _store(args)
+    s.sync_before()
+    try:
+        res = ops.comment(s, s.get(args.id), args.text, actor=args.as_)
+    except (KeyError, RuleError, ValueError) as e:
+        _die(str(e))
+    if not res.added:
+        print(f"{res.id}: that comment is already on the ticket; nothing written")
+        return
+    s.sync_after(f"desk: comment {res.id}")
+    print(f"{res.id} -> {res.status} ({screen(res.status)})")
 
 
 def cmd_validate(args):

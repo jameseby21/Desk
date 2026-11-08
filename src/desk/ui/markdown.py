@@ -117,6 +117,7 @@ def render(text: str, *, known: dict | None = None, check: dict | None = None, a
         i = next(counter)
         on = "checked" in m.group(0)
         return (f'<form class="chk" method="post" action="/ticket/{check["id"]}/check">'
+                f'<input type="hidden" name="token" value="{check["token"]() if check.get("token") else ""}">'
                 f'<input type="hidden" name="section" value="{html.escape(check["section"])}">'
                 f'<input type="hidden" name="index" value="{i}">'
                 f'<input type="hidden" name="checked" value="{0 if on else 1}">'

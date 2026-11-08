@@ -19,5 +19,14 @@
 {% block body %}{% endblock %}
 </main>
 <footer><a href="/about">About Desk: why it counts proof</a></footer>
+<script>
+document.addEventListener("submit", function (e) {
+  var f = e.target;
+  setTimeout(function () { f.querySelectorAll("button[type=submit],input[type=submit]").forEach(function (b) { b.disabled = true; }); }, 0);
+});
+window.addEventListener("pageshow", function () {
+  document.querySelectorAll("button[type=submit]").forEach(function (b) { b.disabled = false; });
+});
+</script>
 </body>
 </html>

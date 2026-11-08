@@ -6,6 +6,8 @@ import datetime as dt
 import html
 import os
 import re
+import secrets
+from collections import OrderedDict
 from pathlib import Path
 
 from fastapi import FastAPI, Form, Request
@@ -65,12 +67,37 @@ def combos_for(tickets, on: dt.date | None = None) -> list[tuple]:
     return out
 
 
+MAX_TOKENS = 5000
+_OK_TEXT = {"comment": "Comment added", "decide": "Decision recorded", "check": "Checkbox saved", "move": "Ticket moved"}
+_AT = re.compile(r"\d{2}:\d{2}")
+
+
+class Tokens:
+    """One-time form tokens, kept in memory for this process. A token works once; a reused one is refused."""
+
+    def __init__(self, cap: int = MAX_TOKENS):
+        self._live: OrderedDict[str, None] = OrderedDict()
+        self._cap = cap
+
+    def issue(self) -> str:
+        tok = secrets.token_urlsafe(16)
+        self._live[tok] = None
+        while len(self._live) > self._cap:
+            self._live.popitem(last=False)
+        return tok
+
+    def use(self, tok: str) -> bool:
+        return self._live.pop(tok or "", 0) is None
+
+
 def create_app(home: Path | None = None) -> FastAPI:
     app = FastAPI(title="Desk")
+    tokens = Tokens()
+    app.state.tokens = tokens
     templates = Jinja2Templates(directory=str(TEMPLATES))
     mermaid_src = "/static/mermaid.min.js" if (STATIC / "mermaid.min.js").exists() else MERMAID_CDN
     templates.env.globals.update(screen=screen, md=md_html, has_mermaid=has_mermaid, statuses=STATUSES,
-                                 sections=SECTIONS, mermaid_src=mermaid_src, by_project=by_project)
+                                 sections=SECTIONS, mermaid_src=mermaid_src, by_project=by_project, token=tokens.issue)
     if STATIC.exists():
         app.mount("/static", StaticFiles(directory=str(STATIC)), name="static")
 
@@ -87,6 +114,8 @@ def create_app(home: Path | None = None) -> FastAPI:
                 known = {x.id: (x.meta.get("title", ""), x.status) for x in st.tickets()}
             check = {"id": t.id, "section": section} if t is not None and section in ops.CHECK_SECTIONS else None
             actions = (lambda i, status: review_actions(i, status, t.id)) if check and rv.is_review_ticket(t) else None
+            if check:
+                check = {**check, "token": tokens.issue}
             return md_html(text, known=known, check=check, actions=actions)
 
         return {"render": render, "request": request, "owner": st.owner, "style": styles.load(st.home), "favicon": FAVICON, "home": str(st.home), "today": dt.date.today().isoformat(),
@@ -151,7 +180,7 @@ def create_app(home: Path | None = None) -> FastAPI:
         return templates.TemplateResponse(request, "projects.html", ctx(request, s, rows=rows))
 
     @app.get("/ticket/{ticket_id}", response_class=HTMLResponse)
-    def ticket(request: Request, ticket_id: str, error: str | None = None):
+    def ticket(request: Request, ticket_id: str, error: str | None = None, ok: str = "", at: str = "", dup: int = 0):
         s = store()
         try:
             t = s.get(ticket_id)
@@ -164,7 +193,15 @@ def create_app(home: Path | None = None) -> FastAPI:
             deps.append((str(d), dep.status if dep else "missing"))
         mermaid = any(has_mermaid(t.section(name)) for name in t.sections)
         return templates.TemplateResponse(request, "ticket.html", ctx(request, s, t=t, deps=deps, stale=s.is_stale(t), error=error, s=s,
-                                                             formerly=s.formerly(t), mermaid=mermaid))
+                                                             formerly=s.formerly(t), mermaid=mermaid,
+                                                             notice=notice(ok, at, dup)))
+
+    def notice(ok: str, at: str, dup: int) -> str:
+        if dup:
+            return "That comment is already on the ticket"
+        if ok in _OK_TEXT:
+            return f"{_OK_TEXT[ok]} {at}" if _AT.fullmatch(at) else _OK_TEXT[ok]
+        return ""
 
     def review_actions(tid: str, status: str, review_id: str) -> str:
         e = html.escape
@@ -172,7 +209,7 @@ def create_app(home: Path | None = None) -> FastAPI:
         if status == "review":
             for action, label in (("approve", "Approve"), ("changes", "Send back")):
                 out += (f'<form class="rv-form" method="post" action="/ticket/{e(tid)}/decide">'
-                        f'<input type="hidden" name="action" value="{action}"><input type="hidden" name="next" value="/ticket/{e(review_id)}">'
+                        f'<input type="hidden" name="token" value="{tokens.issue()}"><input type="hidden" name="action" value="{action}"><input type="hidden" name="next" value="/ticket/{e(review_id)}">'
                         f'<input type="text" name="words" placeholder="{"why not" if action == "changes" else "in your words"}" required minlength="4">'
                         f'<button class="btn small" type="submit">{label}</button></form>')
         return out
@@ -201,12 +238,29 @@ def create_app(home: Path | None = None) -> FastAPI:
             return HTMLResponse("<p>No such asset</p>", status_code=404)
         return FileResponse(str(target))
 
-    def _back(t_id: str, error: str | None = None, next_: str = "") -> RedirectResponse:
-        url = next_ if re.fullmatch(r"/ticket/[A-Za-z0-9-]+", next_) else f"/ticket/{t_id}" + (f"?error={html.escape(error)}" if error else "")
+    def _back(t_id: str, error: str | None = None, next_: str = "", ok: str = "", dup: bool = False) -> RedirectResponse:
+        if next_ and re.fullmatch(r"/ticket/[A-Za-z0-9-]+", next_):
+            return RedirectResponse(next_, status_code=303)
+        url = f"/ticket/{t_id}"
+        if error:
+            url += f"?error={quote(error)}"
+        elif dup:
+            url += "?dup=1"
+        elif ok:
+            url += f"?ok={ok}&at={dt.datetime.now().strftime('%H:%M')}"
         return RedirectResponse(url, status_code=303)
 
+    def _spent(ticket_id: str) -> HTMLResponse:
+        e = html.escape(ticket_id)
+        return HTMLResponse(
+            "<!doctype html><meta charset=utf-8><title>Already sent</title><body style=\"font:16px system-ui;max-width:40em;margin:3em auto;padding:0 1em\">"
+            "<h1>That form was already sent</h1><p>This button works once, so a double click or a refresh can not post twice. "
+            f"Nothing more was written.</p><p><a href=\"/ticket/{e}\">Back to {e}</a></p></body>", status_code=409)
+
     @app.post("/ticket/{ticket_id}/decide")
-    def post_decide(ticket_id: str, action: str = Form(...), words: str = Form(""), next: str = Form("")):
+    def post_decide(ticket_id: str, action: str = Form(...), words: str = Form(""), next: str = Form(""), token: str = Form("")):
+        if not tokens.use(token):
+            return _spent(ticket_id)
         s = store()
         try:
             t = s.get(ticket_id)
@@ -215,10 +269,12 @@ def create_app(home: Path | None = None) -> FastAPI:
             s.sync_after(f"desk: decide {t.id}")
         except (KeyError, RuleError, ValueError) as e:
             return _back(ticket_id, str(e), next)
-        return _back(ticket_id, None, next)
+        return _back(ticket_id, None, next, ok="decide")
 
     @app.post("/ticket/{ticket_id}/check")
-    def post_check(ticket_id: str, section: str = Form(...), index: int = Form(...), checked: int = Form(...)):
+    def post_check(ticket_id: str, section: str = Form(...), index: int = Form(...), checked: int = Form(...), token: str = Form("")):
+        if not tokens.use(token):
+            return _spent(ticket_id)
         s = store()
         try:
             s.sync_before()
@@ -226,22 +282,27 @@ def create_app(home: Path | None = None) -> FastAPI:
             s.sync_after(f"desk: check {t.id}")
         except (KeyError, RuleError, ValueError) as e:
             return _back(ticket_id, str(e))
-        return _back(ticket_id)
+        return _back(ticket_id, ok="check")
 
     @app.post("/ticket/{ticket_id}/comment")
-    def post_comment(ticket_id: str, text: str = Form(""), who: str = Form("")):
+    def post_comment(ticket_id: str, text: str = Form(""), who: str = Form(""), token: str = Form("")):
+        if not tokens.use(token):
+            return _spent(ticket_id)
         s = store()
         try:
             t = s.get(ticket_id)
             s.sync_before()
-            ops.comment(s, t, text, actor=who or s.owner)
-            s.sync_after(f"desk: comment {t.id}")
+            res = ops.comment(s, t, text, actor=who or s.owner)
+            if res.added:
+                s.sync_after(f"desk: comment {t.id}")
         except (KeyError, RuleError, ValueError) as e:
             return _back(ticket_id, str(e))
-        return _back(ticket_id)
+        return _back(ticket_id, ok="comment", dup=not res.added)
 
     @app.post("/ticket/{ticket_id}/move")
-    def post_move(ticket_id: str, to: str = Form(...), reason: str = Form("")):
+    def post_move(ticket_id: str, to: str = Form(...), reason: str = Form(""), token: str = Form("")):
+        if not tokens.use(token):
+            return _spent(ticket_id)
         s = store()
         try:
             t = s.get(ticket_id)
@@ -257,7 +318,7 @@ def create_app(home: Path | None = None) -> FastAPI:
             s.sync_after(f"desk: move {t.id}")
         except (KeyError, RuleError, ValueError) as e:
             return _back(ticket_id, str(e))
-        return _back(ticket_id)
+        return _back(ticket_id, ok="move")
 
     return app
 

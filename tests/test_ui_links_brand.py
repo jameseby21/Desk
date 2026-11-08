@@ -30,7 +30,7 @@ def test_toggle_changes_exactly_one_line(store):
     client = TestClient(create_app(store.home))
     page = client.get(f"/ticket/{t.id}").text
     assert page.count(f'action="/ticket/{t.id}/check"') == 3
-    r = client.post(f"/ticket/{t.id}/check", data={"section": "Acceptance", "index": 1, "checked": 1}, follow_redirects=False)
+    r = client.post(f"/ticket/{t.id}/check", data={"token": client.app.state.tokens.issue(), "section": "Acceptance", "index": 1, "checked": 1}, follow_redirects=False)
     assert r.status_code == 303 and "error" not in r.headers["location"]
     after = store.get(t.id).sections["Acceptance"].split("\n")
     diff = [i for i, (x, y) in enumerate(zip(before, after)) if x != y]
@@ -48,7 +48,7 @@ def test_review_sync_preserves_manual_check_and_ui_actions(store):
     run(store, "review", "new")
     rt = next(t for t in store.tickets() if rv.is_review_ticket(t))
     client = TestClient(create_app(store.home))
-    r = client.post(f"/ticket/{rt.id}/check", data={"section": "Acceptance", "index": 0, "checked": 1}, follow_redirects=False)
+    r = client.post(f"/ticket/{rt.id}/check", data={"token": client.app.state.tokens.issue(), "section": "Acceptance", "index": 0, "checked": 1}, follow_redirects=False)
     assert r.status_code == 303
     assert f"- [x] {a.id}" in store.get(rt.id).section("Acceptance")
     b = ops.new(store, "Approve: another", "desk", "decision", owner="james")
@@ -70,7 +70,7 @@ def test_review_line_approve_redirects_back(store):
     client = TestClient(create_app(store.home))
     page = client.get(f"/ticket/{rt.id}").text
     assert "Send back" in page and f'action="/ticket/{t.id}/decide"' in page
-    r = client.post(f"/ticket/{t.id}/decide", data={"action": "approve", "words": "Approve: ship it.", "next": f"/ticket/{rt.id}"},
+    r = client.post(f"/ticket/{t.id}/decide", data={"token": client.app.state.tokens.issue(), "action": "approve", "words": "Approve: ship it.", "next": f"/ticket/{rt.id}"},
                     follow_redirects=False)
     assert r.headers["location"] == f"/ticket/{rt.id}" and store.get(t.id).status == "approved"
 

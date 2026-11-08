@@ -23,8 +23,17 @@ _KEY = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 _SAFE_NAME = re.compile(r"[^A-Za-z0-9._-]+")
 
 
-def _stamp(actor: str, what: str) -> str:
-    return f"- {today()} · {actor} · {what}"
+def _stamp(actor: str, what: str, at_time: bool = False) -> str:
+    when = dt.datetime.now().strftime("%Y-%m-%d %H:%M") if at_time else today()
+    return f"- {when} · {actor} · {what}"
+
+
+DUPLICATE_WINDOW = dt.timedelta(minutes=10)
+_COMMENT_LINE = re.compile(r"^- (\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}) · (.+?) · (.*)$")
+
+
+def _norm(text: str) -> str:
+    return " ".join(text.split()).casefold()
 
 
 def move(store: Store, t: Ticket, new: str, *, actor: str | None = None, reason: str | None = None, note: str | None = None) -> Ticket:
@@ -136,12 +145,47 @@ def reject(store: Store, t: Ticket, reason: str, actor: str | None = None) -> Ti
     return move(store, t, "rejected", actor=actor, reason=reason)
 
 
-def comment(store: Store, t: Ticket, text: str, actor: str | None = None) -> Ticket:
+class CommentResult:
+    """What `comment` did: `added` is False when an identical recent comment made it a duplicate."""
+
+    def __init__(self, ticket: Ticket, added: bool):
+        self.ticket, self.added = ticket, added
+
+    @property
+    def id(self) -> str:
+        return self.ticket.id
+
+    @property
+    def status(self) -> str:
+        return self.ticket.status
+
+
+def is_duplicate_comment(t: Ticket, actor: str, text: str, now: dt.datetime | None = None) -> bool:
+    """True when the same author posted the same (whitespace and case normalized) text within 10 minutes."""
+    now = now or dt.datetime.now()
+    want = (_norm(actor), _norm(text))
+    for line in t.section("Comments").splitlines():
+        m = _COMMENT_LINE.match(line)
+        if not m:
+            continue
+        try:
+            when = dt.datetime.fromisoformat(f"{m.group(1)}T{m.group(2)}")
+        except ValueError:
+            continue
+        if (_norm(m.group(3)), _norm(m.group(4))) == want and abs(now - when) <= DUPLICATE_WINDOW:
+            return True
+    return False
+
+
+def comment(store: Store, t: Ticket, text: str, actor: str | None = None) -> CommentResult:
     if not text.strip():
         raise RuleError("An empty comment says nothing.")
-    t.append_line("Comments", _stamp(actor or "desk", text.strip()))
+    who = actor or "desk"
+    if is_duplicate_comment(t, who, text):
+        return CommentResult(t, False)
+    t.append_line("Comments", _stamp(who, text.strip(), at_time=True))
     store.save(t)
-    return t
+    return CommentResult(t, True)
 
 
 def _private(path: Path) -> bool:
