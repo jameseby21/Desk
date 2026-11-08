@@ -309,6 +309,18 @@ def cmd_snap(args):
 
 def cmd_intake(args):
     s = _store(args)
+    if args.check:
+        from . import intake_check
+
+        try:
+            text, errors = intake_check.run(Path(args.path), s)
+        except OSError as e:
+            _die(str(e))
+        print(text, end="")
+        print(f"report: {Path(args.path).with_name(Path(args.path).name + '.check.md')}")
+        sys.exit(1 if errors else 0)
+    if not (args.topic and args.project):
+        _die("intake needs --topic and --project (or --check to only validate a SLICES file)")
     s.sync_before()
     try:
         t, dest = ops.intake(s, Path(args.path), args.topic, args.project, actor=args.as_ or "main")
@@ -682,10 +694,11 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--all", action="store_true")
     sp.set_defaults(fn=cmd_board)
 
-    sp = sub.add_parser("intake", help="copy a hand-off (folder or zip) into intake/ and open an intake ticket")
+    sp = sub.add_parser("intake", help="copy a hand-off (folder or zip) into intake/ and open an intake ticket; --check validates a SLICES file instead")
     sp.add_argument("path")
-    sp.add_argument("--topic", required=True)
-    sp.add_argument("--project", required=True)
+    sp.add_argument("--topic")
+    sp.add_argument("--project")
+    sp.add_argument("--check", action="store_true", help="only validate the SLICES file at PATH: columns, project keys, type, size, ask, Depends on ids, Acceptance and How to validate; writes <file>.check.md beside it; exit 1 on errors")
     actor(sp)
     sp.set_defaults(fn=cmd_intake)
 
