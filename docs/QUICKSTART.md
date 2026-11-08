@@ -37,6 +37,19 @@ drew new --project first --type chore "Try Desk"
 drew list
 ```
 
+## Refreshing Desk (stop, install, start)
+After new Desk code is merged or checked out, one command does all three steps:
+```
+drew refresh                 # from the repo's working folder
+drew refresh --ref main      # or from a branch, tag or commit of it
+```
+It stops the UI on port 8765 (by PID), installs with `uv tool install --force`, starts `drew-ui` and prints `drew --version`. On Windows the install runs in a separate process after the command exits (about 30 seconds); read `desk-refresh.log` in your temp folder, or run `drew doctor`. `Ctrl+C` in the `drew-ui` terminal also stops the server (within 2 seconds). Manual fallback, in any PowerShell window:
+```powershell
+Get-NetTCPConnection -LocalPort 8765 -State Listen | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }   # or: drew stop
+uv tool install --force "<path to the Desk repo>"
+drew-ui
+```
+
 ## Verify
 ```
 uv run --no-sync pytest -q

@@ -634,6 +634,75 @@ def _upgrade_detached(uv: str, repo: Path):
     print(f"If Desk stops starting (No module named 'desk'), restore it with: {ver.restore_command(repo)}")
 
 
+def cmd_stop(args):
+    """DESK-0169: end whatever listens on the UI port, by PID. Exit 0 when nothing listens."""
+    port = args.port or ver.ui_port()
+    pids = ver.listeners(port)
+    if not pids:
+        print(f"nothing listens on port {port}; nothing to stop")
+        return
+    failed = 0
+    for pid in pids:
+        if ver.stop_pid(pid):
+            print(f"PID {pid} stopped (was listening on port {port})")
+        else:
+            failed += 1
+            print(f"PID {pid} did not stop; end it by hand with `{ver.stop_hint(pid)}`", file=sys.stderr)
+    if failed:
+        sys.exit(1)
+
+
+def cmd_refresh(args):
+    """DESK-0169: stop the UI, install from the repo (or a git ref of it), start the UI again, print the version."""
+    import shutil
+    import subprocess
+    import tempfile
+    import time
+
+    repo = ver.find_repo(args.repo, _home_or_none(args))
+    if repo is None:
+        _die("No Desk repo found. Pass --repo PATH, set DESK_REPO, or keep the repo at <store>/desk.")
+    uv = shutil.which("uv")
+    if not uv:
+        _die("uv is not on PATH; install uv first (https://docs.astral.sh/uv/).")
+    if args.ref and not ver.ref_exists(repo, args.ref):
+        _die(f"{args.ref} is not a branch, tag or commit of {repo}. Nothing was stopped or installed.")
+    source = ver.install_source(repo, args.ref)
+    port = ver.ui_port()
+    for pid in ver.listeners(port):
+        if ver.stop_pid(pid):
+            print(f"PID {pid} stopped (was listening on port {port})")
+        else:
+            _die(f"PID {pid} did not stop; end it with `{ver.stop_hint(pid)}` and run `drew refresh` again. Nothing was installed.")
+    if ver.on_windows() and ver.in_uv_tools_dir():  # drew.exe cannot replace itself while it runs: a detached script installs after we exit (DESK-0132)
+        tmp = Path(tempfile.gettempdir())
+        script, log = tmp / "desk-refresh.cmd", tmp / "desk-refresh.log"
+        script.write_bytes(ver.refresh_script(uv, source, str(log), port, repo).encode("utf-8"))
+        flags = getattr(subprocess, "DETACHED_PROCESS", 0x8) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x200)
+        subprocess.Popen(["cmd.exe", "/c", str(script)], creationflags=flags, close_fds=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        print(f"Refresh handed off to a separate process (installing {source}); it starts in 2 seconds, after this command exits, then opens drew-ui in its own window.")
+        print(f"In about 30 seconds read {log}: it ends with `Desk <version> · <commit>` from `drew --version`. If Desk stops starting, restore it with: {ver.restore_command(repo)}")
+        return
+    r = subprocess.run([uv, "tool", "install", "--force", source])
+    if r.returncode != 0:
+        _die(f"uv tool install failed (exit {r.returncode}). If Desk no longer starts, restore it with `{ver.restore_command(repo)}`.", r.returncode)
+    exe = shutil.which("drew-ui")
+    if exe:
+        log = Path(tempfile.gettempdir()) / "desk-ui.log"
+        out = open(log, "ab")
+        kw = {"creationflags": getattr(subprocess, "DETACHED_PROCESS", 0x8) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x200)} if ver.on_windows() else {"start_new_session": True}
+        subprocess.Popen([exe], stdin=subprocess.DEVNULL, stdout=out, stderr=out, close_fds=True, **kw)
+        for _ in range(60):
+            if ver.listeners(port):
+                break
+            time.sleep(0.5)
+        print(f"drew-ui started on port {port} (log: {log})")
+    else:
+        print("drew-ui is not on PATH after the install; start it yourself.")
+    d = shutil.which("drew")
+    print(subprocess.run([d, "--version"], capture_output=True, text=True).stdout.strip() if d else "run `drew --version` to see the installed commit")
+
+
 def cmd_migrate(args):
     if args.what == "type":
         return cmd_migrate_type(args)
@@ -836,6 +905,15 @@ def build_parser() -> argparse.ArgumentParser:
     sp = sub.add_parser("upgrade", help="reinstall the tool from the repo (refuses while the UI is running)")
     sp.add_argument("--repo", help="the Desk repo (else DESK_REPO, else <store>/desk)")
     sp.set_defaults(fn=cmd_upgrade)
+
+    sp = sub.add_parser("stop", help="stop the Desk UI: end whatever listens on the UI port (DESK_UI_PORT, default 8765) by PID and say which; exit 0 when nothing listens")
+    sp.add_argument("--port", type=int, help="the port (default: the UI port)")
+    sp.set_defaults(fn=cmd_stop)
+
+    sp = sub.add_parser("refresh", help="stop the UI, install Desk from the repo (or --ref, a branch, tag or commit of it), start drew-ui again and print the version")
+    sp.add_argument("--repo", help="the Desk repo (else DESK_REPO, else <store>/desk)")
+    sp.add_argument("--ref", help="install this git ref of the repo instead of its working folder")
+    sp.set_defaults(fn=cmd_refresh)
 
     sp = sub.add_parser("migrate", help="one-off bulk edits; `migrate track` assigns tracks from tracks/rules.yaml, `migrate type` retires the legacy slice and chore types, `migrate acceptance` strips boilerplate Acceptance lines that restate the Definition of Done, `migrate checks` rewrites inline `not accepted` lines as the quoted-reason block, `migrate tests` adds the Tests section to every ticket without one, `migrate assignee` fills blank assignees from assign.yaml (never overrides one)")
     sp.add_argument("what", choices=["track", "type", "acceptance", "checks", "tests", "assignee"])

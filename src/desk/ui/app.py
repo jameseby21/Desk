@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import datetime as dt
 import html
 import os
@@ -134,7 +135,13 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         shown = key if pe.get(key) is None else pe.display(key)
         return Markup(f'<span class="who" title="{html.escape(key)}"><i class="wdot" style="background:{html.escape(pe.colour(key))}"></i>{html.escape(shown)}</span>')
 
-    app = FastAPI(title="Desk")
+    @contextlib.asynccontextmanager
+    async def lifespan(_app):
+        yield
+        _app.state.stopping = True  # open event streams end at their next look, so Ctrl+C can stop the server
+
+    app = FastAPI(title="Desk", lifespan=lifespan)
+    app.state.stopping = False
     app.add_middleware(timing.TimingMiddleware)
     tokens = Tokens()
     app.state.tokens = tokens
@@ -292,7 +299,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
                                                              chips=chips, track=track, chip_base="/", chip_extra=f"cap={cap}", events_url="/events", events_since=ev.tickets_stamp(s)))
 
     def sse(stamp, since: str, timeout: float) -> StreamingResponse:
-        return StreamingResponse(ev.stream(stamp, int(since) if since.isdigit() else None, poll, min(max(timeout, 0), 3600)), media_type="text/event-stream",
+        return StreamingResponse(ev.stream(stamp, int(since) if since.isdigit() else None, poll, min(max(timeout, 0), 3600), stopping=lambda: app.state.stopping), media_type="text/event-stream",
                                  headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
     @app.get("/events/{ticket_id}")
@@ -940,4 +947,5 @@ def main() -> None:
     Store.background_flush = True  # commit on a timer after the idle time, and now if something was left pending
     Store(home).flush()
     Store(home).schedule_flush()
-    uvicorn.run(create_app(home), host="127.0.0.1", port=port, log_level="warning")
+    # timeout_graceful_shutdown: Ctrl+C waits at most this long for open connections (event streams) before it cuts them (DESK-0169)
+    uvicorn.run(create_app(home), host="127.0.0.1", port=port, log_level="warning", timeout_graceful_shutdown=1)
