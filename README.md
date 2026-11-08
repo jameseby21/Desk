@@ -4,6 +4,12 @@ Tickets as Markdown files in your own git repo. A command line for people and AI
 
 Desk is a lens on your files, not a landlord: the store is a plain directory you can read, grep and commit without Desk installed.
 
+## Windows note: type `drew`, not `desk`
+
+Windows ships `C:\Windows\System32\desk.cpl` (the Display Settings applet) and System32 comes before uv's tool directory on PATH, so typing `desk` in PowerShell opens Display Settings. The same program is installed under a second name, `drew` (and `drew-ui`), which has no collision. `desk.exe` with the extension also works. On macOS and Linux `desk` is fine.
+
+Set the store once so no `--home` is needed: `[Environment]::SetEnvironmentVariable("DESK_HOME", "<path to your store>", "User")`, then open a new terminal.
+
 ## Install
 
 ```bash

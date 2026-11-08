@@ -17,6 +17,8 @@ dependencies = [
 [project.scripts]
 desk = "desk.cli:main"
 desk-ui = "desk.ui.app:main"
+drew = "desk.cli:main"
+drew-ui = "desk.ui.app:main"
 
 [dependency-groups]
 dev = ["pytest>=8", "httpx>=0.27"]
