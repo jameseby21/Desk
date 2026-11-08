@@ -6,7 +6,7 @@
 <div class="row t-head">
   <div>
     <h1 style="margin:0">{{ long_today }}</h1>
-    <p class="muted" style="margin:2px 0 0">Asks first · <b>{{ v.hand|length }}</b> in hand · {{ v.pile|length }} waiting for review{% if cap == 'rough' %} · a rough week: chewed-back hidden, smallest steps shown{% endif %}</p>
+    <p class="muted" style="margin:2px 0 0">Asks first · <b>{{ v.hand|length }}</b> in hand · {{ v.pile|length }} waiting for review{% if cap == 'rough' %} · a rough week: {{ screen('stale')|lower }} hidden, smallest steps shown{% endif %}</p>
   </div>
   <div class="row t-controls">
     {{ dropdown("Track", "track", chips, track, "/", {"cap": cap, "sprint": sprint}) }}
@@ -21,7 +21,7 @@
 {% if review_line %}<p class="muted" style="margin:10px 0 0"><span class="label">Ticket review</span> <a href="/ticket/{{ review_line[0].id }}">{{ review_line[0].meta.get('title') }}</a> · {{ review_line[1] }} waiting</p>{% endif %}
 
 <section class="t-sec" id="needs-you">
-  <h2>Needs you <small>Answer these and the rest can move</small></h2>
+  <h2>{{ heading('needs') }} <small>Answer these and the rest can move</small></h2>
   {% if v.needs %}<div class="rows">{% for t in v.needs %}{{ row(t, 'ask:' ~ v.ask_label(t), v.due_text(t)) }}{% endfor %}</div>
   {% else %}{{ empty(style, "Nothing is waiting on you.") }}{% endif %}
   <div class="card asked" id="asked">
@@ -40,14 +40,14 @@
 {% endif %}
 
 <section class="t-sec" id="in-hand">
-  <h2>In hand <small>Being worked on now, one each</small></h2>
+  <h2>{{ heading('hand') }} <small>Being worked on now, one each</small></h2>
   {% if v.hand %}<div class="rows">{% for t in v.hand_shown %}{{ row(t, who(t.meta.get('assignee') or t.meta.get('owner')), '', t.meta.get('smallest_step') if cap == 'rough' else '') }}{% endfor %}</div>
   {% if v.hand_more %}<details class="fold"><summary>and {{ v.hand_more|length }} more · <b>Show</b></summary><div class="rows">{% for t in v.hand_more %}{{ row(t, who(t.meta.get('assignee') or t.meta.get('owner')), '', t.meta.get('smallest_step') if cap == 'rough' else '') }}{% endfor %}</div></details>{% endif %}
   {% else %}{{ empty(style, "Nothing is being worked on right now.") }}{% endif %}
 </section>
 
 <section class="t-sec" id="waiting">
-  <h2>Waiting for review <small>Proof attached, in queue order</small>{% if v.pile %}<a class="all" href="/search?q=status%3Areview">All {{ v.pile|length }} &rarr;</a>{% endif %}</h2>
+  <h2>{{ heading('waiting') }} <small>Proof attached, in queue order</small>{% if v.pile %}<a class="all" href="/search?q=status%3Areview">All {{ v.pile|length }} &rarr;</a>{% endif %}</h2>
   {% if v.pile %}<div class="rows">{% for t in v.pile_shown %}{{ row(t, t.project, '', t.meta.get('smallest_step') if cap == 'rough' else '') }}{% endfor %}</div>
   {% else %}{{ empty(style, "No proof is waiting for review.") }}{% endif %}
 </section>
@@ -56,7 +56,7 @@
   {% set oc = v.other_counts %}
   <p class="muted" style="margin:0">Also open, not shown here:
     {% for st, label in (('ready', 'ready'), ('inbox', 'in inbox'), ('triage', 'in triage'), ('blocked', 'blocked'), ('approved', 'approved, waiting for merge')) %}{% if oc[st] %}<a href="/search?q=status%3A{{ st }}">{{ oc[st] }} {{ label }}</a> · {% endif %}{% endfor %}<a href="/board">the board</a></p>
-  {% if stale %}<details class="fold"><summary>Chewed back · {{ stale|length }} untouched past the stale window · <b>Show</b></summary>
+  {% if stale %}<details class="fold"><summary>{{ screen('stale') }} · {{ stale|length }} untouched past the stale window · <b>Show</b></summary>
     <p class="muted">Keep each with a reason, or let it go with one.</p><div class="rows">{% for t in stale[:8] %}{{ row(t, t.project) }}{% endfor %}</div>{% if stale|length > 8 %}<p class="muted"><a href="/search?q=is%3Astale">All {{ stale|length }} &rarr;</a></p>{% endif %}</details>{% endif %}
   <details class="fold"><summary>Decided this week · {{ decided|length }} · <b>Show</b></summary>
   {% if decided %}

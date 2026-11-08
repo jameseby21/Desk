@@ -13,7 +13,7 @@
     {% if brand and brand.mark_url %}<img src="{{ brand.mark_url }}" width="22" height="22" alt="">{% else %}<span class="initial">{{ (r.title or '?')[0]|upper }}</span>{% endif %}
     <a class="name" href="/projects?p={{ r.key }}">{{ r.title }}</a> <span class="chip">{{ r.key }}</span> <code>{{ r.prefix }}</code>{% if r.aliases %} <span class="muted" style="font-size:12.5px">formerly {{ r.aliases|join(', ') }}</span>{% endif %}
     {% if r.area %}<span class="muted area">{{ r.area }}</span>{% endif %}
-    <span class="counts">{{ r.open }} open · {{ r.counts['ready'] }} thrown · {{ r.counts['review'] }} dropped · {{ r.counts['blocked'] }} stuck · {{ r.done }} fetched</span>
+    <span class="counts">{{ r.open }} open · {{ r.counts['ready'] }} {{ screen('ready')|lower }} · {{ r.counts['review'] }} {{ screen('review')|lower }} · {{ r.counts['blocked'] }} {{ screen('blocked')|lower }} · {{ r.done }} {{ screen('done')|lower }}</span>
     <span class="pct" title="{{ r.done }} of {{ r.total }} done"><span class="barwrap"><span class="bar" style="width:{{ r.pct }}%"></span></span>{{ r.pct }}%</span>
   </summary>
   {% if r.tracks %}

@@ -184,7 +184,7 @@ any open status → blocked (then `desk unblock` restores the previous status)
 any open status → rejected (with a reason)
 ```
 
-On screen the statuses wear Drew's words: Sniffed (inbox), Thrown (ready), Fetching (in_progress), Dropped (review), Fetched (done), Stuck (blocked), Let go (rejected), Chewed back (stale). The files and the command line use the plain words.
+On screen each status has one word, chosen by the style in Settings (one word per state, never both): Plain, the default, says Inbox, Ready, In progress, Review, Done, Blocked, Let go, Stale; Dogs (Drew or Fuzz) says Sniffed (inbox), Thrown (ready), Fetching (in_progress), Dropped (review), Fetched (done), Stuck (blocked), Let go (rejected), Chewed back (stale); Cat says the plain words. The files and the command line always use the plain words. The tables are `src/desk/words.py`.
 
 Rules the CLI and the UI both enforce, and `desk validate` checks in the files:
 

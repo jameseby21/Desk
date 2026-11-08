@@ -11,19 +11,18 @@
 <a class="more" href="/board/column?project={{ project|urlencode }}&amp;slug={{ slug|urlencode }}&amp;col={{ col }}&amp;offset={{ shown }}&amp;by={{ by }}{% if filter_q %}&amp;{{ filter_q }}{% endif %}" data-more>{{ total - shown }} more</a>
 {%- endmacro %}
 {% macro columns(tickets, s, project, slug) -%}
-{% set labels = {'inbox': 'Inbox', 'ready': 'Ready', 'in_progress': 'In progress', 'review': 'Review', 'blocked': 'Blocked'} %}
 <div class="board5">
 {% for key, items in columns_of(tickets) %}
   <section class="col5" data-col="{{ key }}">
-    <h3 class="colhead"><span>{{ labels[key] }}</span><span>{{ items|length }}</span></h3>
-    {% for t in items[:first_cards] %}{{ calm_card(t, s) }}{% else %}<p class="muted col-none">{{ 'Nothing blocked' if key == 'blocked' else 'Nothing here' }}</p>{% endfor %}
+    <h3 class="colhead"><span>{{ screen(key) }}</span><span>{{ items|length }}</span></h3>
+    {% for t in items[:first_cards] %}{{ calm_card(t, s) }}{% else %}<p class="muted col-none">{{ 'Nothing ' ~ screen('blocked')|lower if key == 'blocked' else 'Nothing here' }}</p>{% endfor %}
     {% if items|length > first_cards %}{{ more_link(project, slug, key, first_cards, items|length) }}{% endif %}
   </section>
 {% endfor %}
 </div>
 {% set fin = finished_of(tickets) %}
 {% if fin['items'] %}
-<details class="finished"><summary>Finished: {% set bits = [] %}{% if fin.done %}{% set _ = bits.append('<b>' ~ fin.done ~ ' done</b>') %}{% endif %}{% if fin.approved %}{% set _ = bits.append(fin.approved ~ ' approved and waiting for merge') %}{% endif %}{% if fin.rejected %}{% set _ = bits.append(fin.rejected ~ ' let go') %}{% endif %}{{ bits|join(', ')|safe }} · <span class="show">Show finished</span></summary>
+<details class="finished"><summary>Finished: {% set bits = [] %}{% if fin.done %}{% set _ = bits.append('<b>' ~ fin.done ~ ' ' ~ screen('done')|lower ~ '</b>') %}{% endif %}{% if fin.approved %}{% set _ = bits.append(fin.approved ~ ' ' ~ screen('approved')|lower ~ ' and waiting for merge') %}{% endif %}{% if fin.rejected %}{% set _ = bits.append(fin.rejected ~ ' ' ~ screen('rejected')|lower) %}{% endif %}{{ bits|join(', ')|safe }} · <span class="show">Show finished</span></summary>
   <div class="fin-cards">{% for t in fin['items'][:first_cards] %}{{ calm_card(t, s) }}{% endfor %}</div>
   {% if fin['items']|length > first_cards %}{{ more_link(project, slug, 'finished', first_cards, fin['items']|length) }}{% endif %}
 </details>

@@ -13,7 +13,6 @@ from .config import HomeNotFound, find_home
 from .rules import RuleError, validate_store
 from .store import Store
 from .ticket import PRIORITIES, SIZES, STATUSES, TYPES
-from .words import screen
 
 
 def _store(args) -> Store:
@@ -181,7 +180,7 @@ def _write_cmd(args, fn, label):
     except (KeyError, RuleError, ValueError) as e:
         _die(str(e))
     s.sync_after(f"desk: {label} {t.id}")
-    print(f"{t.id} -> {t.status} ({screen(t.status)})")
+    print(f"{t.id} -> {t.status}")
 
 
 def cmd_claim(args):
@@ -301,7 +300,7 @@ def cmd_comment(args):
         print(f"{res.id}: that comment is already on the ticket; nothing written")
         return
     s.sync_after(f"desk: comment {res.id}")
-    print(f"{res.id} -> {res.status} ({screen(res.status)})")
+    print(f"{res.id} -> {res.status}")
 
 
 def cmd_validate(args):
@@ -559,7 +558,7 @@ def cmd_board(args):
         items = [t for t in tickets if t.status == st]
         if not items and st not in ("ready", "in_progress", "review"):
             continue
-        print(f"\n{screen(st)} ({st}) · {len(items)}")
+        print(f"\n{st} · {len(items)}")
         for t in items:
             flag = " · chewed back" if s.is_stale(t) else ""
             proj = "" if args.project else f"  [{t.project}]"

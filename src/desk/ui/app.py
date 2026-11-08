@@ -25,7 +25,7 @@ from ..config import find_home
 from ..rules import RuleError
 from ..store import Store, id_parts, split_profile
 from ..ticket import SECTIONS, STATUSES, check_states, parse_checks
-from ..words import screen
+from .. import words
 from urllib.parse import quote
 
 from markupsafe import Markup
@@ -203,15 +203,15 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
     app.add_middleware(IdentityMiddleware, find_store=lambda: Store(home or find_home()))
     tokens = Tokens()
     app.state.tokens = tokens
+    shown = {"censor": None, "style": "plain"}  # per request: the profanity filter (None when switched off) and the style that picks the words on screen
     templates = Jinja2Templates(directory=str(TEMPLATES))
     templates.TemplateResponse = timing.timed_render(templates.TemplateResponse)
     mermaid_src = "/static/mermaid.min.js" if (STATIC / "mermaid.min.js").exists() else MERMAID_CDN
-    templates.env.globals.update(screen=screen, md=md_html, has_mermaid=has_mermaid, statuses=STATUSES,
+    templates.env.globals.update(screen=lambda st: words.screen(st, shown["style"]), heading=lambda key: words.heading(key, shown["style"]), md=md_html, has_mermaid=has_mermaid, statuses=STATUSES,
                                  sections=SECTIONS, mermaid_src=mermaid_src, by_project=by_project, token=tokens.issue, check_summary=lambda text: Markup(summary_html(text)), track_slug=trk.track_slug, track_of=trk.track_of,
                                  build=ver.describe(), who=who_html, person=person_name, sprint_slug=lambda n: sprintmod.slugify(str(n), 60), ask_badge=lambda t: ((asks.ask_of(t) or {}).get("kind") or "").capitalize(),
-                                 card_extra=lambda t, st: [x for x in [str(t.meta.get("type") or "")] + ([screen("stale")] if st.is_stale(t) else []) + [f"#{x}" for x in t.tags] if x],
+                                 card_extra=lambda t, st: [x for x in [str(t.meta.get("type") or "")] + ([words.screen("stale")] if st.is_stale(t) else []) + [f"#{x}" for x in t.tags] if x],
                                  card_age=bv.age_days, card_review=bv.review_by_text, card_proof=bv.proof_dot, columns_of=bv.five, finished_of=bv.finished, first_cards=bv.FIRST_CARDS)
-    shown = {"censor": None}  # the profanity filter for the request being rendered; None when the person switched it off
 
     def finalize(v):
         fn = shown["censor"]
@@ -231,6 +231,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
 
     def ctx(request: Request, st: Store, **kw) -> dict:
         censor = shown["censor"] = censor_for(st)
+        shown["style"] = styles.load(st.home)["name"]
         known = None
         seen: set = set()
         gloss = docsmod.glossary(st.home)
@@ -391,7 +392,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         out = res.as_json()
         for g in out["groups"]:
             for h in g["hits"]:
-                h["status_label"] = screen(h["status"])
+                h["status_label"] = words.screen(h["status"], styles.load(store().home)["name"])
         return JSONResponse(out)
 
     @app.get("/search", response_class=HTMLResponse)
@@ -474,7 +475,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         items = bv.column_items(ts, col)[max(offset, 0):]
         if frag:
             return templates.TemplateResponse(request, "_bmore.html", ctx(request, s, items=items, s=s))
-        label = {"inbox": "Inbox", "ready": "Ready", "in_progress": "In progress", "review": "Review", "blocked": "Blocked", "finished": "Finished"}.get(col, col)
+        label = "Finished" if col == "finished" else words.screen(col, shown["style"])
         return templates.TemplateResponse(request, "board_more.html", ctx(request, s, items=items, s=s, project=project, label=label, offset=offset,
                                                                   group=bv.group_name(ts[0], by) if ts else slug))
 
@@ -543,7 +544,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         summary = re.sub(r"\s+", " ", re.sub(r"[`*_>#\[\]]", "", body.split("\n\n")[0]))[:200] if body else ""
         acc = t.acceptance()
         facts = [f"{t.meta.get('type')}", f"{t.meta.get('priority')}", f"owner {t.meta.get('owner')}"] + ([f"{sum(1 for ok, _ in acc if ok)} of {len(acc)} accepted"] if acc else [])
-        text = (f'<div class="hc-top"><b class="hc-id">{e(t.id)}</b> <span class="chip {"ball" if t.status == "review" else "red" if t.status == "blocked" else ""}">{e(screen(t.status))} · {e(t.status)}</span> '
+        text = (f'<div class="hc-top"><b class="hc-id">{e(t.id)}</b> <span class="chip {"ball" if t.status == "review" else "red" if t.status == "blocked" else ""}">{e(words.screen(t.status, styles.load(s.home)["name"]))}</span> '
                 f'<span class="chip">{e(t.project)}</span></div><p class="hc-title">{e(str(t.meta.get("title") or ""))}</p>'
                 + (f'<p class="hc-body">{e(summary)}</p>' if summary else "") + f'<p class="hc-facts">{e(" · ".join(facts))}</p>')
         cf = censor_for(s)

@@ -19,7 +19,7 @@
 <div class="row"{% if brand and brand.accent %} style="border-left:6px solid {{ brand.accent }};padding-left:10px"{% endif %}>
   {% if brand and brand.mark_url %}<img src="{{ brand.mark_url }}" width="24" height="24" alt="{{ titles.get(t.project, t.project) }}">{% else %}<span class="initial" title="{{ titles.get(t.project, t.project) }}">{{ (titles.get(t.project, t.project) or '?')[0]|upper }}</span>{% endif %}
   <span class="chip">{{ t.id }}</span>{% if formerly %}<span class="muted formerly">(formerly {{ formerly }})</span>{% endif %}<span class="chip" title="{{ titles.get(t.project, t.project) }}">{{ t.project }}</span><span class="chip ty ty-{{ t.meta.get('type') }}">{{ t.meta.get('type') }}</span>
-  <span class="chip {% if t.status=='review' %}ball{% elif t.status=='blocked' %}red{% endif %}">{{ screen(t.status) }} · {{ t.status }}</span>
+  <span class="chip {% if t.status=='review' %}ball{% elif t.status=='blocked' %}red{% endif %}">{{ screen(t.status) }}</span>
   {% if stale %}<span class="chip red">{{ screen('stale') }}</span>{% endif %}
   {% if t.meta.get('sprint') %}<a class="chip" href="/sprint/{{ sprint_slug(t.meta.get('sprint')) }}" title="Sprint page">{{ t.meta.get('sprint') }}</a>{% endif %}
   {% for tag in t.tags %}<span class="tag">#{{ tag }}</span>{% endfor %}
@@ -162,13 +162,13 @@
         <span class="muted" style="font-size:12.5px">Both need words. Acting as {{ owner }}.</span>
       </form>
       {% else %}
-      <p class="muted" style="font-size:14px">Approve and Send back appear when the ticket is <b>{{ screen('review') }}</b> (review). It is {{ screen(t.status) }} now.</p>
+      <p class="muted" style="font-size:14px">Approve and Send back appear when the ticket is <b>{{ screen('review') }}</b>. It is {{ screen(t.status) }} now.</p>
       <form class="post-once" method="post" action="/ticket/{{ t.id }}/move" data-inplace="refresh" data-progress="Sending,Saving,Done" style="display:flex;flex-direction:column;gap:8px">
         <input type="hidden" name="token" value="{{ token() }}">
         <label>Move to
           <select name="to">
             {% if t.status == 'blocked' %}<option value="unblock">unblock (back to {{ t.meta.get('blocked_from') or 'ready' }})</option>{% endif %}
-            {% for st in statuses %}{% if st != t.status %}<option value="{{ st }}">{{ screen(st) }} · {{ st }}</option>{% endif %}{% endfor %}
+            {% for st in statuses %}{% if st != t.status %}<option value="{{ st }}">{{ screen(st) }}</option>{% endif %}{% endfor %}
           </select></label>
         <label>Reason (needed to let go)<input type="text" name="reason"></label>
         <button class="btn" type="submit">Move</button>

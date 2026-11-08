@@ -2,7 +2,7 @@
 {% from "_filters.html" import dropdown %}
 {% from "_bcols.html" import columns with context %}
 {% macro counts_line(c, n_open) -%}
-{{ n_open }} open{% if c['ready'] %} · {{ c['ready'] }} thrown{% endif %}{% if c['in_progress'] or c['claimed'] %} · {{ c['in_progress'] + c['claimed'] }} fetching{% endif %}{% if c['review'] %} · {{ c['review'] }} dropped{% endif %}{% if c['blocked'] %} · {{ c['blocked'] }} stuck{% endif %}
+{{ n_open }} open{% if c['ready'] %} · {{ c['ready'] }} {{ screen('ready')|lower }}{% endif %}{% if c['in_progress'] or c['claimed'] %} · {{ c['in_progress'] + c['claimed'] }} {{ screen('in_progress')|lower }}{% endif %}{% if c['review'] %} · {{ c['review'] }} dropped{% endif %}{% if c['blocked'] %} · {{ c['blocked'] }} stuck{% endif %}
 {%- endmacro %}
 {% macro top_chip(top) -%}{% if top %}<span class="chip {% if top == 'p0' %}red{% elif top == 'p1' %}ball{% endif %}" title="Highest priority among the open tickets here">top {{ top }}</span>{% endif %}{%- endmacro %}
 {% block title %}Desk · Board{% endblock %}
