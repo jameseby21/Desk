@@ -11,6 +11,7 @@ import tempfile
 import zipfile
 from pathlib import Path
 
+from . import review
 from .rules import RuleError, check_transition
 from .store import Store, join_profile, split_profile
 from .ticket import CLONED_SECTIONS, Ticket, slugify, today
@@ -362,6 +363,8 @@ def stats(store: Store, since: str | None = None, project: str | None = None) ->
         "done_per_week": dict(sorted(done_week.items())),
         "since": since,
         "project": project,
+        "decisions_per_week": review.decisions_per_week(store),
+        "review_weeks": review.review_weeks(store),
     }
 
 

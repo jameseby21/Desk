@@ -13,7 +13,7 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from .. import ops
+from .. import ops, review as rv
 from ..config import find_home
 from ..rules import RuleError
 from ..store import Store, id_parts
@@ -82,12 +82,14 @@ def create_app(home: Path | None = None) -> FastAPI:
         others = [t for t in ts if t.status in ("ready", "blocked", "changes_requested", "approved", "triage", "inbox")]
         stale = [t for t in ts if s.is_stale(t)]
         decided = [t for t in ts if t.status in ("approved", "done", "rejected", "changes_requested") and str(t.meta.get("updated", "")) >= week]
+        rt = rv.find(s, rv.monday_of(dt.date.today()))
+        review_line = (rt, rv.waiting_count(rt)) if rt else None
         if cap == "rough":
             stale = []
         combos = combos_for(ts) if s.combos else []
         return templates.TemplateResponse(request, "today.html", ctx(request, s, mouth=by_project(mouth), feet=by_project(feet + decisions),
                                                              others=by_project(others), stale=by_project(stale),
-                                                             decided=by_project(decided), cap=cap, s=s, combos=combos))
+                                                             decided=by_project(decided), cap=cap, s=s, combos=combos, review_line=review_line))
 
     @app.get("/board", response_class=HTMLResponse)
     def board(request: Request, project: str | None = None):

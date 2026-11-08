@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import json
 import sys
 from pathlib import Path
 
-from . import __version__, ops
+from . import __version__, ops, review as rv
 from .config import HomeNotFound, find_home
 from .rules import RuleError, validate_store
 from .store import Store
@@ -287,6 +288,41 @@ def cmd_stats(args):
         print(f"\nBy {label}")
         rows = [[str(k), str(v)] for k, v in table.items()] or [["(none)", "0"]]
         print(_table(rows, [label, "count"]))
+    print("\nDecisions per week")
+    print(_table([[k, str(v)] for k, v in st["decisions_per_week"].items()], ["week of", "tickets decided"]))
+    print(f"\nReview weeks: {st['review_weeks']['created']} created, {st['review_weeks']['closed']} closed")
+
+
+def cmd_review_new(args):
+    s = _store(args)
+    s.sync_before()
+    try:
+        t, _ = rv.create(s, rv.parse_day(args.week), project=args.project, owner=args.owner)
+    except (rv.ReviewError, RuleError, ValueError) as e:
+        _die(str(e))
+    s.sync_after(f"desk: review new {t.id}")
+    print(t.path)
+
+
+def cmd_review_sync(args):
+    s = _store(args)
+    s.sync_before()
+    try:
+        if args.id:
+            t = s.get(args.id)
+            if not rv.is_review_ticket(t):
+                _die(f"{t.id} is not a review-week ticket.")
+        else:
+            t = rv.find(s, rv.monday_of(dt.date.today()))
+            if not t:
+                _die("No ticket review for this week yet. Run `drew review new`.")
+        res = rv.apply(s, t)
+    except (KeyError, rv.ReviewError, RuleError, ValueError) as e:
+        _die(str(e))
+    s.sync_after(f"desk: review sync {t.id}")
+    k = res["kpi"]
+    print(f"{t.id}: {k['waiting']} waiting, {res['added']} added, {res['checked']} checked off, {res['resolved']} resolved; "
+          f"{k['decided']} decided this week")
 
 
 def cmd_home(args):
@@ -448,6 +484,17 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--project")
     sp.add_argument("--json", action="store_true")
     sp.set_defaults(fn=cmd_stats)
+
+    sp = sub.add_parser("review", help="the weekly ticket review: a ticket whose checkboxes are everything waiting on the owner")
+    rsub = sp.add_subparsers(dest="review_cmd", required=True)
+    rp = rsub.add_parser("new", help="create this week's ticket review (one per ISO week)")
+    rp.add_argument("--week", metavar="YYYY-MM-DD", help="any day in the week (default: today)")
+    rp.add_argument("--project", default="management")
+    rp.add_argument("--owner", default="james")
+    rp.set_defaults(fn=cmd_review_new)
+    rp = rsub.add_parser("sync", help="regenerate the checkbox list and KPI block in place")
+    rp.add_argument("id", nargs="?", help="default: this week's review ticket")
+    rp.set_defaults(fn=cmd_review_sync)
     return p
 
 

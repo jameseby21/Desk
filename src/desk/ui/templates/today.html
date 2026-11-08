@@ -20,6 +20,10 @@
   </div>
 </div>
 
+{% if review_line %}
+<p style="margin:14px 0 0"><span class="label">Ticket review</span> <a href="/ticket/{{ review_line[0].id }}">{{ review_line[0].meta.get('title') }}</a> · {{ review_line[1] }} waiting</p>
+{% endif %}
+
 {% if combos %}
 <div class="card hold" style="margin:18px 0 0">
   <span class="label">Combos</span>
