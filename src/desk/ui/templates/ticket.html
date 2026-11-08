@@ -1,5 +1,12 @@
 {% extends "base.html" %}
 {% block title %}Desk · {{ t.id }}{% endblock %}
+{% macro shaped(text) -%}
+{# Long text follows the formatting ladder (DESK-0139): a lead and a few bullets open, the rest is folded, a wall of prose is flagged. #}
+{% set f = ladder(text) %}
+{% if f.flags %}<p class="readflag">{% if 'wall' in f.flags %}<span class="chip red">Wall of text</span> One long paragraph: open with a lead sentence and use a list.{% endif %}{% if 'save' in f.flags %} <span class="chip red">Very long</span> Over 4,000 characters: save it as a Markdown file and link it.{% endif %}</p>{% endif %}
+<div class="md">{{ render(f.head)|safe }}</div>
+{% if f.rest %}<details class="ladder"><summary>{{ f.label }}</summary><div class="md">{{ render(f.rest)|safe }}</div></details>{% endif %}
+{%- endmacro %}
 {% block body %}
 <p style="font-size:14px"><a href="/">Today</a> › <a href="/board?project={{ t.project }}">{{ titles.get(t.project, t.project) }}</a> › <code>{{ t.id }}</code>{% if formerly %} <span class="muted">(formerly {{ formerly }})</span>{% endif %}</p>
 {% if error %}<div class="error">{{ error }}</div>{% endif %}
@@ -19,50 +26,58 @@
 <div class="row"{% if brand and brand.accent %} style="border-left:6px solid {{ brand.accent }};padding-left:10px"{% endif %}>
   {% if brand and brand.mark_url %}<img src="{{ brand.mark_url }}" width="24" height="24" alt="{{ titles.get(t.project, t.project) }}">{% else %}<span class="initial" title="{{ titles.get(t.project, t.project) }}">{{ (titles.get(t.project, t.project) or '?')[0]|upper }}</span>{% endif %}
   <span class="chip">{{ t.id }}</span>{% if formerly %}<span class="muted formerly">(formerly {{ formerly }})</span>{% endif %}<span class="chip" title="{{ titles.get(t.project, t.project) }}">{{ t.project }}</span><span class="chip ty ty-{{ t.meta.get('type') }}">{{ t.meta.get('type') }}</span>
-  <span class="chip {% if t.status=='review' %}ball{% elif t.status=='blocked' %}red{% endif %}">{{ screen(t.status) }} · {{ t.status }}</span>
+  <span class="chip {% if t.status=='review' %}ball{% elif t.status=='blocked' %}red{% endif %}">{{ screen(t.status) }}</span>
   {% if stale %}<span class="chip red">{{ screen('stale') }}</span>{% endif %}
+  {% if t.meta.get('sprint') %}<a class="chip" href="/sprint/{{ sprint_slug(t.meta.get('sprint')) }}" title="Sprint page">{{ t.meta.get('sprint') }}</a>{% endif %}
   {% for tag in t.tags %}<span class="tag">#{{ tag }}</span>{% endfor %}
 </div>
 <h1 style="margin-top:10px">{{ t.meta.get('title') }}</h1>
-<p class="muted" style="margin-top:0">{{ t.meta.get('priority') }} · size {{ t.meta.get('size') }} · owner {{ t.meta.get('owner') }} · created {{ t.meta.get('created') }} · updated {{ t.meta.get('updated') }}{% if t.meta.get('done_at') %} · done {{ t.meta.get('done_at') }}{% endif %}{% if t.meta.get('branch') %} · <code>{{ t.meta.get('branch') }}</code>{% endif %}</p>
+<p class="muted" style="margin-top:0">{{ t.meta.get('priority') }} · size {{ t.meta.get('size') }} · owner {{ who(t.meta.get('owner')) }} · created {{ t.meta.get('created') }} · updated {{ t.meta.get('updated') }}{% if t.meta.get('done_at') %} · done {{ t.meta.get('done_at') }}{% endif %}{% if t.meta.get('branch') %} · <code>{{ t.meta.get('branch') }}</code>{% endif %}</p>
 
 <div class="cols">
   <div>
     {% for name in ['Context','Outcome'] %}{% if t.section(name) %}
-    <div class="card section"><span class="label">{{ name }}</span><div class="md">{{ render(t.section(name))|safe }}</div></div>
+    <div class="card section"><span class="label">{{ name }}</span>{{ shaped(t.section(name)) }}</div>
     {% endif %}{% endfor %}
 
     <div class="card section" id="acceptance">
       <div class="row" style="justify-content:space-between"><span class="label">Acceptance (this ticket's outcome)</span></div>
       {% set summary = check_summary(t.section('Acceptance')) %}{% if summary %}<div id="chk-summary" class="chk-summary" role="status" aria-live="polite">{{ summary }}</div>{% endif %}
       {% if t.section('Acceptance') %}<div class="md" data-check-section="Acceptance">{{ render(t.section('Acceptance'), t, 'Acceptance')|safe }}</div>{% else %}<p class="muted">No acceptance lines yet.</p>{% endif %}
-    </div>
-
-    <div class="card section" id="done-means">
-      <div class="row" style="justify-content:space-between"><span class="label">Done means (from the Definition of Done)</span>
-        <span class="muted" style="font-size:13px">{% if dod.kind == 'project' %}this project's own{% else %}shared modules{% endif %}, read from the file, not copied</span></div>
-      {% if dod.note %}<p class="muted"><span class="chip red">Check</span> {{ dod.note }}</p>{% endif %}
-      {% for it in dod['items'] %}
-      <details open style="margin-top:6px"><summary><b>{{ it.label }}</b>{% if it.path %} <a class="docref" href="/doc/{{ it.path|urlencode_path }}">{{ it.path }}</a> <a class="vsc" href="{{ it.edit_url }}">Edit in VS Code</a>{% endif %}</summary>
-        {% if it.body is defined %}<div class="md">{{ render(it.body)|safe }}</div>{% else %}<p class="muted"><span class="chip red">missing</span> No file at {{ it.tried|join(' or ') }}.</p>{% endif %}
+      {% if t.is_open %}
+      <details class="refine-split" id="refine"><summary>Refine or split</summary>
+        <form class="post-once rs-form" method="post" action="/ticket/{{ t.id }}/refine" data-inplace="refresh" data-progress="Sending,Saving,Done">
+          <input type="hidden" name="token" value="{{ token() }}">
+          <b>Refine</b> <span class="muted">making the requirement clearer; it is written down, dated, under Acceptance</span>
+          <label>The refinement<input type="text" name="line" required minlength="3" placeholder="The list also shows closed tickets when asked"></label>
+          <div class="row"><label>New review-by (only if it costs time)<input type="date" name="review_by"></label><label>Why it costs time<input type="text" name="reason" placeholder="needed before the date can move"></label></div>
+          <button class="btn small" type="submit">Add the refinement</button><span class="dp-slot"></span>
+        </form>
+        <form class="post-once rs-form" method="post" action="/ticket/{{ t.id }}/split" data-inplace="refresh" data-progress="Sending,Saving,Done">
+          <input type="hidden" name="token" value="{{ token() }}">
+          <b>Split</b> <span class="muted">a change of scope becomes a new ticket; this one keeps its Outcome and asks for the completion decision</span>
+          <label>Title of the new ticket<input type="text" name="title" required minlength="3"></label>
+          <label>What it is for<textarea name="details" rows="2"></textarea></label>
+          <div class="row"><label>Size<select name="size"><option>xs</option><option selected>s</option><option>m</option></select></label><label>Due (review-by)<input type="date" name="due"></label></div>
+          <button class="btn small" type="submit">Split into a new ticket</button><span class="dp-slot"></span>
+        </form>
       </details>
-      {% else %}<p class="muted">This ticket lists no DoD modules. Add `dod:` to its frontmatter.</p>{% endfor %}
+      {% endif %}
     </div>
 
     <div class="card section" id="validate"><span class="label">How to validate</span>
       {% if t.validate_steps() %}<div class="md" data-check-section="How to validate">{{ render(t.validate_steps(), t, 'How to validate')|safe }}</div>{% else %}<p class="muted">Not written yet. A ticket cannot be handed over for review without it.</p>{% endif %}</div>
 
-    <div class="card section" id="tests"><span class="label">Tests</span>
-      {% if t.tests_text() %}<div class="md">{{ render(t.tests_text())|safe }}</div>{% else %}<p class="muted">No Tests text yet. Name the automated test, or the steps a person performs and what they must see.</p>{% endif %}</div>
-
-    {% if t.section('Prompt') %}
-    <div class="card section" id="prompt"><span class="label">Prompt (paste this to execute)</span><div class="md" data-check-section="Prompt">{{ render(t.section('Prompt'), t, 'Prompt')|safe }}</div></div>
+    {% set cc = cmds(t.section('Commands')) %}{% set cmds_hidden = not cc[0] and not cc[1] %}
+    {% if not cmds_hidden %}
+    <div class="card section" id="commands"><span class="label">Commands</span>
+      {% for c in cc[0] %}<div class="cmd"><code>{{ c }}</code><button type="button" class="btn small copy" data-copy="{{ c }}" aria-label="Copy {{ c }}">Copy</button></div>{% endfor %}
+      {% if cc[1] %}<ul class="mentions">{% for p in cc[1] %}<li>{{ p }}</li>{% endfor %}</ul>{% endif %}</div>
     {% endif %}
-
     <div class="card section">
       <div class="row" style="justify-content:space-between"><span class="label">Proof (Report)</span>
         {% if not t.section('Report') %}<span class="chip red">Not run</span>{% endif %}</div>
-      {% if t.section('Report') %}<div class="md">{{ render(t.section('Report'))|safe }}</div>{% else %}<p class="muted">No report yet. A claim with no run behind it gets a red tag, not a pass.</p>{% endif %}
+      {% if t.section('Report') %}{{ shaped(t.section('Report')) }}{% else %}<p class="muted">No report yet. A claim with no run behind it gets a red tag, not a pass.</p>{% endif %}
       {% set bad = t.failed_checks() %}{% if bad %}<div class="failed-checks"><span class="label">Failed checks ({{ bad|length }})</span><ul>{% for sec, txt in bad %}<li><span class="chip red">Not run</span> {{ sec }}: {{ txt }}</li>{% endfor %}</ul></div>{% endif %}
     </div>
 
@@ -70,22 +85,7 @@
     <div class="card section" id="evidence"><span class="label">Evidence</span>{% if t.meta.get('evidence') %}<p style="margin:6px 0">{{ t.meta.get('evidence') }}</p>{% endif %}{% if t.section('Evidence') %}<div class="md" data-check-section="Evidence">{{ render(t.section('Evidence'), t, 'Evidence')|safe }}</div>{% endif %}</div>
     {% endif %}
 
-    <div class="card section" id="attachments"{% if not t.section('Attachments') %} hidden{% endif %}><span class="label">Attachments</span><div class="md attachments" id="attachments-body">{% if t.section('Attachments') %}{{ render(t.section('Attachments'))|safe }}{% endif %}</div></div>
-
-    {% for name in ['Docs to update','Out of scope'] %}{% if t.section(name) %}
-    <div class="card section"><span class="label">{{ name }}</span><div class="md">{{ render(t.section(name))|safe }}</div></div>
-    {% endif %}{% endfor %}
-
-    {% for name in t.sections %}{% if name not in sections and t.section(name) %}
-    <div class="card section"><span class="label">{{ name }}</span><div class="md">{{ render(t.section(name))|safe }}</div></div>
-    {% endif %}{% endfor %}
-
-    {% if owning %}<div class="card section"><span class="label">Owning docs</span>
-      <ul class="mentions">{% for o in owning %}<li><code>{{ o.path }}</code> &rarr; {% if o.exists %}<a class="docref" href="/doc/{{ o.doc|urlencode_path }}">{{ o.doc }}</a>{% else %}<span class="chip red">missing</span> {{ o.doc }}{% endif %}</li>{% endfor %}</ul></div>{% endif %}
-
-    <div class="card section"><span class="label">Mentioned in</span>
-      {% if mentions %}<ul class="mentions">{% for m in mentions %}<li><a class="tid" href="/ticket/{{ m.id }}" data-status="{{ m.status }}">{{ m.id }}</a> {{ m.meta.get('title') }}</li>{% endfor %}</ul>{% else %}<p class="muted">No other ticket mentions {{ t.id }}.</p>{% endif %}</div>
-
+    {% if t.section('Decision') or reply_ask %}
     <div class="card section" id="decision"><span class="label">Decision</span>
       {% if t.section('Decision') %}<div class="md">{{ render(t.section('Decision'))|safe }}</div>{% else %}<p class="muted">Nothing decided yet.</p>{% endif %}
       {% if reply_ask %}{% set ask = reply_ask %}
@@ -107,9 +107,11 @@
         <span class="muted note">Recorded in the Decision section in your words and the ticket moves. Passwords and keys are refused.</span>
       </form>
       {% endif %}</div>
+    {% endif %}
 
     <div class="card section" id="comments"><span class="label">Talk (Comments)</span>
       <div class="md" data-comments>{% if t.section('Comments') %}{{ comments_html(t.section('Comments'))|safe }}{% else %}<p class="muted">No comments.</p>{% endif %}</div>
+      <details class="addc" id="add-comment"><summary>Add a comment</summary>
       <form class="post-once composer" id="composer" method="post" action="/ticket/{{ t.id }}/comment" data-timeout-ms="10000" data-posting="Posting…" data-progress="Sending,Saving,Done">
         <input type="hidden" name="token" value="{{ token() }}">
         <div class="kinds sevs" role="radiogroup" aria-label="Kind of comment">{% for k in ['Question','Suggestion','Concern','FYI'] %}<label class="sevpill"><input type="radio" name="kind" value="{{ k }}"{% if loop.first %} checked{% endif %}><span>{{ k }}</span></label>{% endfor %}</div>
@@ -117,14 +119,70 @@
         <div class="shots" id="shots" hidden></div>
         <label class="evline" id="evline" hidden>Evidence for <select name="line"><option value="">No line</option>{% for n, txt in acc_lines %}<option value="{{ n }}">Line {{ n }}: {{ txt[:48] }}{% if txt|length > 48 %}…{% endif %}</option>{% endfor %}</select></label>
         <div class="attach-note" id="attach-note" role="status"></div>
-        <div class="composer-foot"><input type="text" name="who" placeholder="who (default {{ owner }})" aria-label="Who is posting"><span class="dp-slot"></span><span id="post-status" class="post-status" role="status" aria-live="polite"></span><button class="btn ball post-btn" type="submit">Post</button></div>
+        <div class="composer-foot"><span class="muted" style="font-size:12.5px" title="{{ me.short() }}">posting as {{ me.display() }}</span><span class="dp-slot"></span><span id="post-status" class="post-status" role="status" aria-live="polite"></span><button class="btn ball post-btn" type="submit">Post</button></div>
       </form>
       <form class="post-once attach-form" method="post" action="/ticket/{{ t.id }}/attach" enctype="multipart/form-data" data-inplace="attach" data-progress="Uploading,Saving,Done">
         <input type="hidden" name="token" value="{{ token() }}">
         <label class="muted" style="font-size:13px">Or attach an image <input type="file" name="file" accept="image/png,image/jpeg,image/gif,image/webp" required></label>
         <button class="btn small" type="submit">Attach</button>
       </form>
+      </details>
     </div>
+
+    <details class="card section dm" id="done-means"><summary><span class="label">Done means</span> <span class="dm-line">{{ dod.line }} &middot; {{ dod.n_checks }} check{{ 's' if dod.n_checks != 1 }}</span><span class="show">Show checklist</span></summary>
+      <p class="muted" style="font-size:13px;margin:8px 0 0">{% if dod.kind == 'project' %}This project's own{% else %}Shared modules{% endif %}, from the Definition of Done, read from the file, not copied.</p>
+      {% if dod.note %}<p class="muted"><span class="chip red">Check</span> {{ dod.note }}</p>{% endif %}
+      {% for it in dod['items'] %}
+      <details open style="margin-top:6px"><summary><b>{{ it.label }}</b>{% if it.path %} <a class="docref" href="/doc/{{ it.path|urlencode_path }}">{{ it.path }}</a> <a class="vsc" href="{{ it.edit_url }}">Edit in VS Code</a>{% endif %}</summary>
+        {% if it.body is defined %}<div class="md">{{ render(it.body)|safe }}</div>{% else %}<p class="muted"><span class="chip red">missing</span> No file at {{ it.tried|join(' or ') }}.</p>{% endif %}
+      </details>
+      {% else %}<p class="muted">This ticket lists no DoD modules. Add `dod:` to its frontmatter.</p>{% endfor %}
+    </details>
+
+    {% if t.section('Prompt') %}
+    <div class="card section" id="prompt"><span class="label">Prompt (paste this to execute)</span><div class="md" data-check-section="Prompt">{{ render(t.section('Prompt'), t, 'Prompt')|safe }}</div></div>
+    {% endif %}
+
+    <div class="card section" id="attachments"{% if not t.section('Attachments') %} hidden{% endif %}><span class="label">Attachments</span><div class="md attachments" id="attachments-body">{% if t.section('Attachments') %}{{ render(t.section('Attachments'))|safe }}{% endif %}</div></div>
+
+    {# Sections still holding their seeded default, or empty, are hidden and named in one line (DESK-0175); nothing is removed. #}
+    {% set hid = [] %}{% for name in ['Tests','Docs to update','Out of scope'] %}{% if t.is_default(name) %}{% set _ = hid.append(name) %}{% endif %}{% endfor %}
+    {% set no_decision = not t.section('Decision') and not reply_ask %}
+    {% set hid_all = (['Tests'] if 'Tests' in hid else []) + (['Commands'] if cmds_hidden else []) + (['Attachments'] if not t.section('Attachments') else []) + (['Docs to update'] if 'Docs to update' in hid else []) + (['Out of scope'] if 'Out of scope' in hid else []) + (['Decision'] if no_decision else []) + (['Mentioned in'] if not mentions else []) %}
+    {% if 'Tests' not in hid %}
+    <div class="card section" id="tests"><span class="label">Tests</span>
+      {% if t.tests_text() %}<div class="md">{{ render(t.tests_text())|safe }}</div>{% else %}<p class="muted">No Tests text yet. Name the automated test, or the steps a person performs and what they must see.</p>{% endif %}</div>
+    {% endif %}
+    {% for name in ['Docs to update','Out of scope'] %}{% if name not in hid %}
+    <div class="card section"><span class="label">{{ name }}</span><div class="md">{{ render(t.section(name))|safe }}</div></div>
+    {% endif %}{% endfor %}
+    {% if hid or no_decision or not mentions or cmds_hidden %}
+    <details class="fold hidden-secs" id="hidden-sections"><summary>Hidden while still default or empty: {{ hid_all|join(', ') }} &middot; <b>Show</b></summary>
+      {% if 'Tests' in hid %}
+    <div class="card section" id="tests"><span class="label">Tests</span>
+      {% if t.tests_text() %}<div class="md">{{ render(t.tests_text())|safe }}</div>{% else %}<p class="muted">No Tests text yet. Name the automated test, or the steps a person performs and what they must see.</p>{% endif %}</div>
+      {% endif %}
+      {% for name in ['Docs to update','Out of scope'] %}{% if name in hid %}
+      <div class="card section"><span class="label">{{ name }}</span>{% if t.section(name) %}<div class="md">{{ render(t.section(name))|safe }}</div>{% else %}<p class="muted">Empty.</p>{% endif %}</div>
+      {% endif %}{% endfor %}
+      {% if cmds_hidden %}<div class="card section" id="commands"><span class="label">Commands</span><p class="muted">None yet. A worker adds the exact commands it ran.</p></div>{% endif %}
+      {% if no_decision %}<div class="card section" id="decision"><span class="label">Decision</span><p class="muted">Nothing decided yet.</p></div>{% endif %}
+      {% if not mentions %}<div class="card section"><span class="label">Mentioned in</span><p class="muted">No other ticket mentions {{ t.id }}.</p></div>{% endif %}
+    </details>
+    {% endif %}
+
+    {% for name in t.sections %}{% if name not in sections and t.section(name) %}
+    <div class="card section"><span class="label">{{ name }}</span><div class="md">{{ render(t.section(name))|safe }}</div></div>
+    {% endif %}{% endfor %}
+
+    {% if owning %}<div class="card section"><span class="label">Owning docs</span>
+      <ul class="mentions">{% for o in owning %}<li><code>{{ o.path }}</code> &rarr; {% if o.exists %}<a class="docref" href="/doc/{{ o.doc|urlencode_path }}">{{ o.doc }}</a>{% else %}<span class="chip red">missing</span> {{ o.doc }}{% endif %}</li>{% endfor %}</ul></div>{% endif %}
+
+    {% if mentions %}
+    <div class="card section"><span class="label">Mentioned in</span>
+      {% if mentions %}<ul class="mentions">{% for m in mentions %}<li><a class="tid" href="/ticket/{{ m.id }}" data-status="{{ m.status }}">{{ m.id }}</a> {{ m.meta.get('title') }}</li>{% endfor %}</ul>{% else %}<p class="muted">No other ticket mentions {{ t.id }}.</p>{% endif %}</div>
+    {% endif %}
+
   </div>
 
   <aside>
@@ -142,13 +200,13 @@
         <span class="muted" style="font-size:12.5px">Both need words. Acting as {{ owner }}.</span>
       </form>
       {% else %}
-      <p class="muted" style="font-size:14px">Approve and Send back appear when the ticket is <b>{{ screen('review') }}</b> (review). It is {{ screen(t.status) }} now.</p>
+      <p class="muted" style="font-size:14px">Approve and Send back appear when the ticket is <b>{{ screen('review') }}</b>. It is {{ screen(t.status) }} now.</p>
       <form class="post-once" method="post" action="/ticket/{{ t.id }}/move" data-inplace="refresh" data-progress="Sending,Saving,Done" style="display:flex;flex-direction:column;gap:8px">
         <input type="hidden" name="token" value="{{ token() }}">
         <label>Move to
           <select name="to">
             {% if t.status == 'blocked' %}<option value="unblock">unblock (back to {{ t.meta.get('blocked_from') or 'ready' }})</option>{% endif %}
-            {% for st in statuses %}{% if st != t.status %}<option value="{{ st }}">{{ screen(st) }} · {{ st }}</option>{% endif %}{% endfor %}
+            {% for st in statuses %}{% if st != t.status %}<option value="{{ st }}">{{ screen(st) }}</option>{% endif %}{% endfor %}
           </select></label>
         <label>Reason (needed to let go)<input type="text" name="reason"></label>
         <button class="btn" type="submit">Move</button>
@@ -159,7 +217,17 @@
 
     <div class="card section" style="font-size:14px;display:flex;flex-direction:column;gap:10px">
       {% if t.meta.get('effort_hours') %}<div><span class="label">Effort</span><div>{{ t.meta.get('effort_hours')[0] }} to {{ t.meta.get('effort_hours')[1] }} hours{% if t.meta.get('confidence') %}, {{ (t.meta.get('confidence')*100)|int }}% sure{% endif %}</div></div>{% endif %}
-      {% if t.meta.get('assignee') %}<div><span class="label">Assignee</span><div>{{ t.meta.get('assignee') }}{% if t.meta.get('assigned_at') %} <span class="muted">since {{ t.meta.get('assigned_at') }}</span>{% endif %}<br>{% if t.meta.get('handoff') %}Hand-off: {% if t.meta.get('handoff').startswith('http') %}<a href="{{ t.meta.get('handoff') }}" rel="noopener">{{ t.meta.get('handoff') }}</a>{% else %}<code>{{ t.meta.get('handoff') }}</code> (Drive doc id){% endif %}{% else %}<span class="chip red">no hand-off record linked</span>{% endif %}<br><span class="muted" style="font-size:12.5px">Done means: {{ assign_dod }}</span></div></div>{% endif %}
+      <div id="assignee"><span class="label">Assignee</span>
+        <form class="post-once assign-form autosubmit" method="post" action="/ticket/{{ t.id }}/assign" data-inplace="refresh" data-progress="Sending,Saving,Done">
+          <input type="hidden" name="token" value="{{ token() }}">
+          <select name="to" aria-label="Assignee"><option value=""{% if not cur_assignee %} selected{% endif %}>(not assigned yet)</option>
+            {% for label, ps in assign_groups %}<optgroup label="{{ label }}">{% for p in ps %}<option value="{{ p.key }}"{% if p.key == cur_assignee %} selected{% endif %}>{{ p.name }}{% if p.role and p.kind != 'code' %} · {{ p.role }}{% endif %}</option>{% endfor %}</optgroup>{% endfor %}
+            {% if cur_assignee and not cur_known %}<option value="{{ cur_assignee }}" selected>{{ cur_assignee }} (not in people.yaml)</option>{% endif %}</select>
+          <noscript><button class="btn small" type="submit">Save</button></noscript><span class="dp-slot"></span>
+        </form>
+        {% if t.meta.get('assignee') %}<div class="muted" style="font-size:12.5px">{% if (t.meta.get('assigned_by') or '').startswith('rule:') %}assigned by rule <b>{{ t.meta.get('assigned_by')[5:] }}</b> until a person changes it{% elif t.meta.get('assigned_by') %}assigned by {{ who(t.meta.get('assigned_by')) }}{% endif %}{% if t.meta.get('assigned_at') %} · since {{ t.meta.get('assigned_at') }}{% endif %}</div>
+        {% if t.meta.get('handoff') %}Hand-off: {% if t.meta.get('handoff').startswith('http') %}<a href="{{ t.meta.get('handoff') }}" rel="noopener">{{ t.meta.get('handoff') }}</a>{% else %}<code>{{ t.meta.get('handoff') }}</code> (Drive doc id){% endif %}{% else %}<span class="chip red">no hand-off record linked</span>{% endif %}<br><span class="muted" style="font-size:12.5px">Done means: {{ assign_dod }}</span>{% else %}<div class="muted" style="font-size:12.5px">Blank means James has not scanned this ticket yet.</div>{% endif %}
+      </div>
       {% if t.meta.get('cloned_from') %}<div><span class="label">Cloned from</span><div><a href="/ticket/{{ t.meta.get('cloned_from') }}"><code>{{ t.meta.get('cloned_from') }}</code></a></div></div>{% endif %}
       {% if t.meta.get('blocks') %}<div><span class="label">Blocks</span><div>{% for d in t.meta.get('blocks') %}<a href="/ticket/{{ d }}"><code>{{ d }}</code></a> {% endfor %}</div></div>{% endif %}
       {% if t.meta.get('related') %}<div><span class="label">Related</span><div>{% for d in t.meta.get('related') %}<a href="/ticket/{{ d }}"><code>{{ d }}</code></a> {% endfor %}</div></div>{% endif %}
@@ -178,6 +246,7 @@
 <script src="/static/shots.js" defer></script>
 <script src="/static/checks.js" defer></script>
 <script src="/static/composer.js" defer></script>
+<script src="/static/copy.js" defer></script>
 {% if mermaid %}
 <script src="{{ mermaid_src }}"></script>
 <script>if (window.mermaid) { mermaid.initialize({ startOnLoad: true, securityLevel: "strict" }); }</script>

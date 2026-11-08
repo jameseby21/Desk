@@ -10,7 +10,7 @@ import pytest
 from browser_harness import browser, drive
 from fastapi.testclient import TestClient
 
-from desk import ops
+from desk import identity, ops
 from desk.cli import main
 from desk.ui.app import create_app
 
@@ -51,7 +51,7 @@ def test_cli_comment_takes_a_kind_and_show_prints_it(store, capsys):
     capsys.readouterr()
     main(["--home", str(store.home), "show", t.id])
     shown = capsys.readouterr().out.splitlines()
-    comments = [ln for ln in shown if ln.startswith("- 20") and "· em ·" in ln]
+    comments = [identity.parse_tag(ln)[1] for ln in shown if ln.startswith("- 20") and "· em ·" in ln]
     assert comments[0].endswith("Please look <!-- kind: Concern -->") and comments[1].endswith("No kind given <!-- kind: Question -->")
     with pytest.raises(SystemExit):
         main(["--home", str(store.home), "comment", t.id, "x", "--kind", "Rant"])
@@ -110,4 +110,4 @@ def test_ctrl_enter_posts_once_with_its_kind_in_a_real_browser(store):
     got = drive(store, LIVE, f"/ticket/{t.id}", intercept=lambda scope: 0.8 if scope["path"].endswith("/comment") else None, timeout=40)
     assert got["label"] == "Posting…" and got["locked"] and got["status"] == "Posted" and got["count"] == 1 and got["pill"] == "Concern" and got["plainEnterQuiet"]
     lines = ops.comment_lines(store.get(t.id))
-    assert len(lines) == 1 and lines[0].endswith("Ctrl Enter once <!-- kind: Concern -->")
+    assert len(lines) == 1 and identity.parse_tag(lines[0])[1].endswith("Ctrl Enter once <!-- kind: Concern -->")

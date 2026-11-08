@@ -142,7 +142,7 @@ The old `slice` (now `feature`) and `chore` (now `task`) still read and validate
 
 ### How to validate
 
-`## How to validate` sits right after Acceptance. It is written before the work starts, as part of planning: the steps a person or agent runs to confirm the Outcome once the work is claimed done (commands with expected output, URLs with what to look for, files with what they must contain). It is not Acceptance (what must be true) and not Evidence (what was observed). `desk new` writes the heading with a one-line hint comment fitted to the type; the hint does not count as steps. `desk report` and the UI hand-over refuse to move a ticket to `review` while the section is empty ("Write How to validate first"); `desk validate` warns about tickets already in review without one. The ticket page shows it beside Acceptance, and the review-week lines end with ` · validate: <first line>`.
+`## How to validate` sits right after Acceptance. It is written before the work starts, as part of planning: the steps a person or agent runs to confirm the Outcome once the work is claimed done (commands with expected output, URLs with what to look for, files with what they must contain). It is not Acceptance (what must be true) and not Evidence (what was observed). Right after it sits `## Commands` (DESK-0177): the exact commands that check the ticket, one bullet in backticks each, which the ticket page shows with a copy button; `drew migrate commands` adds it to older tickets and `drew validate` warns when a ready ticket has none and when a ui ticket in review has no screenshot. `desk new` writes the heading with a one-line hint comment fitted to the type; the hint does not count as steps. `desk report` and the UI hand-over refuse to move a ticket to `review` while the section is empty ("Write How to validate first"); `desk validate` warns about tickets already in review without one. The ticket page shows it beside Acceptance, and the review-week lines end with ` · validate: <first line>`.
 
 ## Projects, prefixes and renames
 
@@ -184,7 +184,7 @@ any open status → blocked (then `desk unblock` restores the previous status)
 any open status → rejected (with a reason)
 ```
 
-On screen the statuses wear Drew's words: Sniffed (inbox), Thrown (ready), Fetching (in_progress), Dropped (review), Fetched (done), Stuck (blocked), Let go (rejected), Chewed back (stale). The files and the command line use the plain words.
+On screen each status has one word, chosen by the style in Settings (one word per state, never both): Plain, the default, says Inbox, Ready, In progress, Review, Done, Blocked, Let go, Stale; Dogs (Drew or Fuzz) says Sniffed (inbox), Thrown (ready), Fetching (in_progress), Dropped (review), Fetched (done), Stuck (blocked), Let go (rejected), Chewed back (stale); Cat says the plain words. The files and the command line always use the plain words. The tables are `src/desk/words.py`.
 
 Rules the CLI and the UI both enforce, and `desk validate` checks in the files:
 

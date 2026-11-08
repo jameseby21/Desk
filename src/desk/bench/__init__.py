@@ -23,7 +23,7 @@ BUDGETS = HERE / "budgets.toml"
 BASELINE = HERE / "baseline.json"
 PROJECTS = 30
 TARGET_BYTES = 3400
-PATHS = ["today", "board", "ticket_page", "next_id", "new", "move", "reindex"]
+PATHS = ["today", "board", "ticket_page", "search", "next_id", "new", "move", "reindex"]
 _STATUS_CYCLE = ["inbox", "triage", "ready", "ready", "claimed", "in_progress", "review", "done", "done", "done"]
 _LOREM = ("The scheduler reads each profile, resolves the brand block, and renders one card per ticket so the owner sees the day at a glance. "
           "Nothing here is real; the text only gives every ticket a believable weight on disk. ")
@@ -166,6 +166,14 @@ def run(n: int, runs: int = 7, progress=None) -> dict:
                     out.append((time.perf_counter() - t) * 1000)
                 return out
 
+            from .. import search as srch
+
+            ix = srch.Index(None, stale_days=21)
+            t = time.perf_counter()
+            ix.refresh(s, force=True)
+            refresh_ms = (time.perf_counter() - t) * 1000
+            qs = ["schedul", "P03-00", "status:review project:p03", "shceduler", "is:stale", "ticket 17 assignee:main"]
+            results["search"] = _stats(timeit(lambda i: ix.search(qs[i % len(qs)]), max(runs * 6, 30)), {"first_index_ms": round(refresh_ms, 1)})
             results["next_id"] = _stats(timeit(lambda i: Store(home).next_id("p00"), runs))
             results["new"] = _stats(timeit(lambda i: ops.new(Store(home), f"Bench new {i}", "p01", "task"), runs))
             mover = next(t for t in s.tickets() if t.status == "inbox")
@@ -182,6 +190,34 @@ def run(n: int, runs: int = 7, progress=None) -> dict:
         return {"tickets": n, "runs": runs, "paths": results}
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
+
+
+def search_scale(n: int = 50000, runs: int = 60) -> dict:
+    """Search at scale without writing n files: n synthetic rows go straight into an in-memory index (the same rows `Index.refresh`
+    would build from tickets of about 3.4 KB). Returns p50 and p95 of the query mix, in milliseconds."""
+    from .. import search as srch
+
+    ix = srch.Index(None, stale_days=21)
+    statuses = ["inbox", "triage", "ready", "ready", "claimed", "in_progress", "review", "done", "done", "done"]
+    t0 = time.perf_counter()
+    batch = []
+    for i in range(n):
+        k = f"p{i % PROJECTS:02d}"
+        batch.append({"id": f"{k.upper()}-{i // PROJECTS + 1:04d}", "title": f"Synthetic ticket {i} for {k} scheduler profile", "project": k,
+                      "status": statuses[i % 10], "type": "feature", "priority": f"p{i % 4}", "owner": "main", "assignee": ["main", "chaz", "james", ""][i % 4],
+                      "track": "", "sprint": "", "tags": " bench ", "ask": "", "updated": f"2026-10-{1 + i % 28:02d}", "sig": "", "body": (_LOREM * 6)[:srch.BODY_CHARS]})
+        if len(batch) == 2000:
+            ix.upsert(batch)
+            batch = []
+    ix.upsert(batch)
+    built = time.perf_counter() - t0
+    qs = ["schedul", "P03-00", "status:review project:p03", "shceduler", "is:stale", "ticket 17 assignee:main", "DESK", "profil assignee:chaz"]
+    samples = []
+    for i in range(runs):
+        t = time.perf_counter()
+        ix.search(qs[i % len(qs)])
+        samples.append((time.perf_counter() - t) * 1000)
+    return {"rows": n, "built_s": round(built, 1), **_stats(samples)}
 
 
 # -- judging -------------------------------------------------------------------------

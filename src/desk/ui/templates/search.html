@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Desk · Search{% endblock %}
+{% block body %}
+<h1>Search</h1>
+<form method="get" action="/search" class="row" role="search" data-progress="none"><input type="search" name="q" value="{{ q }}" style="flex:1;min-width:220px" aria-label="Search tickets" autofocus placeholder="part of an id or title, then filters: status:review assignee:chaz project:desk sprint:... is:stale"><button class="btn ball" type="submit">Search</button></form>
+<p class="muted" style="font-size:13.5px">Filters: <code>project:</code> <code>status:</code> <code>type:</code> <code>tag:</code> <code>ask:</code> <code>owner:</code> <code>assignee:</code> <code>track:</code> <code>sprint:</code> <code>priority:</code> <code>is:stale</code> <code>is:open</code> <code>before:2026-11-01</code> <code>after:...</code>. Use <code>a,b</code> for either, <code>-project:x</code> to leave one out, quotes around names with spaces. Press Ctrl K anywhere.</p>
+{% if res is not none %}
+  {% if not res.total %}<p>No ticket matches <code>{{ q }}</code>. Check the spelling or drop a filter.</p>{% else %}
+  <p><b>{{ res.total }}{% if res.capped %}+{% endif %}</b> match{{ 'es' if res.total != 1 }}{% if res.fuzzy %} <span class="muted">(some are the closest spelling)</span>{% endif %}</p>
+  {% for project, n, hits in res.groups %}
+  <h2>{{ titles.get(project, project) }} <small>{{ project }} · {{ n }}</small></h2>
+  <div class="grid" style="grid-template-columns:1fr">{% for h in hits %}
+    <a href="/ticket/{{ h.id }}" style="text-decoration:none"><div class="card"><span class="chip">{{ h.id }}</span> <span class="chip">{{ screen(h.status) }}</span> <span class="chip">{{ h.priority }}</span>{% if h.assignee %} <span class="muted">{{ who(h.assignee) }}</span>{% endif %}{% if h.fuzzy %} <span class="muted">close match</span>{% endif %}
+      <div class="title" style="font-weight:600;margin-top:4px">{{ h.title }}</div>{% if h.snippet %}<div class="muted" style="font-size:13.5px">{{ snippet_html(h.snippet) }}</div>{% endif %}</div></a>
+  {% endfor %}</div>
+  {% if n > hits|length %}<p class="muted">{{ n - hits|length }} more in {{ project }}: add <code>project:{{ project }}</code> to narrow.</p>{% endif %}
+  {% endfor %}{% endif %}
+{% endif %}
+{% endblock %}
