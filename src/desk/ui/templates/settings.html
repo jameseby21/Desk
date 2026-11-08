@@ -19,6 +19,11 @@
     <label><input type="radio" name="profanity" value="on"{% if style.profanity %} checked{% endif %}>On: f*****g (first and last letter kept)</label>
     <label><input type="radio" name="profanity" value="off"{% if not style.profanity %} checked{% endif %}>Off: show words as written</label>
   </fieldset>
+  <fieldset style="border:1px solid var(--line);border-radius:14px;max-width:70ch;margin-top:14px">
+    <legend class="label">Auto-refresh (reload when a ticket file changes on disk)</legend>
+    <label><input type="radio" name="autorefresh" value="on"{% if style.autorefresh %} checked{% endif %}>On: the page reloads itself, never while you are typing</label>
+    <label><input type="radio" name="autorefresh" value="off"{% if not style.autorefresh %} checked{% endif %}>Off: reload by hand</label>
+  </fieldset>
   <p><button class="btn ball" type="submit">Save</button></p>
 </form>
 {% endblock %}

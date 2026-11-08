@@ -25,7 +25,7 @@ def test_settings_round_trip(store):
     assert 'value="plain" checked' in c.get("/settings").text
     r = c.post("/settings", data={"name": "dogs", "dog": "fuzz"}, follow_redirects=False)
     assert r.status_code == 303
-    assert (store.home / ".desk" / "settings.toml").read_text(encoding="utf-8") == '[style]\nname = "dogs"\ndog = "fuzz"\nprofanity_filter = true\n'
+    assert (store.home / ".desk" / "settings.toml").read_text(encoding="utf-8") == '[style]\nname = "dogs"\ndog = "fuzz"\nprofanity_filter = true\n\n[ui]\nautorefresh = true\n'
     page = c.get("/settings").text
     assert 'value="dogs" checked' in page and 'value="fuzz" checked' in page
     assert c.post("/settings", data={"name": "bogus"}).status_code == 400

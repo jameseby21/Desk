@@ -12,7 +12,7 @@ from collections import OrderedDict
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, Request, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -26,6 +26,7 @@ from urllib.parse import quote
 
 from markupsafe import Markup
 
+from . import events as ev
 from .markdown import has_mermaid, render as md_html
 
 TEMPLATES = Path(__file__).parent / "templates"
@@ -103,7 +104,7 @@ def why_text(home: Path) -> str:
     return "WHY.md not found: set DESK_REPO to your Desk repo."
 
 
-def create_app(home: Path | None = None) -> FastAPI:
+def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastAPI:
     app = FastAPI(title="Desk")
     tokens = Tokens()
     app.state.tokens = tokens
@@ -156,7 +157,9 @@ def create_app(home: Path | None = None) -> FastAPI:
 
         qp = request.query_params
         done_kind = qp.get("done") or qp.get("ok") or ""
-        return {"notice": notice(done_kind, qp.get("at", ""), int(qp.get("dup") or 0) if str(qp.get("dup") or "0").isdigit() else 0), "render": render, "request": request, "owner": st.owner, "style": styles.load(st.home), "favicon": FAVICON, "home": str(st.home), "today": dt.date.today().isoformat(),
+        events_url, events_since = kw.pop("events_url", ""), kw.pop("events_since", "")
+        events = {"url": events_url, "since": events_since} if events_url and styles.load(st.home)["autorefresh"] else None
+        return {"events": events, "notice": notice(done_kind, qp.get("at", ""), int(qp.get("dup") or 0) if str(qp.get("dup") or "0").isdigit() else 0), "render": render, "request": request, "owner": st.owner, "style": styles.load(st.home), "favicon": FAVICON, "home": str(st.home), "today": dt.date.today().isoformat(),
                 "titles": {k: st.project_title(k) for k in st.projects()}, **kw}
 
     @app.get("/", response_class=HTMLResponse)
@@ -181,7 +184,23 @@ def create_app(home: Path | None = None) -> FastAPI:
         return templates.TemplateResponse(request, "today.html", ctx(request, s, mouth=by_project(mouth), feet=by_project(feet + decisions),
                                                              others=by_project(others), stale=by_project(stale),
                                                              decided=by_project(decided), cap=cap, s=s, combos=combos, review_line=review_line,
-                                                             chips=chips, track=track, chip_base="/", chip_extra=f"cap={cap}"))
+                                                             chips=chips, track=track, chip_base="/", chip_extra=f"cap={cap}", events_url="/events", events_since=ev.tickets_stamp(s)))
+
+    def sse(stamp, since: str, timeout: float) -> StreamingResponse:
+        return StreamingResponse(ev.stream(stamp, int(since) if since.isdigit() else None, poll, min(max(timeout, 0), 3600)), media_type="text/event-stream",
+                                 headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
+
+    @app.get("/events/{ticket_id}")
+    def events_ticket(ticket_id: str, since: str = "", timeout: float = 0):
+        """Server-sent events: one `change` event when this ticket's file, or anything under tickets/assets/<ID>/, changes mtime."""
+        s = store()
+        return sse(lambda: ev.ticket_stamp(s, ticket_id), since, timeout)
+
+    @app.get("/events")
+    def events_all(since: str = "", timeout: float = 0):
+        """Server-sent events for the Today, board and projects pages: the tickets directory's latest mtime."""
+        s = store()
+        return sse(lambda: ev.tickets_stamp(s), since, timeout)
 
     @app.get("/about", response_class=HTMLResponse)
     def about(request: Request):
@@ -194,9 +213,9 @@ def create_app(home: Path | None = None) -> FastAPI:
         return templates.TemplateResponse(request, "settings.html", ctx(request, store(), saved=bool(saved), styles=styles.STYLES, dogs=styles.DOGS))
 
     @app.post("/settings")
-    def post_settings(name: str = Form("plain"), dog: str = Form("drew"), profanity: str = Form("on")):
+    def post_settings(name: str = Form("plain"), dog: str = Form("drew"), profanity: str = Form("on"), autorefresh: str = Form("on")):
         try:
-            styles.save(store().home, name, dog, profanity != "off")
+            styles.save(store().home, name, dog, profanity != "off", autorefresh != "off")
         except ValueError:
             return HTMLResponse("<p>Unknown style</p>", status_code=400)
         return RedirectResponse("/settings?saved=1", status_code=303)
@@ -210,7 +229,7 @@ def create_app(home: Path | None = None) -> FastAPI:
             ts = [t for t in ts if trk.track_of(t) and trk.track_slug(trk.track_of(t)) == track]
         cols = [(st, by_project([t for t in ts if t.status == st])) for st in STATUSES]
         return templates.TemplateResponse(request, "board.html", ctx(request, s, cols=cols, project=project, projects=sorted(s.projects()), s=s,
-                                                           chips=chips, track=track, chip_base="/board", chip_extra=f"project={project}" if project else ""))
+                                                           chips=chips, track=track, chip_base="/board", chip_extra=f"project={project}" if project else "", events_url="/events", events_since=ev.tickets_stamp(s)))
 
     @app.get("/projects", response_class=HTMLResponse)
     def projects(request: Request, p: str = "", t: str = "", k: str = ""):
@@ -223,7 +242,7 @@ def create_app(home: Path | None = None) -> FastAPI:
                 peek_html = peek_panel(s, s.get(k))
             except KeyError:
                 pass
-        return templates.TemplateResponse(request, "projects.html", ctx(request, s, rows=rows, sel_p=p, sel_t=t, sel_k=k.upper(), peek_html=peek_html, s=s))
+        return templates.TemplateResponse(request, "projects.html", ctx(request, s, rows=rows, sel_p=p, sel_t=t, sel_k=k.upper(), peek_html=peek_html, s=s, events_url="/events", events_since=ev.tickets_stamp(s)))
 
     def peek_panel(s: Store, t) -> str:
         """The small panel under a ticket row: summary, acceptance, the latest report line, a link to the full page."""
@@ -268,7 +287,7 @@ def create_app(home: Path | None = None) -> FastAPI:
         mermaid = any(has_mermaid(t.section(name)) for name in t.sections)
         return templates.TemplateResponse(request, "ticket.html", ctx(request, s, t=t, deps=deps, stale=s.is_stale(t), error=error, s=s,
                                                              formerly=s.formerly(t), mermaid=mermaid, mentions=docsmod.mentioned_in(list(by_id.values()), ticket_id=t.id),
-                                                             owning=docsmod.owning_docs(s, t), source_doc=source_doc(s, t), dod=dod_view(s, t)))
+                                                             owning=docsmod.owning_docs(s, t), source_doc=source_doc(s, t), dod=dod_view(s, t), events_url=f"/events/{t.id}", events_since=ev.ticket_stamp(s, t.id)))
 
     @app.get("/doc/{path:path}", response_class=HTMLResponse)
     def doc(request: Request, path: str):

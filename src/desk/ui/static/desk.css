@@ -145,3 +145,4 @@ a.thumb img{max-width:260px;max-height:180px;border:1px solid var(--line);border
 .chk-na textarea{width:100%;box-sizing:border-box;margin-bottom:6px}
 .nr-reason{color:#C0262D;font-size:13px;font-weight:600;margin-top:2px}
 @media(max-width:640px){.md li.task-list-item:has(.chk2){padding-right:0;padding-top:30px}.chk2{left:0;right:auto}}
+.reload-bar{background:var(--ball);color:#141414;text-align:center;padding:6px 12px;font-weight:600;position:sticky;top:0;z-index:20}.reload-bar[hidden]{display:none}

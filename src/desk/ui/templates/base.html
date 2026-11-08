@@ -15,6 +15,7 @@
   <nav><a href="/">Today</a><a href="/board">Board</a><a href="/projects">Projects</a><a href="/about">About</a><a href="/settings">Settings</a></nav>
   <span class="home">{{ home }} · owner {{ owner }}</span>
 </header>
+<div id="reload-bar" class="reload-bar" role="status" hidden>Changes available. <a href="" onclick="location.reload();return false">Reload</a></div>
 <main>
 {% if notice %}<div class="notice" role="status">{{ notice }}</div>{% endif %}
 {% block body %}{% endblock %}
@@ -41,5 +42,24 @@ window.addEventListener("pageshow", function () {
   });
 });
 </script>
+{% if events %}<script>
+(function () {
+  if (!window.EventSource) return;
+  var bar = document.getElementById("reload-bar");
+  function typing() {  // a form field has focus, or holds text that was not saved
+    var a = document.activeElement;
+    if (a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && !/^(checkbox|radio|submit|button|hidden)$/.test(a.type || "")) return true;
+    var f = document.querySelectorAll("textarea, input[type=text], input[type=search]");
+    for (var i = 0; i < f.length; i++) if (f[i].value !== f[i].defaultValue) return true;
+    return false;
+  }
+  var es = new EventSource({{ events.url|tojson }}{% if events.since %} + "?since={{ events.since }}"{% endif %});
+  es.addEventListener("change", function () {
+    if (typing()) { bar.hidden = false; return; }
+    location.reload();
+  });
+  window.addEventListener("pagehide", function () { es.close(); });
+})();
+</script>{% endif %}
 </body>
 </html>
