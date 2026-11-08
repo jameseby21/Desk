@@ -342,3 +342,8 @@ details.hidden-secs{margin:14px 0}details.hidden-secs>.card{margin-top:10px}p.hi
 details.ladder{margin:8px 0 0;border-top:1px solid var(--line);padding-top:8px}details.ladder>summary{cursor:pointer;color:var(--muted);font-size:14px}details.ladder[open]>summary{margin-bottom:6px}
 .readflag{margin:4px 0 8px;font-size:13.5px;color:var(--muted)}
 details.addc{margin-top:10px}details.addc>summary{cursor:pointer;font-weight:600;padding:6px 0}
+/* Header: Desk, navigation, search, the user (DESK-0176) */
+header .user{margin-left:auto;display:inline-flex;align-items:center;gap:8px;text-decoration:none;font-weight:600;font-size:14px}
+header .user .uinit{display:inline-grid;place-items:center;width:28px;height:28px;border-radius:50%;background:var(--ink);color:var(--on-ink);font-size:13px}
+header .search-open{position:relative;flex:0 1 320px;margin-left:12px}header .search-open input{padding-right:34px}
+header .search-open kbd{position:absolute;right:10px;top:50%;transform:translateY(-50%);font:500 12px var(--font-mono);color:var(--muted);border:1px solid var(--line);border-radius:5px;padding:0 6px;background:var(--card)}
