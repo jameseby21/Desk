@@ -208,6 +208,13 @@ def validate_store(store: "Store") -> tuple[list[str], list[str]]:
         if w:
             warnings.append(w)
 
+    from . import repeats as repeatmod
+
+    for r in repeatmod.repeats(store, tickets):  # DESK-0158: repetition is an emergency
+        warnings.append(r.message(store.owner))
+    for t, at in repeatmod.stale_handoffs(store, tickets):
+        warnings.append(repeatmod.stale_message(store, t, at))
+
     from .dispatch import undispatched, warning as undispatched_warning  # local import: dispatch reads people and the store
 
     for t, hours in undispatched(store, tickets=tickets):  # DESK-0166: ready, unblocked, Patch's, nobody started

@@ -56,6 +56,7 @@ def mark_sweep(home: Path, when: dt.datetime | None = None) -> dt.datetime:
     when = (when or dt.datetime.now()).replace(microsecond=0)
     state = _state(home)
     state["last_sweep"] = when.isoformat()
+    state["sweeps"] = [*(state.get("sweeps") or []), when.isoformat()][-8:]  # the times of the last sweeps: a hand-off unchanged across two is flagged (DESK-0158)
     p = _state_path(home)
     p.parent.mkdir(parents=True, exist_ok=True)
     p.write_text(json.dumps(state, indent=2) + "\n", encoding="utf-8")

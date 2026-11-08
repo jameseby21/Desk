@@ -286,6 +286,11 @@ def comment(store: Store, t: Ticket, text: str, actor: str | None = None, kind: 
     if is_duplicate_comment(t, who, text):
         return CommentResult(t, False)
     t.append_line("Comments", _stamp(who, f"{text.strip()} <!-- kind: {kind} -->", at_time=True))
+    if who.lower() == store.owner.lower():
+        from . import repeats  # DESK-0158: the owner asking for the same thing twice in a week makes the ticket p0 with the tag emergency
+
+        if repeats.repeated_ask(t, store.owner):
+            repeats.escalate(store, t)
     store.save(t)
     return CommentResult(t, True)
 

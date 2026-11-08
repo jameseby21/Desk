@@ -220,6 +220,11 @@ def cmd_comments(args):
     from . import comments as cm
 
     s = _store(args)
+    if args.mark_sweep:  # the flags come first in the sweep: repeated asks, then hand-offs nobody answered (DESK-0158)
+        from . import repeats
+
+        for f in repeats.flags(s):
+            print(f"FLAG {f}")
     if args.mark_sweep and not (args.author or args.since or args.unanswered):
         print(f"sweep marked at {cm.mark_sweep(s.home).isoformat(sep=' ')}")
         return
@@ -473,6 +478,30 @@ def cmd_sprint(args):
             print(f"  {t.id}  {t.meta.get('priority')}  {t.status:<12} {str(t.meta.get('title', ''))[:60]}")
         if g.series:
             print("  burn-down (day: remaining / ideal): " + ", ".join(f"{d[5:]}: {r}/{i}" for d, r, i in g.series[-7:]))
+
+
+def cmd_repeats(args):
+    """DESK-0158: repeated asks and stale hand-offs. --apply makes the tickets with a repeated ask p0 with the tag emergency."""
+    from . import repeats
+
+    s = _store(args)
+    tickets = s.tickets()
+    rs = repeats.repeats(s, tickets)
+    stale = repeats.stale_handoffs(s, tickets)
+    for r in rs:
+        print(r.message(s.owner))
+    for t, at in stale:
+        print(repeats.stale_message(s, t, at))
+    print(f"{len(rs)} repeated ask(s), {len(stale)} stale hand-off(s)")
+    if args.apply and rs:
+        s.sync_before()
+        for r in rs:
+            t = s.get(r.ticket.id)
+            if repeats.escalate(s, t):
+                t.append_line("Comments", ops._stamp("desk", "repeated ask: priority p0, tag emergency", at_time=True))
+                s.save(t)
+                print(f"{t.id} -> p0, emergency")
+        s.sync_after("desk: repeats --apply")
 
 
 def cmd_index(args):
@@ -996,6 +1025,10 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--project", help="the project that runs it (the same name may exist in two projects); leave out for a sprint that spans projects")
     sp.add_argument("--note", help="the scope note")
     sp.set_defaults(fn=cmd_sprint)
+
+    sp = sub.add_parser("repeats", help="repeated asks (the owner asked for the same thing twice on a ticket within 7 days) and stale hand-offs (blocked_on names the owner, unchanged across two sweeps); --apply makes the repeated-ask tickets p0 with the tag emergency")
+    sp.add_argument("--apply", action="store_true")
+    sp.set_defaults(fn=cmd_repeats)
 
     sp = sub.add_parser("stop", help="stop the Desk UI: end whatever listens on the UI port (DESK_UI_PORT, default 8765) by PID and say which; exit 0 when nothing listens")
     sp.add_argument("--port", type=int, help="the port (default: the UI port)")
