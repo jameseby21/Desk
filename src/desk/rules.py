@@ -6,6 +6,7 @@ import datetime as dt
 import re
 from typing import TYPE_CHECKING
 
+from . import people
 from .store import id_parts
 from .ticket import CLOSED, ID_LISTS_LOOSE, ID_LISTS_STRICT, PRIORITIES, REQUIRED, LEGACY_TYPES, SIZES, STATUSES, TYPES, Ticket, canon_type, parse_checks, validate_steps
 
@@ -192,11 +193,35 @@ def validate_store(store: "Store") -> tuple[list[str], list[str]]:
                 d = by_id.get(str(dep))
                 if d and d.status != "done":
                     errors.append(f"{t.id}: is done but depends on {dep} which is {d.status}")
+    pe = people.load(store.home)
+    for t in tickets:  # DESK-0151: user-facing work is designed by Chaz first
+        w = ui_design_warning(t, by_id, pe)
+        if w:
+            warnings.append(w)
+
     from .dispatch import undispatched, warning as undispatched_warning  # local import: dispatch reads people and the store
 
     for t, hours in undispatched(store, tickets=tickets):  # DESK-0166: ready, unblocked, Patch's, nobody started
         warnings.append(undispatched_warning(store, t, hours))
     return errors, warnings
+
+
+_DESIGN_NONE = re.compile(r"^\s*design:\s*none\s*-\s*\S", re.I | re.M)
+
+
+def ui_design_warning(t: Ticket, by_id: dict, pe) -> str | None:
+    """A ready, claimed or in-progress ticket with `ui` in its dod needs a ticket assigned to Chaz among its depends_on or related
+    (the design), unless it is a bug, is itself Chaz's, or its Context says `design: none - <reason>`."""
+    if t.status not in ("ready", "claimed", "in_progress") or "ui" not in [str(x) for x in (t.meta.get("dod") or [])]:
+        return None
+    if canon_type(str(t.meta.get("type"))) == "bug" or pe.resolve(str(t.meta.get("assignee") or "")) == "chaz" or _DESIGN_NONE.search(t.section("Context")):
+        return None
+    for ref in [*(t.meta.get("depends_on") or []), *(t.meta.get("related") or [])]:
+        other = by_id.get(str(ref))
+        if other is not None and pe.resolve(str(other.meta.get("assignee") or "")) == "chaz":
+            return None
+    return (f"{t.id}: ui work with no Chaz design ticket linked (user-facing work is designed by Chaz first); add a ticket assigned to chaz to "
+            "depends_on or related, or write `design: none - <reason>` in Context")
 
 
 def _words(reason: str | None) -> str:
