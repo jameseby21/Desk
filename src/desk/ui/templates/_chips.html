@@ -6,6 +6,15 @@
 </div>
 {% endif %}
 {%- endmacro %}
+{% macro sbar(chips, current, base, extra) -%}
+{% if chips %}
+<div class="row trackchips"><span class="label">Sprint</span>
+  <a class="chip{% if not current %} ball{% endif %}" href="{{ base }}{% if extra %}?{{ extra }}{% endif %}">All</a>
+  {% for slug, name, n in chips %}<a class="chip{% if slug == current %} ball{% endif %}" href="{{ base }}?{% if extra %}{{ extra }}&amp;{% endif %}sprint={{ slug }}">{{ name }} {{ n }}</a>{% endfor %}
+  <a class="chip" href="/sprint" title="All sprints">pages</a>
+</div>
+{% endif %}
+{%- endmacro %}
 {% macro bar(chips, track, base, extra) -%}
 {% if chips %}
 <div class="row trackchips"><span class="label">Track</span>

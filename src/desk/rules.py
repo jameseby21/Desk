@@ -90,6 +90,8 @@ def validate_ticket(t: Ticket, store: "Store", known_ids: set[str] | None = None
             errors.append(f"{where}: tags must be a list of strings")
     if "track" in m and (not isinstance(m["track"], str) or not m["track"].strip()):
         errors.append(f"{where}: track must be a non-empty string when present")
+    if "sprint" in m and (not isinstance(m["sprint"], str) or not m["sprint"].strip()):
+        errors.append(f"{where}: sprint must be a non-empty string when present")
     for field_ in ("assignee", "assigned_by", "handoff", "cloned_from", "evidence"):
         if field_ in m and m[field_] not in (None, "") and not isinstance(m[field_], str):
             errors.append(f"{where}: {field_} must be a string")
@@ -193,6 +195,13 @@ def validate_store(store: "Store") -> tuple[list[str], list[str]]:
                 d = by_id.get(str(dep))
                 if d and d.status != "done":
                     errors.append(f"{t.id}: is done but depends on {dep} which is {d.status}")
+    from . import sprints as sprintmod
+
+    known_sprints = sprintmod.names(store)
+    for t in tickets:  # DESK-0147: a sprint field must name a sprint in sprints.yaml
+        w = sprintmod.unknown_warning(t, known_sprints)
+        if w:
+            warnings.append(w)
     pe = people.load(store.home)
     for t in tickets:  # DESK-0151: user-facing work is designed by Chaz first
         w = ui_design_warning(t, by_id, pe)

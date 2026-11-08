@@ -131,11 +131,13 @@ class People:
 _CACHE: dict = {}
 
 
-def _mtime(p: Path) -> int:
+def _mtime(p: Path) -> tuple:
+    """(mtime_ns, size): a file rewritten within one clock tick still changes size."""
     try:
-        return p.stat().st_mtime_ns
+        st = p.stat()
+        return st.st_mtime_ns, st.st_size
     except OSError:
-        return 0
+        return 0, 0
 
 
 def load(home: Path | None) -> People:

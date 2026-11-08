@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% from "_chips.html" import bar, abar %}
+{% from "_chips.html" import bar, abar, sbar %}
 {% from "_bcols.html" import columns with context %}
 {% macro counts_line(c, n_open) -%}
 {{ n_open }} open{% if c['ready'] %} · {{ c['ready'] }} thrown{% endif %}{% if c['in_progress'] or c['claimed'] %} · {{ c['in_progress'] + c['claimed'] }} fetching{% endif %}{% if c['review'] %} · {{ c['review'] }} dropped{% endif %}{% if c['blocked'] %} · {{ c['blocked'] }} stuck{% endif %}
@@ -16,6 +16,7 @@
 <p class="muted" style="margin:2px 0 10px">Projects first. Open a project to see its {{ 'tracks' if by == 'track' else 'sprints' }}, open one of those to see its tickets. Close what you do not need; what is open stays in the address.</p>
 {{ abar(achips, assignee, abase, aextra) }}
 {{ bar(chips, track, chip_base, chip_extra) }}
+{{ sbar(schips, sprint, sbase, sextra) }}
 <div class="bboard" id="bboard" data-by="{{ by }}" data-assignee="{{ assignee }}">
 {% for r in rows %}
 {% set brand = s.brand_for(r.key) %}

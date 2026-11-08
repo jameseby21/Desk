@@ -94,6 +94,8 @@ def _fill_from_rules(s: Store, t) -> None:
 def cmd_list(args):
     from . import people
 
+    from . import sprints
+
     s = _store(args)
     who = people.load(s.home)
     rows = []
@@ -106,6 +108,8 @@ def cmd_list(args):
         if args.owner and str(t.meta.get("owner")) != args.owner:
             continue
         if args.assignee and ops.assignee_of(t).lower() != who.resolve(args.assignee).lower():
+            continue
+        if args.sprint and sprints.norm(sprints.sprint_of(t)) != sprints.norm(args.sprint):
             continue
         if args.stale and not stale:
             continue
@@ -253,7 +257,22 @@ def cmd_reject(args):
 
 
 def cmd_move(args):
-    _write_cmd(args, lambda s, t: ops.move(s, t, args.to, actor=args.as_, reason=args.reason), "move")
+    from . import sprints
+
+    if not args.to and args.sprint is None:
+        _die("Say where: --to <status>, --sprint <name> (or --sprint '' to take it out of its sprint), or both.")
+
+    def run(s, t):
+        if args.sprint is not None:
+            t = sprints.set_sprint(s, t, args.sprint, actor=args.as_)
+        if args.to:
+            t = ops.move(s, t, args.to, actor=args.as_, reason=args.reason)
+        return t
+
+    try:
+        _write_cmd(args, run, "move")
+    except sprints.SprintError as e:
+        _die(str(e))
 
 
 def cmd_assign(args):
@@ -416,6 +435,44 @@ def cmd_dispatch(args):
         for t, h in rs:
             b = dp.brief(t, h)
             print(f"  {b['id']}  {b['size']:<2} {b['effort']:<8} waiting {b['idle_hours']:>5.1f} h  deps: {', '.join(b['deps']) or 'none'}  {b['title'][:60]}")
+
+
+def cmd_sprint(args):
+    """DESK-0147: sprints.yaml. `new` creates, `list` lists, `show` prints a sprint's tickets in score order with the burn-down numbers."""
+    from . import sprints as sp
+
+    s = _store(args)
+    if args.action == "new":
+        if not args.name:
+            _die("Give the sprint a name: drew sprint new 'sprint 6 2026' --start 2026-11-09 --end 2026-11-22 --project desk")
+        try:
+            x = sp.create(s, args.name, start=args.start or "", end=args.end or "", owner=args.owner or "", project=args.project or "", note=args.note or "")
+        except sp.SprintError as e:
+            _die(str(e))
+        s.sync_after(f"desk: sprint new {x.name}")
+        print(f"sprint `{x.name}`" + (f" in {x.project}" if x.project else "") + f" created in {s.home / sp.PATH}")
+        return
+    if args.action == "list":
+        rows = sp.all_sprints(s)
+        defs = {x.slug: x for x in sp.load(s.home)}
+        print(_table([[n, defs[slug].start if slug in defs else "", defs[slug].end if slug in defs else "", defs[slug].project if slug in defs else "", str(total), str(op)]
+                      for slug, n, total, op in rows] or [["(none)", "", "", "", "0", "0"]], ["sprint", "start", "end", "project", "tickets", "open"]))
+        return
+    if not args.name:
+        _die("Which sprint? drew sprint show 'sprint 6 2026'")
+    import datetime as _dt
+
+    gs = sp.groups(s, sp.slugify(args.name, 60), today=_dt.date.today())
+    if not gs:
+        _die(f"No sprint `{args.name}` in sprints.yaml and no ticket names it.")
+    for g in gs:
+        meta = f"{g.sprint.start} to {g.sprint.end}" if g.sprint and g.sprint.start else "no dates"
+        print(f"{g.name}: {meta}" + (f" · owner {g.sprint.owner}" if g.sprint and g.sprint.owner else ""))
+        print(f"  {g.total} ticket(s): {g.done} done, {g.remaining} remaining" + (f"; {g.days_left} of {g.days_total} days left; ideal remaining today {g.ideal_now}" if g.days_left is not None else ""))
+        for t in g.tickets:
+            print(f"  {t.id}  {t.meta.get('priority')}  {t.status:<12} {str(t.meta.get('title', ''))[:60]}")
+        if g.series:
+            print("  burn-down (day: remaining / ideal): " + ", ".join(f"{d[5:]}: {r}/{i}" for d, r, i in g.series[-7:]))
 
 
 def cmd_index(args):
@@ -930,6 +987,16 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--json", action="store_true")
     sp.set_defaults(fn=cmd_dispatch)
 
+    sp = sub.add_parser("sprint", help="sprints (sprints.yaml): `sprint new 'sprint 6 2026' --start --end --owner --project`, `sprint list`, `sprint show NAME` (tickets in score order and burn-down numbers); put a ticket in one with `drew move ID --sprint NAME`")
+    sp.add_argument("action", choices=["new", "list", "show"])
+    sp.add_argument("name", nargs="?")
+    sp.add_argument("--start", metavar="YYYY-MM-DD")
+    sp.add_argument("--end", metavar="YYYY-MM-DD")
+    sp.add_argument("--owner")
+    sp.add_argument("--project", help="the project that runs it (the same name may exist in two projects); leave out for a sprint that spans projects")
+    sp.add_argument("--note", help="the scope note")
+    sp.set_defaults(fn=cmd_sprint)
+
     sp = sub.add_parser("stop", help="stop the Desk UI: end whatever listens on the UI port (DESK_UI_PORT, default 8765) by PID and say which; exit 0 when nothing listens")
     sp.add_argument("--port", type=int, help="the port (default: the UI port)")
     sp.set_defaults(fn=cmd_stop)
@@ -968,6 +1035,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--status", choices=STATUSES)
     sp.add_argument("--owner")
     sp.add_argument("--assignee", help="only tickets assigned to this name")
+    sp.add_argument("--sprint", help="only tickets in this sprint")
     sp.add_argument("--stale", action="store_true", help="only tickets untouched past the stale window")
     sp.add_argument("--all", action="store_true")
     sp.set_defaults(fn=cmd_list)
@@ -1034,7 +1102,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     sp = sub.add_parser("move", help="a guarded status move (inbox → triage → ready, and the rest)")
     sp.add_argument("id")
-    sp.add_argument("--to", required=True, choices=STATUSES)
+    sp.add_argument("--to", choices=STATUSES)
+    sp.add_argument("--sprint", help="put the ticket in this sprint (it must exist in sprints.yaml); an empty name takes it out")
     sp.add_argument("--reason")
     actor(sp)
     sp.set_defaults(fn=cmd_move)

@@ -20,7 +20,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from .. import timing
-from .. import asks, boardview as bv, people as peoplemod, search as srch, nav as navmod, buildstamp as bs, comments as cm, docs as docsmod, ops, profanity, review as rv, style as styles, tracks as trk, version as ver
+from .. import asks, boardview as bv, sprints as sprintmod, people as peoplemod, search as srch, nav as navmod, buildstamp as bs, comments as cm, docs as docsmod, ops, profanity, review as rv, style as styles, tracks as trk, version as ver
 from ..config import find_home
 from ..rules import RuleError
 from ..store import Store, id_parts, split_profile
@@ -59,6 +59,22 @@ def assignee_chips(tickets) -> list[tuple[str, int]]:
         if n:
             names[n] = names.get(n, 0) + t.is_open
     return sorted(names.items(), key=lambda kv: kv[0].lower())
+
+
+def sprint_chips(tickets) -> list[tuple[str, str, int]]:
+    """(slug, name, tickets) for every sprint the tickets name, for the sprint filter chips."""
+    seen: dict = {}
+    for t in tickets:
+        n = sprintmod.sprint_of(t)
+        if n:
+            slug = sprintmod.slugify(n, 60)
+            seen[slug] = (seen[slug][0], seen[slug][1] + 1) if slug in seen else (n, 1)
+    return sorted(((slug, n, k) for slug, (n, k) in seen.items()), key=lambda r: r[1].lower())
+
+
+def in_sprint(t, slug: str) -> bool:
+    n = sprintmod.sprint_of(t)
+    return bool(n) and sprintmod.slugify(n, 60) == slug
 
 
 def by_project(tickets):
@@ -150,7 +166,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
     mermaid_src = "/static/mermaid.min.js" if (STATIC / "mermaid.min.js").exists() else MERMAID_CDN
     templates.env.globals.update(screen=screen, md=md_html, has_mermaid=has_mermaid, statuses=STATUSES,
                                  sections=SECTIONS, mermaid_src=mermaid_src, by_project=by_project, token=tokens.issue, check_summary=lambda text: Markup(summary_html(text)), track_slug=trk.track_slug, track_of=trk.track_of,
-                                 build=ver.describe(), who=who_html, ask_badge=lambda t: ((asks.ask_of(t) or {}).get("kind") or "").capitalize(),
+                                 build=ver.describe(), who=who_html, sprint_slug=lambda n: sprintmod.slugify(str(n), 60), ask_badge=lambda t: ((asks.ask_of(t) or {}).get("kind") or "").capitalize(),
                                  card_extra=lambda t, st: [x for x in [str(t.meta.get("type") or "")] + ([screen("stale")] if st.is_stale(t) else []) + [f"#{x}" for x in t.tags] if x],
                                  card_age=bv.age_days, card_review=bv.review_by_text, card_proof=bv.proof_dot, columns_of=bv.by_status)
     shown = {"censor": None}  # the profanity filter for the request being rendered; None when the person switched it off
@@ -274,12 +290,15 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         return RedirectResponse(f"/ticket/{t.id}", status_code=303)
 
     @app.get("/", response_class=HTMLResponse)
-    def today(request: Request, cap: str = "normal", track: str = ""):
+    def today(request: Request, cap: str = "normal", track: str = "", sprint: str = ""):
         s = store()
         ts = s.tickets()
         chips = trk.track_chips(ts)
+        schips = sprint_chips(ts)
         if track:
             ts = [t for t in ts if trk.track_slug(trk.track_of(t)) == track and trk.track_of(t)]
+        if sprint:
+            ts = [t for t in ts if in_sprint(t, sprint)]
         week = ops.week_ago()
         mouth = [t for t in ts if t.status in ("claimed", "in_progress")]
         feet = [t for t in ts if t.status == "review"]
@@ -296,7 +315,8 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         return templates.TemplateResponse(request, "today.html", ctx(request, s, asked=asked, mouth=by_project(mouth), feet=by_project(feet + decisions),
                                                              others=by_project(others), stale=by_project(stale),
                                                              decided=by_project(decided), cap=cap, s=s, combos=combos, review_line=review_line,
-                                                             chips=chips, track=track, chip_base="/", chip_extra=f"cap={cap}", events_url="/events", events_since=ev.tickets_stamp(s)))
+                                                             chips=chips, track=track, chip_base="/", chip_extra="&".join(x for x in (f"cap={cap}", f"sprint={sprint}" if sprint else "") if x),
+                                                             schips=schips, sprint=sprint, sbase="/", sextra="&".join(x for x in (f"cap={cap}", f"track={track}" if track else "") if x), events_url="/events", events_since=ev.tickets_stamp(s)))
 
     def sse(stamp, since: str, timeout: float) -> StreamingResponse:
         return StreamingResponse(ev.stream(stamp, int(since) if since.isdigit() else None, poll, min(max(timeout, 0), 3600), stopping=lambda: app.state.stopping), media_type="text/event-stream",
@@ -367,7 +387,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         return "/board" + ("?" + q if q else "")
 
     @app.get("/board", response_class=HTMLResponse)
-    def board(request: Request, project: str | None = None, track: str = "", assignee: str = "", by: str = "track", open: str = "", g: str = ""):
+    def board(request: Request, project: str | None = None, track: str = "", assignee: str = "", by: str = "track", open: str = "", g: str = "", sprint: str = ""):
         """The broad-context board (DESK-0084): projects, then tracks or sprints with counts and the top priority, then (when opened) the
         tickets. `open` lists the projects drawn open, `g` the groups as `project:slug` (`*` for all). A filter (project, track, assignee)
         narrows the board and opens what is left, since asking for it means wanting to see the tickets."""
@@ -378,15 +398,19 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         if assignee:
             ts = [t for t in ts if ops.assignee_of(t).lower() == assignee.lower()]
         chips = trk.track_chips(ts)
+        schips = sprint_chips(ts)
         if track:
             ts = [t for t in ts if trk.track_of(t) and trk.track_slug(trk.track_of(t)) == track]
-        rows = bv.build(s, ts, by, open, g, expand_all=bool(project or track or assignee))
-        keep = {"project": project or "", "assignee": assignee, "by": by if by != "track" else ""}
+        if sprint:
+            ts = [t for t in ts if in_sprint(t, sprint)]
+        rows = bv.build(s, ts, by, open, g, expand_all=bool(project or track or assignee or sprint))
+        keep = {"project": project or "", "assignee": assignee, "by": by if by != "track" else "", "sprint": sprint}
         links = {"track": board_url(**{**keep, "by": ""}), "sprint": board_url(**{**keep, "by": "sprint"}), "expand": board_url(**keep, open="*", g="*"),
                  "collapse": board_url(**keep, open="-"), "all_projects": board_url(assignee=assignee, by=keep["by"])}
         return templates.TemplateResponse(request, "board.html", ctx(request, s, rows=rows, by=by, links=links, project=project, projects=sorted(s.projects()), s=s,
-                                                           chips=chips, track=track, chip_base="/board", chip_extra="&".join(x for x in (f"project={project}" if project else "", f"assignee={quote(assignee)}" if assignee else "", f"by={by}" if by != "track" else "") if x),
-                                                           achips=achips, assignee=assignee, abase="/board", aextra="&".join(x for x in (f"project={project}" if project else "", f"by={by}" if by != "track" else "") if x), events_url="/events", events_since=ev.tickets_stamp(s)))
+                                                           chips=chips, track=track, chip_base="/board", chip_extra="&".join(x for x in (f"project={project}" if project else "", f"assignee={quote(assignee)}" if assignee else "", f"by={by}" if by != "track" else "", f"sprint={sprint}" if sprint else "") if x),
+                                                           schips=schips, sprint=sprint, sbase="/board", sextra="&".join(x for x in (f"project={project}" if project else "", f"assignee={quote(assignee)}" if assignee else "", f"track={track}" if track else "", f"by={by}" if by != "track" else "") if x),
+                                                           achips=achips, assignee=assignee, abase="/board", aextra="&".join(x for x in (f"project={project}" if project else "", f"by={by}" if by != "track" else "", f"sprint={sprint}" if sprint else "") if x), events_url="/events", events_since=ev.tickets_stamp(s)))
 
     @app.get("/board/group", response_class=HTMLResponse)
     def board_group(request: Request, project: str, slug: str, by: str = "track", assignee: str = ""):
@@ -397,6 +421,21 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         if assignee:
             ts = [t for t in ts if ops.assignee_of(t).lower() == assignee.lower()]
         return templates.TemplateResponse(request, "_bcols_frag.html", ctx(request, s, tickets=sorted(ts, key=lambda t: t.id), s=s))
+
+    @app.get("/sprint", response_class=HTMLResponse)
+    def sprint_index(request: Request):
+        s = store()
+        defs = {x.slug: x for x in sprintmod.load(s.home)}
+        return templates.TemplateResponse(request, "sprints.html", ctx(request, s, rows=sprintmod.all_sprints(s), defs=defs, s=s))
+
+    @app.get("/sprint/{slug}", response_class=HTMLResponse)
+    def sprint_page(request: Request, slug: str):
+        """One sprint, its tickets in score order, with the burn-down numbers. A name used by two projects shows one group per project."""
+        s = store()
+        gs = sprintmod.groups(s, slug)
+        if not gs:
+            return HTMLResponse("<p>No such sprint</p>", status_code=404)
+        return templates.TemplateResponse(request, "sprint.html", ctx(request, s, groups=gs, slug=slug, title=gs[0].sprint.name if gs[0].sprint else slug, s=s, events_url="/events", events_since=ev.tickets_stamp(s)))
 
     @app.get("/projects", response_class=HTMLResponse)
     def projects(request: Request, p: str = "", t: str = "", k: str = "", assignee: str = ""):
