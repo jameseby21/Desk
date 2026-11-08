@@ -41,7 +41,7 @@ Every command a person or an agent runs day to day, with what it does and when. 
 | `drew decide <ID> --approve "why"` / `--changes "why"` | the owner's decision, in words |
 | `drew done <ID>` | approved to done, after the merge |
 | `drew snap <ID>` / `drew attach <ID> file` | attach a screenshot or file as evidence |
-| `drew stats`, `drew board`, `drew show <ID>` | look at the store |
+| `drew stats`, `drew board`, `drew show <ID> [--raw]` | look at the store; `show` censors profanity (f*****g) unless `--raw` or `[style] profanity_filter = false` |
 | `drew brand-check [--create]` | projects missing a brand mark |
 
 ## In the UI

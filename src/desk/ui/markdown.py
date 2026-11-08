@@ -191,7 +191,21 @@ def _render_fence(self, tokens, idx, options, env):
     return self.fence(tokens, idx, options, env)
 
 
+def _censor_text(state):
+    """Core rule, after autolinking: plain text nodes pass through env["censor"]. Code spans, fences and link targets are other
+    token types or attributes, so they are never touched."""
+    fn = state.env.get("censor")
+    if not fn:
+        return
+    for block in state.tokens:
+        if block.type == "inline" and block.children:
+            for tok in block.children:
+                if tok.type == "text":
+                    tok.content = fn(tok.content)
+
+
 _md.core.ruler.push("ticket_autolink", _autolink)
+_md.core.ruler.push("censor_text", _censor_text)
 _md.add_render_rule("link_open", _render_link_open)
 _md.add_render_rule("image", _render_image)
 _md.add_render_rule("fence", _render_fence)
@@ -208,7 +222,7 @@ _md.add_render_rule("heading_open", _render_heading_open)
 
 
 def render(text: str, *, known: dict | None = None, check: dict | None = None, actions=None,
-           docs=None, resolve=None, glossary: dict | None = None, seen: set | None = None, ids: bool = False) -> str:
+           docs=None, resolve=None, glossary: dict | None = None, seen: set | None = None, ids: bool = False, censor=None) -> str:
     """Markdown to HTML for one ticket section.
 
     known:   {ticket id: (title, status)}; those ids become links.
@@ -216,6 +230,7 @@ def render(text: str, *, known: dict | None = None, check: dict | None = None, a
     docs:    fn(store-relative path) -> Path or None; existing paths like docs/X.md become links to /doc/<path>.
     resolve: fn(path as written) -> store-relative path (anchor kept) or None; lets a project-relative path link to its real file.
     glossary: {lowercase term: (Term, definition)}; the first use of each term in `seen` gets a popover, `[[Term]]` always links.
+    censor:  optional fn(str) -> str applied to plain text nodes (the profanity filter); code is never touched.
     actions: optional fn(id, status) -> html appended to a checkbox line that links to a known ticket (review weeks).
     """
     text = text or ""
@@ -229,7 +244,7 @@ def render(text: str, *, known: dict | None = None, check: dict | None = None, a
                 lines[n] = lines[n].replace("[!]", "[x]", 1)
         text = "\n".join(lines)
     out = _md.render(_COMMENT_LINE.sub("", text), {"known": known or {}, "docs": docs, "resolve": resolve, "glossary": glossary or {},
-                                                  "seen": seen if seen is not None else set(), "ids": ids})
+                                                  "seen": seen if seen is not None else set(), "ids": ids, "censor": censor})
     failed = any(st == "!" for _, st in states)
     if not check and not failed:
         return out

@@ -15,13 +15,15 @@ from fastapi.responses import FileResponse, HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from .. import docs as docsmod, ops, review as rv, style as styles, tracks as trk, version as ver
+from .. import docs as docsmod, ops, profanity, review as rv, style as styles, tracks as trk, version as ver
 from ..config import find_home
 from ..rules import RuleError
 from ..store import Store, id_parts, split_profile
 from ..ticket import SECTIONS, STATUSES
 from ..words import screen
 from urllib.parse import quote
+
+from markupsafe import Markup
 
 from .markdown import has_mermaid, render as md_html
 
@@ -109,6 +111,13 @@ def create_app(home: Path | None = None) -> FastAPI:
     templates.env.globals.update(screen=screen, md=md_html, has_mermaid=has_mermaid, statuses=STATUSES,
                                  sections=SECTIONS, mermaid_src=mermaid_src, by_project=by_project, token=tokens.issue, track_slug=trk.track_slug, track_of=trk.track_of,
                                  build=ver.describe())
+    shown = {"censor": None}  # the profanity filter for the request being rendered; None when the person switched it off
+
+    def finalize(v):
+        fn = shown["censor"]
+        return fn(v) if fn and isinstance(v, str) and not isinstance(v, Markup) else v
+
+    templates.env.finalize = finalize
     templates.env.filters["urlencode_path"] = lambda v: quote(str(v), safe="/#")
     if STATIC.exists():
         app.mount("/static", StaticFiles(directory=str(STATIC)), name="static")
@@ -116,7 +125,12 @@ def create_app(home: Path | None = None) -> FastAPI:
     def store() -> Store:
         return Store(home or find_home())
 
+    def censor_for(st: Store):
+        """The display filter for this person and store, or None when [style] profanity_filter is false."""
+        return profanity.make_filter(st.home) if styles.load(st.home)["profanity"] else None
+
     def ctx(request: Request, st: Store, **kw) -> dict:
+        censor = shown["censor"] = censor_for(st)
         known = None
         seen: set = set()
         gloss = docsmod.glossary(st.home)
@@ -137,7 +151,7 @@ def create_app(home: Path | None = None) -> FastAPI:
             project = getattr(owner_t, "project", "") or ""
             return md_html(text, known=known, check=check, actions=actions, docs=exists, ids=doc,
                            resolve=lambda p: docsmod.resolve_for(st, project, p)[0],
-                           glossary={} if doc == 'glossary' else gloss, seen=seen)
+                           glossary={} if doc == 'glossary' else gloss, seen=seen, censor=censor)
 
         qp = request.query_params
         done_kind = qp.get("done") or qp.get("ok") or ""
@@ -179,9 +193,9 @@ def create_app(home: Path | None = None) -> FastAPI:
         return templates.TemplateResponse(request, "settings.html", ctx(request, store(), saved=bool(saved), styles=styles.STYLES, dogs=styles.DOGS))
 
     @app.post("/settings")
-    def post_settings(name: str = Form("plain"), dog: str = Form("drew")):
+    def post_settings(name: str = Form("plain"), dog: str = Form("drew"), profanity: str = Form("on")):
         try:
-            styles.save(store().home, name, dog)
+            styles.save(store().home, name, dog, profanity != "off")
         except ValueError:
             return HTMLResponse("<p>Unknown style</p>", status_code=400)
         return RedirectResponse("/settings?saved=1", status_code=303)
@@ -227,7 +241,9 @@ def create_app(home: Path | None = None) -> FastAPI:
             out.append('<p><span class="label">Acceptance</span> <span class="muted">none yet</span></p>')
         out.append(f'<p><span class="label">Latest report line</span> {e(report[:240]) if report else "<span class=muted>Not run.</span>"}</p>')
         out.append(f'<p><a class="btn small" href="/ticket/{e(t.id)}">Open the full ticket</a></p></div>')
-        return "".join(out)
+        text = "".join(out)
+        cf = censor_for(s)
+        return cf(text) if cf else text
 
     @app.get("/peek/{ticket_id}", response_class=HTMLResponse)
     def peek(ticket_id: str):

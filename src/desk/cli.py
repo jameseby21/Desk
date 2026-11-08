@@ -8,7 +8,7 @@ import json
 import sys
 from pathlib import Path
 
-from . import ops, retype, review as rv, tracks as trk, version as ver
+from . import ops, profanity, retype, review as rv, style as styles, tracks as trk, version as ver
 from .config import HomeNotFound, find_home
 from .rules import RuleError, validate_store
 from .store import Store
@@ -118,7 +118,11 @@ def cmd_show(args):
         _die(str(e))
     if s.formerly(t):  # a renamed project: say so before the file, which keeps its original id
         print(f"# {_id_label(s, t)} · project {t.project} · {s.project_title(t.project)}\n")
-    _print_ticket(t)
+    if args.raw:
+        _print_ticket(t)
+    else:  # display filter: code spans and fences stay as written; --raw or [style] profanity_filter = false shows everything
+        fn = profanity.make_filter(s.home) if styles.load(s.home)["profanity"] else None
+        print(profanity.censor_markdown(t.render(), fn) if fn else t.render(), end="")
 
 
 def _write_cmd(args, fn, label):
@@ -521,6 +525,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     sp = sub.add_parser("show", help="print a ticket")
     sp.add_argument("id")
+    sp.add_argument("--raw", action="store_true", help="show the profanity unfiltered (it is filtered by default; see [style] profanity_filter)")
     sp.set_defaults(fn=cmd_show)
 
     sp = sub.add_parser("claim", help="ready → claimed; sets owner and branch")
