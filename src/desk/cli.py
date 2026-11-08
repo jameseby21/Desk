@@ -398,6 +398,26 @@ def cmd_outbox(args):
                 print(f"cut-off for {actor} is now {now.isoformat()}", file=sys.stderr)
 
 
+def cmd_dispatch(args):
+    """DESK-0166: the ready tickets nobody has started, grouped by repository, so one worker per repo can be started."""
+    from . import dispatch as dp
+
+    s = _store(args)
+    rows = dp.undispatched(s)
+    groups = dp.by_repo(s, rows)
+    if args.json:
+        print(json.dumps([{"repo": repo, "tickets": [dp.brief(t, h) for t, h in rs]} for repo, rs in groups], indent=2, ensure_ascii=False))
+        return
+    if not rows:
+        print("Nothing is waiting for a worker: no ticket is ready, unblocked and Patch's for more than an hour.")
+        return
+    for repo, rs in groups:
+        print(f"{repo}: {len(rs)} ticket(s), oldest first")
+        for t, h in rs:
+            b = dp.brief(t, h)
+            print(f"  {b['id']}  {b['size']:<2} {b['effort']:<8} waiting {b['idle_hours']:>5.1f} h  deps: {', '.join(b['deps']) or 'none'}  {b['title'][:60]}")
+
+
 def cmd_index(args):
     s = _store(args)
     print(s.index())
@@ -905,6 +925,10 @@ def build_parser() -> argparse.ArgumentParser:
     sp = sub.add_parser("upgrade", help="reinstall the tool from the repo (refuses while the UI is running)")
     sp.add_argument("--repo", help="the Desk repo (else DESK_REPO, else <store>/desk)")
     sp.set_defaults(fn=cmd_upgrade)
+
+    sp = sub.add_parser("dispatch", help="the ready tickets assigned to Patch with nothing blocking them and no worker, grouped by repository, oldest first: id, size, effort, dependencies")
+    sp.add_argument("--json", action="store_true")
+    sp.set_defaults(fn=cmd_dispatch)
 
     sp = sub.add_parser("stop", help="stop the Desk UI: end whatever listens on the UI port (DESK_UI_PORT, default 8765) by PID and say which; exit 0 when nothing listens")
     sp.add_argument("--port", type=int, help="the port (default: the UI port)")

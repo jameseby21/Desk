@@ -192,6 +192,10 @@ def validate_store(store: "Store") -> tuple[list[str], list[str]]:
                 d = by_id.get(str(dep))
                 if d and d.status != "done":
                     errors.append(f"{t.id}: is done but depends on {dep} which is {d.status}")
+    from .dispatch import undispatched, warning as undispatched_warning  # local import: dispatch reads people and the store
+
+    for t, hours in undispatched(store, tickets=tickets):  # DESK-0166: ready, unblocked, Patch's, nobody started
+        warnings.append(undispatched_warning(store, t, hours))
     return errors, warnings
 
 
