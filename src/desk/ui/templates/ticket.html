@@ -58,26 +58,8 @@
       {% endif %}
     </div>
 
-    <div class="card section" id="done-means">
-      <div class="row" style="justify-content:space-between"><span class="label">Done means (from the Definition of Done)</span>
-        <span class="muted" style="font-size:13px">{% if dod.kind == 'project' %}this project's own{% else %}shared modules{% endif %}, read from the file, not copied</span></div>
-      {% if dod.note %}<p class="muted"><span class="chip red">Check</span> {{ dod.note }}</p>{% endif %}
-      {% for it in dod['items'] %}
-      <details open style="margin-top:6px"><summary><b>{{ it.label }}</b>{% if it.path %} <a class="docref" href="/doc/{{ it.path|urlencode_path }}">{{ it.path }}</a> <a class="vsc" href="{{ it.edit_url }}">Edit in VS Code</a>{% endif %}</summary>
-        {% if it.body is defined %}<div class="md">{{ render(it.body)|safe }}</div>{% else %}<p class="muted"><span class="chip red">missing</span> No file at {{ it.tried|join(' or ') }}.</p>{% endif %}
-      </details>
-      {% else %}<p class="muted">This ticket lists no DoD modules. Add `dod:` to its frontmatter.</p>{% endfor %}
-    </div>
-
     <div class="card section" id="validate"><span class="label">How to validate</span>
       {% if t.validate_steps() %}<div class="md" data-check-section="How to validate">{{ render(t.validate_steps(), t, 'How to validate')|safe }}</div>{% else %}<p class="muted">Not written yet. A ticket cannot be handed over for review without it.</p>{% endif %}</div>
-
-    <div class="card section" id="tests"><span class="label">Tests</span>
-      {% if t.tests_text() %}<div class="md">{{ render(t.tests_text())|safe }}</div>{% else %}<p class="muted">No Tests text yet. Name the automated test, or the steps a person performs and what they must see.</p>{% endif %}</div>
-
-    {% if t.section('Prompt') %}
-    <div class="card section" id="prompt"><span class="label">Prompt (paste this to execute)</span><div class="md" data-check-section="Prompt">{{ render(t.section('Prompt'), t, 'Prompt')|safe }}</div></div>
-    {% endif %}
 
     <div class="card section">
       <div class="row" style="justify-content:space-between"><span class="label">Proof (Report)</span>
@@ -90,22 +72,7 @@
     <div class="card section" id="evidence"><span class="label">Evidence</span>{% if t.meta.get('evidence') %}<p style="margin:6px 0">{{ t.meta.get('evidence') }}</p>{% endif %}{% if t.section('Evidence') %}<div class="md" data-check-section="Evidence">{{ render(t.section('Evidence'), t, 'Evidence')|safe }}</div>{% endif %}</div>
     {% endif %}
 
-    <div class="card section" id="attachments"{% if not t.section('Attachments') %} hidden{% endif %}><span class="label">Attachments</span><div class="md attachments" id="attachments-body">{% if t.section('Attachments') %}{{ render(t.section('Attachments'))|safe }}{% endif %}</div></div>
-
-    {% for name in ['Docs to update','Out of scope'] %}{% if t.section(name) %}
-    <div class="card section"><span class="label">{{ name }}</span><div class="md">{{ render(t.section(name))|safe }}</div></div>
-    {% endif %}{% endfor %}
-
-    {% for name in t.sections %}{% if name not in sections and t.section(name) %}
-    <div class="card section"><span class="label">{{ name }}</span><div class="md">{{ render(t.section(name))|safe }}</div></div>
-    {% endif %}{% endfor %}
-
-    {% if owning %}<div class="card section"><span class="label">Owning docs</span>
-      <ul class="mentions">{% for o in owning %}<li><code>{{ o.path }}</code> &rarr; {% if o.exists %}<a class="docref" href="/doc/{{ o.doc|urlencode_path }}">{{ o.doc }}</a>{% else %}<span class="chip red">missing</span> {{ o.doc }}{% endif %}</li>{% endfor %}</ul></div>{% endif %}
-
-    <div class="card section"><span class="label">Mentioned in</span>
-      {% if mentions %}<ul class="mentions">{% for m in mentions %}<li><a class="tid" href="/ticket/{{ m.id }}" data-status="{{ m.status }}">{{ m.id }}</a> {{ m.meta.get('title') }}</li>{% endfor %}</ul>{% else %}<p class="muted">No other ticket mentions {{ t.id }}.</p>{% endif %}</div>
-
+    {% if t.section('Decision') or reply_ask %}
     <div class="card section" id="decision"><span class="label">Decision</span>
       {% if t.section('Decision') %}<div class="md">{{ render(t.section('Decision'))|safe }}</div>{% else %}<p class="muted">Nothing decided yet.</p>{% endif %}
       {% if reply_ask %}{% set ask = reply_ask %}
@@ -127,6 +94,7 @@
         <span class="muted note">Recorded in the Decision section in your words and the ticket moves. Passwords and keys are refused.</span>
       </form>
       {% endif %}</div>
+    {% endif %}
 
     <div class="card section" id="comments"><span class="label">Talk (Comments)</span>
       <div class="md" data-comments>{% if t.section('Comments') %}{{ comments_html(t.section('Comments'))|safe }}{% else %}<p class="muted">No comments.</p>{% endif %}</div>
@@ -145,6 +113,60 @@
         <button class="btn small" type="submit">Attach</button>
       </form>
     </div>
+
+    <details class="card section dm" id="done-means"><summary><span class="label">Done means</span> <span class="dm-line">{{ dod.line }} &middot; {{ dod.n_checks }} check{{ 's' if dod.n_checks != 1 }}</span><span class="show">Show checklist</span></summary>
+      <p class="muted" style="font-size:13px;margin:8px 0 0">{% if dod.kind == 'project' %}This project's own{% else %}Shared modules{% endif %}, from the Definition of Done, read from the file, not copied.</p>
+      {% if dod.note %}<p class="muted"><span class="chip red">Check</span> {{ dod.note }}</p>{% endif %}
+      {% for it in dod['items'] %}
+      <details open style="margin-top:6px"><summary><b>{{ it.label }}</b>{% if it.path %} <a class="docref" href="/doc/{{ it.path|urlencode_path }}">{{ it.path }}</a> <a class="vsc" href="{{ it.edit_url }}">Edit in VS Code</a>{% endif %}</summary>
+        {% if it.body is defined %}<div class="md">{{ render(it.body)|safe }}</div>{% else %}<p class="muted"><span class="chip red">missing</span> No file at {{ it.tried|join(' or ') }}.</p>{% endif %}
+      </details>
+      {% else %}<p class="muted">This ticket lists no DoD modules. Add `dod:` to its frontmatter.</p>{% endfor %}
+    </details>
+
+    {% if t.section('Prompt') %}
+    <div class="card section" id="prompt"><span class="label">Prompt (paste this to execute)</span><div class="md" data-check-section="Prompt">{{ render(t.section('Prompt'), t, 'Prompt')|safe }}</div></div>
+    {% endif %}
+
+    <div class="card section" id="attachments"{% if not t.section('Attachments') %} hidden{% endif %}><span class="label">Attachments</span><div class="md attachments" id="attachments-body">{% if t.section('Attachments') %}{{ render(t.section('Attachments'))|safe }}{% endif %}</div></div>
+
+    {# Sections still holding their seeded default, or empty, are hidden and named in one line (DESK-0175); nothing is removed. #}
+    {% set hid = [] %}{% for name in ['Tests','Docs to update','Out of scope'] %}{% if t.is_default(name) %}{% set _ = hid.append(name) %}{% endif %}{% endfor %}
+    {% set no_decision = not t.section('Decision') and not reply_ask %}
+    {% set hid_all = (['Tests'] if 'Tests' in hid else []) + (['Attachments'] if not t.section('Attachments') else []) + (['Docs to update'] if 'Docs to update' in hid else []) + (['Out of scope'] if 'Out of scope' in hid else []) + (['Decision'] if no_decision else []) + (['Mentioned in'] if not mentions else []) %}
+    {% if 'Tests' not in hid %}
+    <div class="card section" id="tests"><span class="label">Tests</span>
+      {% if t.tests_text() %}<div class="md">{{ render(t.tests_text())|safe }}</div>{% else %}<p class="muted">No Tests text yet. Name the automated test, or the steps a person performs and what they must see.</p>{% endif %}</div>
+    {% endif %}
+    {% for name in ['Docs to update','Out of scope'] %}{% if name not in hid %}
+    <div class="card section"><span class="label">{{ name }}</span><div class="md">{{ render(t.section(name))|safe }}</div></div>
+    {% endif %}{% endfor %}
+    {% if hid or no_decision or not mentions %}
+    <details class="fold hidden-secs" id="hidden-sections"><summary>Hidden while still default or empty: {{ hid_all|join(', ') }} &middot; <b>Show</b></summary>
+      {% if 'Tests' in hid %}
+    <div class="card section" id="tests"><span class="label">Tests</span>
+      {% if t.tests_text() %}<div class="md">{{ render(t.tests_text())|safe }}</div>{% else %}<p class="muted">No Tests text yet. Name the automated test, or the steps a person performs and what they must see.</p>{% endif %}</div>
+      {% endif %}
+      {% for name in ['Docs to update','Out of scope'] %}{% if name in hid %}
+      <div class="card section"><span class="label">{{ name }}</span>{% if t.section(name) %}<div class="md">{{ render(t.section(name))|safe }}</div>{% else %}<p class="muted">Empty.</p>{% endif %}</div>
+      {% endif %}{% endfor %}
+      {% if no_decision %}<div class="card section" id="decision"><span class="label">Decision</span><p class="muted">Nothing decided yet.</p></div>{% endif %}
+      {% if not mentions %}<div class="card section"><span class="label">Mentioned in</span><p class="muted">No other ticket mentions {{ t.id }}.</p></div>{% endif %}
+    </details>
+    {% endif %}
+
+    {% for name in t.sections %}{% if name not in sections and t.section(name) %}
+    <div class="card section"><span class="label">{{ name }}</span><div class="md">{{ render(t.section(name))|safe }}</div></div>
+    {% endif %}{% endfor %}
+
+    {% if owning %}<div class="card section"><span class="label">Owning docs</span>
+      <ul class="mentions">{% for o in owning %}<li><code>{{ o.path }}</code> &rarr; {% if o.exists %}<a class="docref" href="/doc/{{ o.doc|urlencode_path }}">{{ o.doc }}</a>{% else %}<span class="chip red">missing</span> {{ o.doc }}{% endif %}</li>{% endfor %}</ul></div>{% endif %}
+
+    {% if mentions %}
+    <div class="card section"><span class="label">Mentioned in</span>
+      {% if mentions %}<ul class="mentions">{% for m in mentions %}<li><a class="tid" href="/ticket/{{ m.id }}" data-status="{{ m.status }}">{{ m.id }}</a> {{ m.meta.get('title') }}</li>{% endfor %}</ul>{% else %}<p class="muted">No other ticket mentions {{ t.id }}.</p>{% endif %}</div>
+    {% endif %}
+
   </div>
 
   <aside>

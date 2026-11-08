@@ -47,6 +47,7 @@ MERMAID_CDN = "https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js"
 COMBO_WINDOW = dt.timedelta(minutes=30)
 BRAND_TYPES = {".svg", ".png", ".jpg", ".jpeg", ".webp", ".gif"}
 _SECTION_ANCHOR = {"Acceptance": "acceptance", "How to validate": "validate", "Evidence": "evidence", "Prompt": "prompt"}  # where a check box sits on the page
+_CHECK_LINE = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+\S")  # a list item in a Definition of Done file is one check
 _ASSET_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._ -]*$")
 IMAGE_TYPES = "PNG, JPEG, WebP or GIF"
 
@@ -657,6 +658,11 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
                 _, body = split_profile(target.read_text(encoding="utf-8"))
                 it["body"] = body
                 it["edit_url"] = docsmod.vscode_url(target)
+        d["n_checks"] = sum(1 for it in d["items"] for ln in (it.get("body") or "").splitlines() if _CHECK_LINE.match(ln))
+        names = [str(it["label"]) for it in d["items"]]
+        d["line"] = (names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]) if names else "no modules"
+        if d["kind"] != "project":
+            d["line"] += " checklist" + ("s" if len(names) > 1 else "")
         return d
 
     def doc_links(s: Store, t) -> dict:

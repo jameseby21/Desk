@@ -49,6 +49,13 @@ VALIDATE_HINTS = {
     "intake": "The intake folder to open and what it must contain.",
     "release": "The version to install or fetch and the command that shows it.",
 }
+# What a section holds while nobody has written anything of their own into it (DESK-0175): the page hides it until they do.
+SEED_TESTS = "The How to validate lines, performed by a person, are the test until an automated one exists."
+SECTION_DEFAULTS = {
+    "Tests": SEED_TESTS,
+    "Docs to update": "- per the project's doc-ownership map",
+    "Out of scope": "- Anything not named in Acceptance.",
+}
 _ONE_COMMENT = re.compile(r"^\s*<!--.*-->\s*$")
 
 
@@ -291,6 +298,11 @@ class Ticket:
 
     def validate_steps(self) -> str:
         return validate_steps(self.section("How to validate"))
+
+    def is_default(self, name: str) -> bool:
+        """True while the section is empty (hint comments and blank lines do not count) or still holds its seeded default text."""
+        text = validate_steps(self.sections.get(name) or "")
+        return not text or text == SECTION_DEFAULTS.get(name)
 
     def tests_text(self) -> str:
         """The written words of the Tests section: a hint comment and blank lines do not count."""

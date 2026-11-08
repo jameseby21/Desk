@@ -334,3 +334,7 @@ details.finished{margin:12px 0 4px;padding-top:10px;border-top:1px solid var(--l
 .fin-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:0 12px}
 .cc-foot{flex-wrap:wrap}.cc-foot .formerly{font-size:12px}
 .tag{display:inline-block;padding:1px 7px;border-radius:6px;font:600 11.5px var(--font-body);background:var(--paper);border:1px solid var(--line)}.tag.red{background:var(--red);border-color:var(--red);color:var(--on-red)}
+/* Ticket page folds (DESK-0175) */
+details.dm>summary{display:flex;align-items:baseline;gap:12px;cursor:pointer;list-style:none;flex-wrap:wrap}details.dm>summary::-webkit-details-marker{display:none}
+details.dm .dm-line{color:var(--muted);flex:1;min-width:0}details.dm .show{margin-left:auto;font-weight:600}details.dm[open] .show::after{content:" (hide)";font-weight:400;color:var(--muted)}
+details.hidden-secs{margin:14px 0}details.hidden-secs>.card{margin-top:10px}p.hidden-secs{font-size:14px}

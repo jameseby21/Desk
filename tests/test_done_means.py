@@ -21,7 +21,7 @@ def test_two_blocks_and_modules_rendered_from_standards_files(store):
     store.save(t)
     c = TestClient(create_app(store.home))
     page = c.get(f"/ticket/{t.id}").text
-    assert "Acceptance (this ticket's outcome)" in page and "Done means (from the Definition of Done)" in page
+    assert "Acceptance (this ticket's outcome)" in page and "Done means" in page and "core and ui checklists" in page and "2 checks" in page  # one folded line (DESK-0175)
     assert "CORE-MARKER" in page and "UI-MARKER" in page and 'href="/doc/standards/definition-of-done/ui.md"' in page
     assert "CORE-MARKER" not in store.get(t.id).render()  # by reference: nothing copied into the ticket
     (store.home / "standards" / "definition-of-done" / "ui.md").write_text("# ui\n\n- [ ] CHANGED-MARKER\n", encoding="utf-8")

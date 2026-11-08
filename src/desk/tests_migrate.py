@@ -8,9 +8,8 @@ from __future__ import annotations
 
 import re
 
-from .ticket import Ticket, validate_steps
+from .ticket import SEED_TESTS as SEED, Ticket, validate_steps
 
-SEED = "The How to validate lines, performed by a person, are the test until an automated one exists."
 _HEAD = re.compile(r"^## (.+?)[ \t]*\r?$", re.M)
 
 
