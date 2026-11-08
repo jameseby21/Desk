@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+{% from "_card.html" import card %}
+{% block title %}Desk · Today{% endblock %}
+{% block body %}
+<div class="row" style="justify-content:space-between;align-items:flex-end">
+  <div>
+    <span class="label">{{ today }}</span>
+    <h1>Today's walk</h1>
+    <p class="muted" style="margin:0;max-width:60ch">
+      {% if cap == 'rough' %}A rough week. Chewed-back tickets are hidden and each card shows its smallest step. That still counts.
+      {% elif cap == 'good' %}A good week. Everything that is ready is on the walk.
+      {% else %}A normal week. Next steps only, and a review date on everything you hold.{% endif %}
+    </p>
+  </div>
+  <div class="row cap">
+    <span class="label">How's the week?</span>
+    <a href="/?cap=good" class="{% if cap=='good' %}on{% endif %}">Good</a>
+    <a href="/?cap=normal" class="{% if cap=='normal' %}on{% endif %}">Normal</a>
+    <a href="/?cap=rough" class="{% if cap=='rough' %}on rough{% endif %}">Rough</a>
+  </div>
+</div>
+
+<h2>In your mouth <small>Claimed or being fetched. One ball per person or agent.</small></h2>
+{% if mouth %}<div class="grid">{% for t in mouth %}{{ card(t, s, hold=True) }}{% endfor %}</div>
+{% else %}<p class="muted">Nothing is being fetched right now.</p>{% endif %}
+
+<h2>Dropped at your feet <small>Proof attached, or a decision to make. Nothing moves until you say so, in so many words.</small></h2>
+{% if feet %}<div class="grid">{% for t in feet %}{{ card(t, s) }}{% endfor %}</div>
+{% else %}<p class="muted">Nothing is waiting on you.</p>{% endif %}
+
+<h2>Other balls in play <small>Thrown, stuck, sent back or approved and waiting for a merge.</small></h2>
+{% if others %}<div class="grid">{% for t in others %}{{ card(t, s) }}{% endfor %}</div>
+{% else %}<p class="muted">The queue is empty.</p>{% endif %}
+
+{% if stale %}
+<h2>Chewed back <small>Untouched past the stale window. Keep each with a reason, or let it go with one.</small></h2>
+<div class="grid">{% for t in stale %}{{ card(t, s) }}{% endfor %}</div>
+{% endif %}
+
+<h2>Decided this week</h2>
+{% if decided %}
+<table><tr><th>Ticket</th><th>Status</th><th>Decision</th></tr>
+{% for t in decided %}<tr><td><a href="/ticket/{{ t.id }}">{{ t.id }}</a> · {{ t.meta.get('title') }}</td><td>{{ screen(t.status) }}</td><td style="font-size:13px">{{ (t.section('Decision').splitlines() or [''])[-1] }}</td></tr>{% endfor %}
+</table>
+{% else %}<p class="muted">No decisions recorded in the last seven days.</p>{% endif %}
+{% endblock %}

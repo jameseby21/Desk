@@ -1,0 +1,180 @@
+"""One ticket: YAML frontmatter plus fixed markdown sections."""
+
+from __future__ import annotations
+
+import datetime as dt
+import re
+from dataclasses import dataclass, field
+from pathlib import Path
+
+import yaml
+
+SECTIONS = [
+    "Context",
+    "Outcome",
+    "Acceptance",
+    "Docs to update",
+    "Out of scope",
+    "Report",
+    "Decision",
+    "Comments",
+]
+
+TYPES = ["slice", "intake", "decision", "bug", "research", "chore"]
+STATUSES = [
+    "inbox",
+    "triage",
+    "ready",
+    "claimed",
+    "in_progress",
+    "review",
+    "changes_requested",
+    "approved",
+    "done",
+    "blocked",
+    "rejected",
+]
+PRIORITIES = ["p0", "p1", "p2", "p3"]
+SIZES = ["xs", "s", "m", "l"]
+CLOSED = {"done", "rejected"}
+
+REQUIRED = ["id", "title", "project", "type", "status", "priority", "size", "owner", "created", "updated"]
+
+# Canonical frontmatter order on write.
+META_ORDER = [
+    "id", "title", "project", "type", "status", "priority", "size", "owner", "branch",
+    "depends_on", "docs_to_update", "dod", "effort_hours", "confidence", "review_by",
+    "smallest_step", "blocked_on", "blocked_from", "source", "created", "updated",
+]
+
+_FM = re.compile(r"\A---\r?\n(.*?)\r?\n---\r?\n?(.*)\Z", re.S)
+_H2 = re.compile(r"^## (.+?)\s*$", re.M)
+
+
+def today() -> str:
+    return dt.date.today().isoformat()
+
+
+def _plain(v):
+    if isinstance(v, (dt.date, dt.datetime)):
+        return v.isoformat()[:10]
+    if isinstance(v, list):
+        return [_plain(x) for x in v]
+    if isinstance(v, dict):
+        return {k: _plain(x) for k, x in v.items()}
+    return v
+
+
+def slugify(text: str, limit: int = 48) -> str:
+    s = re.sub(r"[^a-z0-9]+", "-", text.lower()).strip("-")
+    return s[:limit].rstrip("-") or "ticket"
+
+
+@dataclass
+class Ticket:
+    meta: dict = field(default_factory=dict)
+    sections: dict = field(default_factory=dict)
+    path: Path | None = None
+
+    # -- convenience -----------------------------------------------------
+    @property
+    def id(self) -> str:
+        return str(self.meta.get("id", ""))
+
+    @property
+    def status(self) -> str:
+        return str(self.meta.get("status", ""))
+
+    @property
+    def project(self) -> str:
+        return str(self.meta.get("project", ""))
+
+    @property
+    def is_open(self) -> bool:
+        return self.status not in CLOSED
+
+    def section(self, name: str) -> str:
+        return (self.sections.get(name) or "").strip()
+
+    def set_section(self, name: str, text: str) -> None:
+        self.sections[name] = text.strip() + "\n" if text.strip() else ""
+
+    def append_line(self, name: str, line: str) -> None:
+        cur = self.section(name)
+        self.sections[name] = (cur + "\n" if cur else "") + line.rstrip() + "\n"
+
+    def acceptance(self) -> list[tuple[bool, str]]:
+        out = []
+        for line in self.section("Acceptance").splitlines():
+            m = re.match(r"^\s*[-*]\s*\[( |x|X)\]\s*(.*)$", line)
+            if m:
+                out.append((m.group(1).lower() == "x", m.group(2)))
+        return out
+
+    # -- (de)serialisation ------------------------------------------------
+    @classmethod
+    def parse(cls, text: str, path: Path | None = None) -> "Ticket":
+        m = _FM.match(text)
+        if not m:
+            raise ValueError(f"{path or 'ticket'}: no YAML frontmatter")
+        meta = yaml.safe_load(m.group(1)) or {}
+        if not isinstance(meta, dict):
+            raise ValueError(f"{path or 'ticket'}: frontmatter is not a mapping")
+        meta = {k: _plain(v) for k, v in meta.items()}
+        body = m.group(2)
+        sections: dict = {}
+        heads = list(_H2.finditer(body))
+        for i, h in enumerate(heads):
+            end = heads[i + 1].start() if i + 1 < len(heads) else len(body)
+            sections[h.group(1).strip()] = body[h.end():end].strip("\n") + ("\n" if body[h.end():end].strip() else "")
+        return cls(meta=meta, sections=sections, path=path)
+
+    def render(self) -> str:
+        ordered = {k: self.meta[k] for k in META_ORDER if k in self.meta}
+        for k, v in self.meta.items():
+            if k not in ordered:
+                ordered[k] = v
+        fm = yaml.safe_dump(_plain(ordered), sort_keys=False, allow_unicode=True, default_flow_style=None, width=1000).rstrip("\n")
+        fm = re.sub(r"^(\w+): '(\d{4}-\d{2}-\d{2})'$", r"\1: \2", fm, flags=re.M)  # dates unquoted, as people write them
+        parts = [f"---\n{fm}\n---\n"]
+        names = list(SECTIONS) + [s for s in self.sections if s not in SECTIONS]
+        for name in names:
+            body = self.section(name)
+            parts.append(f"\n## {name}\n" + (body + "\n" if body else ""))
+        return "".join(parts)
+
+    @classmethod
+    def load(cls, path: Path) -> "Ticket":
+        return cls.parse(path.read_text(encoding="utf-8"), path)
+
+    def write(self, path: Path | None = None) -> Path:
+        p = path or self.path
+        if p is None:
+            raise ValueError("ticket has no path")
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(self.render(), encoding="utf-8", newline="\n")
+        self.path = p
+        return p
+
+
+def new_ticket(ticket_id: str, title: str, project: str, type_: str = "slice", *, priority: str = "p2",
+               size: str = "s", owner: str = "main", dod: list[str] | None = None, source: str = "") -> Ticket:
+    now = today()
+    meta = {
+        "id": ticket_id,
+        "title": title,
+        "project": project,
+        "type": type_,
+        "status": "inbox",
+        "priority": priority,
+        "size": size,
+        "owner": owner,
+        "depends_on": [],
+        "docs_to_update": [],
+        "dod": dod or ["core"],
+        "source": source,
+        "created": now,
+        "updated": now,
+    }
+    t = Ticket(meta=meta, sections={s: "" for s in SECTIONS})
+    return t

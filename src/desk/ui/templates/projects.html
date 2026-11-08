@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Desk · Projects{% endblock %}
+{% block body %}
+<h1>Projects</h1>
+<p class="muted">One row per <code>projects/&lt;key&gt;.md</code>. Counts come from the ticket files.</p>
+<table>
+<tr><th>Project</th><th>Open</th><th>Thrown</th><th>Fetching</th><th>Dropped</th><th>Stuck</th><th>Fetched</th><th>Last activity</th></tr>
+{% for r in rows %}
+<tr>
+  <td><a href="/board?project={{ r.key }}">{{ r.title }}</a> <span class="chip">{{ r.key }}</span></td>
+  <td>{{ r.open }}</td>
+  <td>{{ r.counts['ready'] }}</td>
+  <td>{{ r.counts['claimed'] + r.counts['in_progress'] }}</td>
+  <td>{{ r.counts['review'] }}</td>
+  <td>{% if r.blocked %}<span class="chip red">{{ r.blocked }}</span>{% else %}0{% endif %}</td>
+  <td>{{ r.counts['done'] }}</td>
+  <td class="muted">{{ r.last or '—' }}</td>
+</tr>
+{% endfor %}
+</table>
+{% if not rows %}<p class="muted">No projects yet. Add <code>projects/&lt;key&gt;.md</code> files to the store.</p>{% endif %}
+{% endblock %}

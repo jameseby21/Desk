@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}Desk{% endblock %}</title>
+<style>
+:root{--paper:#F5F3EC;--ink:#141414;--ball:#C8F03C;--red:#D7262E;--muted:#6A6963;--line:#E2DFD5;--card:#FFFFFF}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font:15px/1.5 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+a{color:var(--ink)}a:hover{color:var(--red)}
+header{display:flex;flex-wrap:wrap;align-items:center;gap:16px;padding:12px 24px;background:var(--card);border-bottom:1px solid var(--line)}
+header .mark{display:inline-flex;align-items:center;gap:8px;font-weight:800;font-size:20px;text-decoration:none}
+header .mark i{width:22px;height:22px;border-radius:50%;background:var(--ball);border:1.5px solid var(--ink);display:inline-block}
+header nav a{margin-right:14px;text-decoration:none;font-weight:600}
+header .home{margin-left:auto;font:12px ui-monospace,monospace;color:var(--muted)}
+main{max-width:1200px;margin:0 auto;padding:24px 16px 48px}
+h1{font-size:34px;line-height:1.05;letter-spacing:-.02em;margin:0 0 6px}
+h2{font-size:20px;margin:28px 0 10px}
+h2 small{font-weight:400;color:var(--muted);font-size:14px;margin-left:10px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 18px}
+.card.hold{border:2px solid var(--ink);box-shadow:6px 6px 0 var(--ball)}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:14px}
+.chip{display:inline-flex;align-items:center;gap:6px;font:500 12px/1 ui-monospace,monospace;padding:5px 8px;border-radius:999px;border:1px solid var(--line);color:#4A4A45;background:var(--card);white-space:nowrap}
+.chip.ball{background:var(--ball);border-color:var(--ink);color:var(--ink)}
+.chip.red{background:var(--red);border-color:var(--red);color:#fff}
+.chip.ink{background:var(--ink);color:#fff;border-color:var(--ink)}
+.label{font:500 11px/1.3 ui-monospace,monospace;letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.title{font-weight:700;font-size:17px;margin:8px 0 4px}
+.muted{color:var(--muted)}
+.btn{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 16px;border-radius:12px;border:1.5px solid var(--ink);background:var(--card);color:var(--ink);font:600 14px/1 inherit;cursor:pointer;text-decoration:none}
+.btn.ball{background:var(--ball)}
+.btn.ink{background:var(--ink);color:#fff}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+textarea,input[type=text],select{font:inherit;padding:10px;border:1px solid var(--line);border-radius:10px;width:100%;background:var(--card)}
+label{display:flex;flex-direction:column;gap:6px;font-size:14px}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.cols{display:grid;grid-template-columns:2fr 1fr;gap:20px;align-items:start}
+@media (max-width:900px){.cols{grid-template-columns:1fr}}
+.section{margin-bottom:18px}
+.section ul{margin:4px 0;padding-left:20px}
+code{font-family:ui-monospace,monospace;font-size:13px;background:var(--paper);padding:1px 5px;border-radius:5px}
+.error{background:#fff;border:1.5px solid var(--red);border-radius:12px;padding:10px 14px;color:var(--red);margin-bottom:16px}
+.board{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(230px,1fr);gap:12px;overflow-x:auto;padding-bottom:12px}
+.col h3{font-size:14px;margin:0 0 8px;display:flex;justify-content:space-between}
+.col .card{padding:10px 12px;margin-bottom:8px}
+table{border-collapse:collapse;width:100%;font-size:14px;background:var(--card);border-radius:14px;overflow:hidden}
+th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line)}
+th{font:500 11px/1.3 ui-monospace,monospace;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.cap a{padding:8px 14px;border:1px solid var(--ink);text-decoration:none;font-weight:600;border-radius:10px}
+.cap a.on{background:var(--ball)}
+.cap a.on.rough{background:var(--ink);color:#fff}
+</style>
+</head>
+<body>
+<header>
+  <a class="mark" href="/"><i></i>Desk</a>
+  <nav><a href="/">Today</a><a href="/board">Board</a><a href="/projects">Projects</a></nav>
+  <span class="home">{{ home }} · owner {{ owner }}</span>
+</header>
+<main>
+{% block body %}{% endblock %}
+</main>
+</body>
+</html>
