@@ -544,7 +544,10 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
             return _back(ticket_id, ok="comment", dup=not res.added)
 
         def refuse(msg: str, code: int):
-            return JSONResponse({"error": msg}, status_code=code)
+            body = {"error": msg}
+            if code == 409:
+                body["token"] = tokens.issue()  # that key is no good; here is one that is, so Try again can work
+            return JSONResponse(body, status_code=code)
 
         with post_lock:  # one post at a time, so three requests with one key can not all pass the check
             s = store()

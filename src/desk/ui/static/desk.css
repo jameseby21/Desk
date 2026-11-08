@@ -187,3 +187,7 @@ li.task-list-item:focus-visible{outline:3px solid var(--focus);outline-offset:2p
 .post-btn{min-width:116px;gap:8px}.post-btn:disabled{opacity:1;background:#EEEBE2;cursor:progress}
 .spin{display:inline-block;width:14px;height:14px;border-radius:50%;border:2.5px solid #141414;border-right-color:transparent;animation:spin .7s linear infinite}
 .composer textarea[readonly]{color:var(--muted);background:#FBFAF6}
+/* DESK-0123: Posted, and the failure that keeps the draft */
+.post-status.ok{color:#1F6B2A}.composer.failed textarea{border-color:var(--red)}
+@keyframes fadehi{from{background:#F1F7DA}to{background:transparent}}
+.md li.fresh{animation:fadehi 2s ease-out;border-radius:6px}
