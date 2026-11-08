@@ -77,10 +77,11 @@
       {% if t.section('Decision') %}<div class="md">{{ render(t.section('Decision'))|safe }}</div>{% else %}<p class="muted">Nothing decided yet.</p>{% endif %}</div>
 
     <div class="card section"><span class="label">Talk (Comments)</span>
-      <div class="md" data-comments>{% if t.section('Comments') %}{{ render(t.section('Comments'))|safe }}{% else %}<p class="muted">No comments.</p>{% endif %}</div>
+      <div class="md" data-comments>{% if t.section('Comments') %}{{ comments_html(t.section('Comments'))|safe }}{% else %}<p class="muted">No comments.</p>{% endif %}</div>
       <form class="post-once composer" id="composer" method="post" action="/ticket/{{ t.id }}/comment" data-timeout-ms="10000" data-posting="Posting…">
         <input type="hidden" name="token" value="{{ token() }}">
-        <label>Comment<textarea name="text" rows="3" id="comment-text" data-attach="/ticket/{{ t.id }}/attach" data-token="{{ token() }}" placeholder="Paste or drop a screenshot here to attach it"></textarea></label>
+        <div class="kinds sevs" role="radiogroup" aria-label="Kind of comment">{% for k in ['Question','Suggestion','Concern','FYI'] %}<label class="sevpill"><input type="radio" name="kind" value="{{ k }}"{% if loop.first %} checked{% endif %}><span>{{ k }}</span></label>{% endfor %}</div>
+        <label>Comment<textarea name="text" rows="3" id="comment-text" data-attach="/ticket/{{ t.id }}/attach" data-token="{{ token() }}" placeholder="Paste or drop a screenshot here to attach it. Ctrl Enter posts."></textarea></label>
         <div class="shots" id="shots" hidden></div>
         <label class="evline" id="evline" hidden>Evidence for <select name="line"><option value="">No line</option>{% for n, txt in acc_lines %}<option value="{{ n }}">Line {{ n }}: {{ txt[:48] }}{% if txt|length > 48 %}…{% endif %}</option>{% endfor %}</select></label>
         <div class="attach-note" id="attach-note" role="status"></div>

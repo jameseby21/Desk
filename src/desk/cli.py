@@ -205,7 +205,7 @@ def cmd_comment(args):
     s = _store(args)
     s.sync_before()
     try:
-        res = ops.comment(s, s.get(args.id), args.text, actor=args.as_)
+        res = ops.comment(s, s.get(args.id), args.text, actor=args.as_, kind=args.kind)
     except (KeyError, RuleError, ValueError) as e:
         _die(str(e))
     if not res.added:
@@ -700,6 +700,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp = sub.add_parser("comment", help="append a dated comment")
     sp.add_argument("id")
     sp.add_argument("text")
+    sp.add_argument("--kind", default="Question", help="Question (default), Suggestion, Concern or FYI")
     actor(sp)
     sp.set_defaults(fn=cmd_comment)
 

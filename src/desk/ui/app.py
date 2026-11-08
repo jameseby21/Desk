@@ -30,7 +30,7 @@ from urllib.parse import quote
 from markupsafe import Markup
 
 from . import events as ev
-from .markdown import has_mermaid, render as md_html, summary_html
+from .markdown import finish_comments, has_mermaid, prep_comments, render as md_html, summary_html
 
 TEMPLATES = Path(__file__).parent / "templates"
 STAMP_DIR = TEMPLATES  # where .build-stamp sits; looked up at request time
@@ -176,11 +176,15 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
                            resolve=lambda p: docsmod.resolve_for(st, project, p)[0],
                            glossary={} if doc == 'glossary' else gloss, seen=seen, censor=censor)
 
+        def comments_html(text):
+            """The Comments section: markdown plus the kind label on each comment."""
+            return finish_comments(render(prep_comments(text)))
+
         qp = request.query_params
         done_kind = qp.get("done") or qp.get("ok") or ""
         events_url, events_since = kw.pop("events_url", ""), kw.pop("events_since", "")
         events = {"url": events_url, "since": events_since} if events_url and styles.load(st.home)["autorefresh"] else None
-        return {"build_stale": bs.stale(STAMP_DIR), "stale_text": bs.STALE_TEXT, "assign_dod": ops.ASSIGN_DOD, "events": events, "notice": notice(done_kind, qp.get("at", ""), int(qp.get("dup") or 0) if str(qp.get("dup") or "0").isdigit() else 0), "render": render, "request": request, "owner": st.owner, "style": styles.load(st.home), "favicon": FAVICON, "home": str(st.home), "today": dt.date.today().isoformat(),
+        return {"build_stale": bs.stale(STAMP_DIR), "stale_text": bs.STALE_TEXT, "assign_dod": ops.ASSIGN_DOD, "events": events, "notice": notice(done_kind, qp.get("at", ""), int(qp.get("dup") or 0) if str(qp.get("dup") or "0").isdigit() else 0), "render": render, "comments_html": comments_html, "request": request, "owner": st.owner, "style": styles.load(st.home), "favicon": FAVICON, "home": str(st.home), "today": dt.date.today().isoformat(),
                 "titles": {k: st.project_title(k) for k in st.projects()}, **kw}
 
     held: OrderedDict[str, dict] = OrderedDict()  # unhandled errors a person may file as a bug, by one-time id
@@ -533,7 +537,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
 
     @app.post("/ticket/{ticket_id}/comment")
     def post_comment(request: Request, ticket_id: str, text: str = Form(""), who: str = Form(""), token: str = Form(""),
-                     evidence: list[str] = Form([]), line: str = Form("")):
+                     evidence: list[str] = Form([]), line: str = Form(""), kind: str = Form("")):
         """Add a comment. A form post works once per token and redirects. With `Accept: application/json` the token is the post's
         KEY: the server stores at most one comment per key, a key that already made a comment returns that comment (`repeat`), and
         a failed post leaves the key good so Try again works. The reply carries the Comments again and a fresh key.
@@ -546,7 +550,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
             try:
                 t = s.get(ticket_id)
                 s.sync_before()
-                res = ops.comment(s, t, text, actor=who or s.owner)
+                res = ops.comment(s, t, text, actor=who or s.owner, kind=kind)
                 if res.added:
                     s.sync_after(f"desk: comment {t.id}")
             except (KeyError, RuleError, ValueError) as e:
@@ -587,7 +591,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
                     body = text.strip() + "".join(f" ![{Path(n).stem}]({r})" for n, r in zip(names, rels)) + (f" (Evidence for line {pick + 1})" if pick is not None else "")
                     s.sync_before()
                     who_ = who or s.owner
-                    res = ops.comment(s, t, body, actor=who_)
+                    res = ops.comment(s, t, body, actor=who_, kind=kind)
                     duplicate = not res.added
                     if pick is not None:
                         ops.add_evidence(s, t.id, "Acceptance", pick, rels)
@@ -603,7 +607,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
                 lines = ops.comment_lines(t)
                 render = ctx(request, s, t=t)["render"]
                 out = {"ok": True, "repeat": repeat, "duplicate": duplicate, "index": idx, "line": lines[idx] if 0 <= idx < len(lines) else "",
-                       "html": render(t.section("Comments")), "stamp": str(ev.ticket_stamp(s, t.id)), "token": tokens.issue()}
+                       "html": ctx(request, s, t=t)["comments_html"](t.section("Comments")), "stamp": str(ev.ticket_stamp(s, t.id)), "token": tokens.issue()}
                 if pick is not None:  # the Acceptance line changed too: send it again with its summary
                     out["check_html"] = render(t.section("Acceptance"), t, "Acceptance")
                     out["summary_html"] = summary_html(t.section("Acceptance"))

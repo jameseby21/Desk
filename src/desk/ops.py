@@ -222,8 +222,18 @@ class CommentResult:
         return self.ticket.status
 
 
+COMMENT_KINDS = ("Question", "Suggestion", "Concern", "FYI")
+_KIND_TAIL = re.compile(r"\s*<!-- kind: (Question|Suggestion|Concern|FYI) -->\s*$")
+
+
+def split_comment_kind(rest: str) -> tuple[str | None, str]:
+    """(kind or None, the words) for what follows `<when> · <who> · ` on a comment line. Comments written before kinds have none."""
+    m = _KIND_TAIL.search(rest)
+    return (m.group(1), rest[:m.start()]) if m else (None, rest)
+
+
 def is_duplicate_comment(t: Ticket, actor: str, text: str, now: dt.datetime | None = None) -> bool:
-    """True when the same author posted the same (whitespace and case normalized) text within 10 minutes."""
+    """True when the same author posted the same (whitespace and case normalized) text within 10 minutes; the kind does not matter."""
     now = now or dt.datetime.now()
     want = (_norm(actor), _norm(text))
     for line in t.section("Comments").splitlines():
@@ -234,18 +244,30 @@ def is_duplicate_comment(t: Ticket, actor: str, text: str, now: dt.datetime | No
             when = dt.datetime.fromisoformat(f"{m.group(1)}T{m.group(2)}")
         except ValueError:
             continue
-        if (_norm(m.group(3)), _norm(m.group(4))) == want and abs(now - when) <= DUPLICATE_WINDOW:
+        if (_norm(m.group(3)), _norm(split_comment_kind(m.group(4))[1])) == want and abs(now - when) <= DUPLICATE_WINDOW:
             return True
     return False
 
 
-def comment(store: Store, t: Ticket, text: str, actor: str | None = None) -> CommentResult:
+def canon_kind(kind: str | None) -> str:
+    """The kind of a new comment: Question, Suggestion, Concern or FYI (any case); Question when none is given."""
+    if not (kind or "").strip():
+        return COMMENT_KINDS[0]
+    for k in COMMENT_KINDS:
+        if k.lower() == kind.strip().lower():
+            return k
+    raise ValueError(f"A comment is one of: {', '.join(COMMENT_KINDS[:-1])} or {COMMENT_KINDS[-1]}.")
+
+
+def comment(store: Store, t: Ticket, text: str, actor: str | None = None, kind: str | None = None) -> CommentResult:
+    """Append a dated comment. It always has a kind (Question unless said otherwise), kept at the end of the line as `<!-- kind: X -->`."""
+    kind = canon_kind(kind)
     if not text.strip():
         raise RuleError("An empty comment says nothing.")
     who = actor or "desk"
     if is_duplicate_comment(t, who, text):
         return CommentResult(t, False)
-    t.append_line("Comments", _stamp(who, text.strip(), at_time=True))
+    t.append_line("Comments", _stamp(who, f"{text.strip()} <!-- kind: {kind} -->", at_time=True))
     store.save(t)
     return CommentResult(t, True)
 
@@ -260,7 +282,7 @@ def locate_comment(t: Ticket, actor: str, text: str) -> int | None:
     want = (_norm(actor), _norm(text))
     for i in range(len(lines := comment_lines(t)) - 1, -1, -1):
         m = _COMMENT_LINE.match(lines[i])
-        if m and (_norm(m.group(3)), _norm(m.group(4))) == want:
+        if m and (_norm(m.group(3)), _norm(split_comment_kind(m.group(4))[1])) == want:
             return i
     return None
 

@@ -67,5 +67,9 @@
       })
       .catch(function () { clearTimeout(timer); fail(FAILED); });
   }
+  /* Ctrl Enter (Cmd Enter on a Mac) posts through the same single-shot path as the button. Plain Enter is a new line. */
+  form.addEventListener("keydown", function (e) {
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && /^(TEXTAREA|INPUT)$/.test((e.target.tagName || ""))) { e.preventDefault(); send(); }
+  });
   form.addEventListener("submit", function (e) { e.preventDefault(); e.stopImmediatePropagation(); send(); }, true);
 })();

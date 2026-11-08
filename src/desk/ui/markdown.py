@@ -401,5 +401,19 @@ def _place_reasons(out: str, pending: dict) -> str:
     return out
 
 
+_KINDED = re.compile(r"^(- \d{4}-\d{2}-\d{2} \d{2}:\d{2} · [^·]+? · )(.*?)\s*<!-- kind: (Question|Suggestion|Concern|FYI) -->\s*$", re.M)
+_KIND_MARK = re.compile(r"@@KIND-(Question|Suggestion|Concern|FYI)@@")
+
+
+def prep_comments(text: str) -> str:
+    """Before rendering the Comments section: move each line's `<!-- kind: X -->` tail to a marker right after the author."""
+    return _KINDED.sub(lambda m: f"{m.group(1)}@@KIND-{m.group(3)}@@ {m.group(2)}", text or "")
+
+
+def finish_comments(rendered: str) -> str:
+    """After rendering: the markers become the small kind labels (Question, Suggestion, Concern, FYI) beside the author."""
+    return _KIND_MARK.sub(lambda m: f'<span class="kind kind-{m.group(1).lower()}">{m.group(1)}</span>', rendered)
+
+
 def has_mermaid(text: str) -> bool:
     return "```mermaid" in (text or "")
