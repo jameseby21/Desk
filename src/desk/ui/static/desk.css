@@ -59,6 +59,10 @@ th{font:500 11px/1.3 var(--font-mono);letter-spacing:.1em;text-transform:upperca
 .md h1,.md h2,.md h3,.md h4{font-size:16px;margin:14px 0 6px}.md h1{font-size:18px}
 .md ul,.md ol{margin:4px 0;padding-left:22px}.md ul.contains-task-list{list-style:none;padding-left:4px}
 .md li.task-list-item input{margin-right:6px;vertical-align:middle}
+/* James (DESK-0096, repeated 2026-11-08): every box sits on the right, including plain task-list boxes outside the Acceptance column and the read-only fallback */
+.md li.task-list-item:not(:has(.chk2)){display:flex;flex-wrap:wrap;align-items:flex-start;gap:8px}
+.md li.task-list-item:not(:has(.chk2))>input.task-list-item-checkbox{order:2;margin:2px 0 0 auto;flex:0 0 auto}
+.md li.task-list-item:not(:has(.chk2))>ul,.md li.task-list-item:not(:has(.chk2))>ol,.md li.task-list-item:not(:has(.chk2))>div{flex-basis:100%;order:3}
 .initial{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:6px;background:var(--line);color:var(--muted);font:700 13px/1 var(--font-body)}
 img[width="24"]{object-fit:contain}
 .md form.chk{display:inline;margin:0}.md li.task-list-item{margin:4px 0}
