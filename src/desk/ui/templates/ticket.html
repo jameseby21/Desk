@@ -3,7 +3,6 @@
 {% block body %}
 <p style="font-size:14px"><a href="/">Today</a> › <a href="/board?project={{ t.project }}">{{ titles.get(t.project, t.project) }}</a> › <code>{{ t.id }}</code>{% if formerly %} <span class="muted">(formerly {{ formerly }})</span>{% endif %}</p>
 {% if error %}<div class="error">{{ error }}</div>{% endif %}
-{% if notice %}<div class="notice" role="status">{{ notice }}</div>{% endif %}
 {% set brand = s.brand_for(t.project) if s is defined else None %}
 <div class="row"{% if brand and brand.accent %} style="border-left:6px solid {{ brand.accent }};padding-left:10px"{% endif %}>
   {% if brand and brand.mark_url %}<img src="{{ brand.mark_url }}" width="24" height="24" alt="{{ titles.get(t.project, t.project) }}">{% else %}<span class="initial" title="{{ titles.get(t.project, t.project) }}">{{ (titles.get(t.project, t.project) or '?')[0]|upper }}</span>{% endif %}
@@ -68,7 +67,7 @@
 
     <div class="card section"><span class="label">Talk (Comments)</span>
       {% if t.section('Comments') %}<div class="md">{{ render(t.section('Comments'))|safe }}</div>{% else %}<p class="muted">No comments.</p>{% endif %}
-      <form method="post" action="/ticket/{{ t.id }}/comment" style="margin-top:10px;display:flex;flex-direction:column;gap:8px">
+      <form class="post-once" method="post" action="/ticket/{{ t.id }}/comment" style="margin-top:10px;display:flex;flex-direction:column;gap:8px">
         <input type="hidden" name="token" value="{{ token() }}">
         <label>Comment<textarea name="text" rows="2"></textarea></label>
         <div class="row"><input type="text" name="who" placeholder="who (default {{ owner }})" style="max-width:200px"><button class="btn" type="submit">Add comment</button></div>
@@ -81,7 +80,7 @@
       <h2 style="margin:0 0 8px">Your call</h2>
       {% if t.status == 'review' %}
       <p style="font-size:14px;color:#4A4A45;margin:0 0 10px">Approving records your exact words, the time and the proof you saw. "Looks good" in a chat doesn't count.</p>
-      <form method="post" action="/ticket/{{ t.id }}/decide" style="display:flex;flex-direction:column;gap:10px">
+      <form class="post-once" method="post" action="/ticket/{{ t.id }}/decide" style="display:flex;flex-direction:column;gap:10px">
         <input type="hidden" name="token" value="{{ token() }}">
         <label>In your words<textarea name="words" rows="3" placeholder="Approve: ship it. Or: send back, because…" required minlength="4"></textarea></label>
         <div class="row">
@@ -92,7 +91,7 @@
       </form>
       {% else %}
       <p class="muted" style="font-size:14px">Approve and Send back appear when the ticket is <b>{{ screen('review') }}</b> (review). It is {{ screen(t.status) }} now.</p>
-      <form method="post" action="/ticket/{{ t.id }}/move" style="display:flex;flex-direction:column;gap:8px">
+      <form class="post-once" method="post" action="/ticket/{{ t.id }}/move" style="display:flex;flex-direction:column;gap:8px">
         <input type="hidden" name="token" value="{{ token() }}">
         <label>Move to
           <select name="to">

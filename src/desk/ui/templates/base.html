@@ -16,16 +16,29 @@
   <span class="home">{{ home }} · owner {{ owner }}</span>
 </header>
 <main>
+{% if notice %}<div class="notice" role="status">{{ notice }}</div>{% endif %}
 {% block body %}{% endblock %}
 </main>
 <footer><a href="/about">About Desk: why it counts proof</a> · <span class="build">{{ build }}</span></footer>
 <script>
 document.addEventListener("submit", function (e) {
   var f = e.target;
-  setTimeout(function () { f.querySelectorAll("button[type=submit],input[type=submit]").forEach(function (b) { b.disabled = true; }); }, 0);
+  if (!f.classList || !f.classList.contains("post-once")) return;
+  if (f.getAttribute("data-sending")) { e.preventDefault(); return; }  // a second click while the request is out does nothing
+  f.setAttribute("data-sending", "1");
+  f.classList.add("sending");
+  setTimeout(function () {
+    f.querySelectorAll("button[type=submit],input[type=submit]").forEach(function (b) {
+      b.disabled = true;
+      if (b.tagName === "BUTTON") { b.setAttribute("data-label", b.textContent); b.textContent = f.classList.contains("chk") ? "..." : "Sending..."; }
+    });
+  }, 0);
 });
 window.addEventListener("pageshow", function () {
-  document.querySelectorAll("button[type=submit]").forEach(function (b) { b.disabled = false; });
+  document.querySelectorAll("form.post-once").forEach(function (f) {
+    f.removeAttribute("data-sending"); f.classList.remove("sending");
+    f.querySelectorAll("button[type=submit]").forEach(function (b) { b.disabled = false; if (b.hasAttribute("data-label")) { b.textContent = b.getAttribute("data-label"); } });
+  });
 });
 </script>
 </body>

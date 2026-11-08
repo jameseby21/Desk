@@ -283,4 +283,4 @@ MIT, copyright JA Insights LLC.
 - A glossary entry that points at a project's own document (`See [text](jeby Real Estate/docs/x.md#lot)`) makes the popover and `[[Term]]` go there instead of defining the term twice.
 - The About page reads `docs/WHY.md` from the repo (`DESK_REPO`, or the store's `desk/` folder). The wheel carries a build-time copy only as a fallback; the source tree has no second copy.
 - Every ticket page, and every `/doc/` page, ends with a "Mentioned in" list of the tickets whose bodies mention that ticket id or that path.
-- Forms (comment, decide, check, move) carry a one-time token and their button disables on click, so a double click cannot post twice; a reused token gets a friendly page and nothing is written.
+- Forms (comment, decide, check, move) carry a one-time token and their button disables on click and reads `Sending...` with a spinner (class `post-once`, one snippet in base.html), so a double click cannot post twice, and the redirect back carries `?done=<kind>` which renders a confirmation line at the top of the page (review-week Approve and Send back included); a reused token gets a friendly page and nothing is written.

@@ -72,7 +72,7 @@ def test_review_line_approve_redirects_back(store):
     assert "Send back" in page and f'action="/ticket/{t.id}/decide"' in page
     r = client.post(f"/ticket/{t.id}/decide", data={"token": client.app.state.tokens.issue(), "action": "approve", "words": "Approve: ship it.", "next": f"/ticket/{rt.id}"},
                     follow_redirects=False)
-    assert r.headers["location"] == f"/ticket/{rt.id}" and store.get(t.id).status == "approved"
+    assert r.headers["location"].startswith(f"/ticket/{rt.id}?done=decide") and store.get(t.id).status == "approved"
 
 
 def _brand_store(store):

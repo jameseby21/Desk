@@ -23,7 +23,7 @@ def test_double_post_yields_one_line(store):
     page = c.get(f"/ticket/{t.id}").text
     tok = _token(page, f"/ticket/{t.id}/comment")
     r1 = c.post(f"/ticket/{t.id}/comment", data={"token": tok, "text": "Hello there"}, follow_redirects=False)
-    assert "ok=comment" in r1.headers["location"]
+    assert "done=comment" in r1.headers["location"]
     r2 = c.post(f"/ticket/{t.id}/comment", data={"token": tok, "text": "Hello there"})
     assert r2.status_code == 409 and "already sent" in r2.text
     assert store.get(t.id).section("Comments").count("Hello there") == 1
@@ -69,3 +69,17 @@ def test_tokens_on_every_state_form_and_missing_token_refused(store):
     assert c.post(f"/ticket/{t.id}/move", data={"to": "triage"}).status_code == 409
     assert store.get(t.id).status == "inbox"
     assert "disabled = true" in page
+
+
+def test_progress_handler_and_confirmation_survive_redirects(store):
+    """DESK-0090: every state-changing form is post-once, base.html swaps in Sending..., and redirects carry ?done=."""
+    t = ops.new(store, "Talk", "jre")
+    c = _client(store)
+    page = c.get(f"/ticket/{t.id}").text
+    assert page.count('class="post-once"') >= 2 and "Sending..." in page and "data-sending" in page
+    assert "post-once" in c.get("/settings").text
+    r = c.post(f"/ticket/{t.id}/comment", data={"token": c.app.state.tokens.issue(), "text": "Hi"}, follow_redirects=True)
+    assert 'role="status"' in r.text and "Comment added" in r.text
+    # review-week style redirect via next=
+    r = c.post(f"/ticket/{t.id}/move", data={"token": c.app.state.tokens.issue(), "to": "triage"}, follow_redirects=False)
+    assert "done=move" in r.headers["location"]

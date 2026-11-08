@@ -3,7 +3,7 @@
 {% block body %}
 <h1>Settings</h1>
 {% if saved %}<p role="status" class="chip ball">Saved</p>{% endif %}
-<form method="post" action="/settings" class="radios">
+<form method="post" action="/settings" class="radios post-once">
   <fieldset style="border:1px solid var(--line);border-radius:14px;max-width:70ch">
     <legend class="label">Style</legend>
     {% for n, d in (("plain", "Plain: the Desk ball, no mascots"), ("dogs", "Dogs: a dog in empty states"), ("cat", "Cat: Soot in empty states")) %}

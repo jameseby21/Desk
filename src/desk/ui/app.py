@@ -68,7 +68,7 @@ def combos_for(tickets, on: dt.date | None = None) -> list[tuple]:
 
 
 MAX_TOKENS = 5000
-_OK_TEXT = {"comment": "Comment added", "decide": "Decision recorded", "check": "Checkbox saved", "move": "Ticket moved"}
+_OK_TEXT = {"comment": "Comment added", "decide": "Decision recorded", "check": "Checkbox saved", "move": "Ticket moved", "attach": "Image attached"}
 _AT = re.compile(r"\d{2}:\d{2}")
 
 
@@ -139,7 +139,9 @@ def create_app(home: Path | None = None) -> FastAPI:
                            resolve=lambda p: docsmod.resolve_for(st, project, p)[0],
                            glossary={} if doc == 'glossary' else gloss, seen=seen)
 
-        return {"render": render, "request": request, "owner": st.owner, "style": styles.load(st.home), "favicon": FAVICON, "home": str(st.home), "today": dt.date.today().isoformat(),
+        qp = request.query_params
+        done_kind = qp.get("done") or qp.get("ok") or ""
+        return {"notice": notice(done_kind, qp.get("at", ""), int(qp.get("dup") or 0) if str(qp.get("dup") or "0").isdigit() else 0), "render": render, "request": request, "owner": st.owner, "style": styles.load(st.home), "favicon": FAVICON, "home": str(st.home), "today": dt.date.today().isoformat(),
                 "titles": {k: st.project_title(k) for k in st.projects()}, **kw}
 
     @app.get("/", response_class=HTMLResponse)
@@ -235,7 +237,7 @@ def create_app(home: Path | None = None) -> FastAPI:
             return HTMLResponse("<p>No such ticket</p>", status_code=404)
 
     @app.get("/ticket/{ticket_id}", response_class=HTMLResponse)
-    def ticket(request: Request, ticket_id: str, error: str | None = None, ok: str = "", at: str = "", dup: int = 0):
+    def ticket(request: Request, ticket_id: str, error: str | None = None):
         s = store()
         try:
             t = s.get(ticket_id)
@@ -249,8 +251,7 @@ def create_app(home: Path | None = None) -> FastAPI:
         mermaid = any(has_mermaid(t.section(name)) for name in t.sections)
         return templates.TemplateResponse(request, "ticket.html", ctx(request, s, t=t, deps=deps, stale=s.is_stale(t), error=error, s=s,
                                                              formerly=s.formerly(t), mermaid=mermaid, mentions=docsmod.mentioned_in(list(by_id.values()), ticket_id=t.id),
-                                                             owning=docsmod.owning_docs(s, t), source_doc=source_doc(s, t),
-                                                             notice=notice(ok, at, dup)))
+                                                             owning=docsmod.owning_docs(s, t), source_doc=source_doc(s, t)))
 
     @app.get("/doc/{path:path}", response_class=HTMLResponse)
     def doc(request: Request, path: str):
@@ -291,7 +292,7 @@ def create_app(home: Path | None = None) -> FastAPI:
         out = f' <a class="rv-open" href="/ticket/{e(tid)}">Open</a>'
         if status == "review":
             for action, label in (("approve", "Approve"), ("changes", "Send back")):
-                out += (f'<form class="rv-form" method="post" action="/ticket/{e(tid)}/decide">'
+                out += (f'<form class="rv-form post-once" method="post" action="/ticket/{e(tid)}/decide">'
                         f'<input type="hidden" name="token" value="{tokens.issue()}"><input type="hidden" name="action" value="{action}"><input type="hidden" name="next" value="/ticket/{e(review_id)}">'
                         f'<input type="text" name="words" placeholder="{"why not" if action == "changes" else "in your words"}" required minlength="4">'
                         f'<button class="btn small" type="submit">{label}</button></form>')
@@ -323,6 +324,8 @@ def create_app(home: Path | None = None) -> FastAPI:
 
     def _back(t_id: str, error: str | None = None, next_: str = "", ok: str = "", dup: bool = False) -> RedirectResponse:
         if next_ and re.fullmatch(r"/ticket/[A-Za-z0-9-]+", next_):
+            if ok and not error:  # review-week actions come back to the review ticket with the same confirmation line
+                return RedirectResponse(f"{next_}?done={ok}&at={dt.datetime.now().strftime('%H:%M')}", status_code=303)
             return RedirectResponse(next_, status_code=303)
         url = f"/ticket/{t_id}"
         if error:
@@ -330,7 +333,7 @@ def create_app(home: Path | None = None) -> FastAPI:
         elif dup:
             url += "?dup=1"
         elif ok:
-            url += f"?ok={ok}&at={dt.datetime.now().strftime('%H:%M')}"
+            url += f"?done={ok}&at={dt.datetime.now().strftime('%H:%M')}"
         return RedirectResponse(url, status_code=303)
 
     def _spent(ticket_id: str) -> HTMLResponse:
