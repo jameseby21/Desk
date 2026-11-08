@@ -13,6 +13,7 @@ from pathlib import Path
 
 from . import review
 from .rules import RuleError, check_transition
+from .secretscan import looks_secret, refusal as secret_refusal
 from .store import Store, join_profile, split_profile
 from .ticket import CLONED_SECTIONS, DEFAULT_SEVERITY, MIN_REASON, SEVERITIES, Ticket, parse_checks, reason_ok, render_check, slugify, today
 
@@ -84,6 +85,8 @@ def decide(store: Store, t: Ticket, approve: bool, reason: str, actor: str | Non
     actor = actor or "main"
     new = "approved" if approve else "changes_requested"
     check_transition(t, new, store, actor=actor, reason=reason)
+    if (what := looks_secret(reason)):  # rule 80: a secret never lands in a ticket
+        raise RuleError(secret_refusal(what))
     t.append_line("Decision", f'{_stamp(actor, new)} · "{reason.strip()}"')
     return move(store, t, new, actor=actor, reason=reason)
 

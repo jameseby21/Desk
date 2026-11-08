@@ -216,3 +216,8 @@ li.task-list-item:focus-visible{outline:3px solid var(--focus);outline-offset:2p
 .dp-float{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:50;pointer-events:none;max-width:calc(100vw - 32px)}
 .dp-float .dp{background:var(--card);border:1.5px solid var(--ink);border-radius:999px;padding:6px 14px;box-shadow:4px 4px 0 var(--ball)}
 .dp-float .dp.settled{display:none}
+/* DESK-0138: the reply box of a question James owns */
+.reply{display:flex;flex-direction:column;gap:10px;margin-top:14px;padding-top:12px;border-top:1px dashed var(--line)}
+.reply .opts{display:flex;flex-direction:column;gap:8px;align-items:flex-start}.reply .opts .btn{text-align:left;white-space:normal;max-width:100%}
+.reply .note{font-size:12.5px}
+.vh{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}

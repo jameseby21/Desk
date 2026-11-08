@@ -19,7 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from .. import timing
-from .. import buildstamp as bs, docs as docsmod, ops, profanity, review as rv, style as styles, tracks as trk, version as ver
+from .. import asks, buildstamp as bs, docs as docsmod, ops, profanity, review as rv, style as styles, tracks as trk, version as ver
 from ..config import find_home
 from ..rules import RuleError
 from ..store import Store, id_parts, split_profile
@@ -391,7 +391,13 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         mermaid = any(has_mermaid(t.section(name)) for name in t.sections)
         return templates.TemplateResponse(request, "ticket.html", ctx(request, s, t=t, deps=deps, stale=s.is_stale(t), error=error, s=s,
                                                              formerly=s.formerly(t), mermaid=mermaid, mentions=docsmod.mentioned_in(list(by_id.values()), ticket_id=t.id),
-                                                             owning=docsmod.owning_docs(s, t), source_doc=source_doc(s, t), acc_lines=[(i + 1, c.text) for i, c in enumerate(parse_checks(t.section("Acceptance")))], dod=dod_view(s, t), events_url=f"/events/{t.id}", events_since=ev.ticket_stamp(s, t.id)))
+                                                             owning=docsmod.owning_docs(s, t), source_doc=source_doc(s, t), acc_lines=[(i + 1, c.text) for i, c in enumerate(parse_checks(t.section("Acceptance")))], dod=dod_view(s, t), reply_ask=reply_ask(s, t), events_url=f"/events/{t.id}", events_since=ev.ticket_stamp(s, t.id)))
+
+    def reply_ask(s: Store, t) -> dict | None:
+        """The question to draw a reply box for: a decision ticket the store's owner holds, waiting for the answer (ready, or in review)."""
+        if str(t.meta.get("owner") or "").lower() != s.owner.lower() or t.status not in ("ready", "review"):
+            return None
+        return asks.ask_of(t)
 
     @app.get("/doc/{path:path}", response_class=HTMLResponse)
     def doc(request: Request, path: str):
@@ -506,14 +512,31 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
             f"Nothing more was written.</p><p><a href=\"/ticket/{e}\">Back to {e}</a></p></body>", status_code=409)
 
     @app.post("/ticket/{ticket_id}/decide")
-    def post_decide(request: Request, ticket_id: str, action: str = Form(...), words: str = Form(""), next: str = Form(""), token: str = Form("")):
-        """Approve or send back. A form post redirects; with `Accept: application/json` the reply is `{ok, message}` (or `{error, token}`)."""
+    def post_decide(request: Request, ticket_id: str, action: str = Form(""), words: str = Form(""), next: str = Form(""), token: str = Form(""),
+                    option: str = Form(""), who: str = Form(""), reply: str = Form("")):
+        """Approve or send back. A form post redirects; with `Accept: application/json` the reply is `{ok, message}` (or `{error, token}`).
+        The reply box of a decision ticket (DESK-0138) sends `reply=1`, `who` (the person answering) and, for a choose, `option` (the
+        index of the option picked); only the store's owner may answer, and only a ticket that owner holds."""
         js = wants_json(request)
         if not tokens.use(token):
             return refused("That form was already sent; reload the page.", 409) if js else _spent(ticket_id)
         s = store()
+        if who.strip() and who.strip().lower() != s.owner.lower():
+            msg = f"Only {s.owner} answers here. Nothing was recorded."
+            return refused(msg, 403) if js else HTMLResponse(f"<p>{html.escape(msg)}</p>", status_code=403)
         try:
             t = s.get(ticket_id)
+            if reply:
+                ask = asks.ask_of(t)
+                if str(t.meta.get("owner") or "").lower() != s.owner.lower():
+                    msg = f"{t.id} is not owned by {s.owner}, so it is not yours to answer here. Nothing was recorded."
+                    return refused(msg, 403) if js else HTMLResponse(f"<p>{html.escape(msg)}</p>", status_code=403)
+                if ask is None:
+                    raise ValueError(f"{t.id} is not a question. Use Approve or Send back, or Move.")
+                words = asks.words_for(ask, option, words)
+            action = action or ("approve" if reply else "")
+            if action not in ("approve", "changes"):
+                raise ValueError("Pick Approve or Send back.")
             s.sync_before()
             ops.decide(s, t, approve=(action == "approve"), reason=words, actor=s.owner)
             s.sync_after(f"desk: decide {t.id}")

@@ -72,7 +72,26 @@
       {% if mentions %}<ul class="mentions">{% for m in mentions %}<li><a class="tid" href="/ticket/{{ m.id }}" data-status="{{ m.status }}">{{ m.id }}</a> {{ m.meta.get('title') }}</li>{% endfor %}</ul>{% else %}<p class="muted">No other ticket mentions {{ t.id }}.</p>{% endif %}</div>
 
     <div class="card section" id="decision"><span class="label">Decision</span>
-      {% if t.section('Decision') %}<div class="md">{{ render(t.section('Decision'))|safe }}</div>{% else %}<p class="muted">Nothing decided yet.</p>{% endif %}</div>
+      {% if t.section('Decision') %}<div class="md">{{ render(t.section('Decision'))|safe }}</div>{% else %}<p class="muted">Nothing decided yet.</p>{% endif %}
+      {% if reply_ask %}{% set ask = reply_ask %}
+      <form class="post-once reply" id="reply" method="post" action="/ticket/{{ t.id }}/decide" data-inplace="refresh" data-progress="Sending,Saving,Done">
+        <input type="hidden" name="token" value="{{ token() }}"><input type="hidden" name="reply" value="1"><input type="hidden" name="who" value="{{ owner }}">
+        <span class="label">Your answer, as {{ owner }}</span>
+        {% if ask.kind == 'choose' %}
+        <button class="vh" type="submit" name="option" value="" tabindex="-1" aria-hidden="true">Send my words</button>
+        <div class="opts" role="group" aria-label="Options">{% for label, text in ask.options %}<button class="btn" type="submit" name="option" value="{{ loop.index0 }}">{% if label != text %}<b>{{ label }}</b> {% endif %}{{ text }}</button>{% endfor %}</div>
+        <label>Or in your own words (a picked option also records this line)<input type="text" name="words" maxlength="1000" placeholder="Option C, but only for the free tier"></label>
+        <span class="muted note">Picking an option records it and closes the question. To send only your words, press Enter in the box.</span>
+        {% elif ask.kind == 'approve' %}
+        <label>Why<textarea name="words" rows="2" required minlength="4" placeholder="Approve: yes, as written. Or: send back, because..."></textarea></label>
+        <div class="row"><button class="btn ball" type="submit" name="action" value="approve">Approve</button><button class="btn" type="submit" name="action" value="changes">Send back</button><span class="dp-slot"></span></div>
+        {% else %}
+        <label>{{ 'What you are providing' if ask.kind == 'provide' else 'Your answer' }}<textarea name="words" rows="3" required minlength="4" placeholder="{{ 'The thing asked for, or where it lives (never a password or key)' if ask.kind == 'provide' else 'Your answer, in your words' }}"></textarea></label>
+        <div class="row"><button class="btn ball" type="submit" name="action" value="approve">{{ 'Send it' if ask.kind == 'provide' else 'Send answer' }}</button><span class="dp-slot"></span></div>
+        {% endif %}
+        <span class="muted note">Recorded in the Decision section in your words and the ticket moves. Passwords and keys are refused.</span>
+      </form>
+      {% endif %}</div>
 
     <div class="card section" id="comments"><span class="label">Talk (Comments)</span>
       <div class="md" data-comments>{% if t.section('Comments') %}{{ comments_html(t.section('Comments'))|safe }}{% else %}<p class="muted">No comments.</p>{% endif %}</div>

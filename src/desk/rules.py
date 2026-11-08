@@ -214,7 +214,10 @@ def check_transition(t: Ticket, new: str, store: "Store", *, actor: str | None =
         return
     if cur == "blocked":
         raise RuleError(f"{t.id} is blocked; use `desk unblock` first")
-    if new not in ALLOWED.get(cur, set()):
+    allowed = ALLOWED.get(cur, set())
+    if canon_type(t.meta.get("type")) == "decision" and cur == "ready":
+        allowed = allowed | {"approved", "changes_requested"}  # a decision ticket is answered where it stands; nothing is built, so no review step
+    if new not in allowed:
         raise RuleError(f"{t.id}: {cur} → {new} is not an allowed move")
     if new == "ready" and str(t.meta.get("owner")) not in OWNER_ROLES and (actor or "") not in OWNER_ROLES:
         raise RuleError("Only main or the owner throws a ticket into `ready`.")
