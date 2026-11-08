@@ -1,5 +1,7 @@
 # Desk
 
+**Why Desk exists and what it does differently: [docs/WHY.md](docs/WHY.md).**
+
 Tickets as Markdown files in your own git repo. A command line for people and AI agents, a small web UI for the owner. Nothing closes without proof, approval is the owner's own words, and every change is a reviewable diff.
 
 Desk is a lens on your files, not a landlord: the store is a plain directory you can read, grep and commit without Desk installed.
