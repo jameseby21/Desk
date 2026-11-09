@@ -4,7 +4,7 @@
 (function () {
   "use strict";
   var box = document.getElementById("search-open");
-  var dlg, input, list, status, items = [], at = -1, timer = null, seq = 0, opener = null;
+  var dlg, input, list, status, items = [], at = -1, timer = null, seq = 0, opener = null, giving = false;
   function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
   function mark(s) { return esc(s).replace(/\[/g, "<mark>").replace(/\]/g, "</mark>"); }
   function build() {
@@ -25,12 +25,20 @@
     });
   }
   function open(seed) {
-    build(); opener = document.activeElement; dlg.hidden = false; document.body.classList.add("pal-open");
+    build(); if (!dlg.hidden) return;  // already open: a second open (focus then click on the box) changes nothing
+    opener = document.activeElement; dlg.hidden = false; document.body.classList.add("pal-open");
     if (seed != null) input.value = seed;
     input.focus(); input.select();
     if (input.value.trim()) run();
   }
-  function close() { if (!dlg) return; dlg.hidden = true; document.body.classList.remove("pal-open"); if (opener && opener.focus) opener.focus(); }
+  /* Closing gives focus back to what had it. The header box opens the palette when it gets focus, so the hand-back must not count as
+     a person focusing it: without `giving` the palette reopened at once and Esc seemed to do nothing (DESK-0206). */
+  function close() {
+    if (!dlg || dlg.hidden) return;
+    dlg.hidden = true; document.body.classList.remove("pal-open");
+    if (opener && opener.focus && document.contains(opener)) { giving = true; try { opener.focus(); } finally { giving = false; } }
+    opener = null;
+  }
   function pick(n) {
     if (!items.length) return;
     at = (n + items.length) % items.length;
@@ -61,9 +69,13 @@
   }
   document.addEventListener("keydown", function (e) {
     var k = (e.key || "").toLowerCase();
+    if (k === "escape" && dlg && !dlg.hidden) { e.preventDefault(); close(); return; }  // from the input, a result, or anywhere in the page
     if ((e.ctrlKey || e.metaKey) && k === "k") { e.preventDefault(); if (dlg && !dlg.hidden) close(); else open(); return; }
     var el = e.target;
     if (k === "/" && !e.ctrlKey && !e.metaKey && !e.altKey && !(el && (/^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName) || el.isContentEditable))) { e.preventDefault(); open(); }
   });
-  if (box) box.addEventListener("focus", function () { open(box.value); box.blur(); });
+  if (box) {
+    box.addEventListener("focus", function () { if (!giving) open(box.value); });
+    box.addEventListener("click", function () { open(box.value); });  // the box may already have focus after Esc
+  }
 })();

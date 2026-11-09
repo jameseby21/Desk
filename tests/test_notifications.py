@@ -216,3 +216,26 @@ def test_system_notification_is_off_until_one_click_on_allow_then_raised_with_th
     assert got["before"] == "Notify me" and got["raisedBeforeAllow"] == 0 and got["popups"] == 1, got
     assert got["asked"] == 1 and got["after"] == "Alerts on" and got["stored"] == "1", got
     assert got["raised"] == [{"t": "DESK-0002 Ticket 2", "b": "Chaz moved to review"}], got
+
+
+PHONE = """(async function(){
+ var fr=document.createElement('iframe');fr.src='/';fr.style.cssText='width:390px;height:900px;border:0';document.body.appendChild(fr);
+ for(var i=0;i<100&&!(fr.contentWindow&&fr.contentWindow.DeskNotify&&fr.contentDocument.getElementById('toasts'));i++){await sleep(100);}
+ var w=fr.contentWindow,d=fr.contentDocument;await sleep(400);await w.DeskNotify.poll();await w.DeskNotify.poll();await sleep(300);
+ var inside=function(e){var r=e.getBoundingClientRect();return r.left>=-0.5&&r.right<=w.innerWidth+0.5&&r.width>0;};
+ var toasts=Array.prototype.slice.call(d.querySelectorAll('#toasts .toast')),btns=Array.prototype.slice.call(d.querySelectorAll('.notify-ctl button')).filter(function(b){return !b.hidden;});
+ var out={width:w.innerWidth,scrollW:d.documentElement.scrollWidth,toasts:toasts.length,toastsOutside:toasts.filter(function(e){return !inside(e);}).length,
+  buttons:btns.length,buttonsOutside:btns.filter(function(e){return !inside(e);}).length,
+  small:Array.prototype.filter.call(d.querySelectorAll('#toasts *, .notify-ctl *'),function(e){return e.children.length===0&&e.textContent.trim()&&parseFloat(w.getComputedStyle(e).fontSize)<12;}).length,
+  dismissH:Math.min.apply(null,toasts.map(function(t){var x=t.querySelector('.toast-x');return x?x.getBoundingClientRect().height:99;}))};
+ fetch('/m',{method:'POST',body:JSON.stringify(out)});})();"""
+
+
+@pytest.mark.skipif(browser() is None, reason="no Edge or Chrome installed")
+def test_popups_and_the_two_header_buttons_fit_a_390_px_phone(store):
+    """Protects: DESK-0192 acceptance line 4: at 390 px the popups and the Notify me and Mute buttons stay inside the window, no page
+    scrolls sideways, and no text is under 12 px."""
+    got = _run(store, PHONE, [_items(5)])
+    assert got["width"] == 390 and got["scrollW"] <= 390, got
+    assert got["toasts"] == 4 and got["toastsOutside"] == 0, got  # three popups and the 'N earlier' fold
+    assert got["buttons"] == 2 and got["buttonsOutside"] == 0 and got["small"] == 0 and got["dismissH"] >= 28, got
