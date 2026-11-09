@@ -32,6 +32,7 @@ A store is any directory with a `desk.toml`. Desk finds it in this order: the `-
   desk.toml              # owner, delegation, git sync, stale window, combos
   tickets/               # one file per ticket: KEY-0001-slug.md
   tickets/assets/<ID>/   # attachments and screen snaps for one ticket
+  events/<ID>.jsonl      # the ticket's activity log: one event per change, append-only, committed (DESK-0162)
   projects/<key>.md      # one profile per project; a ticket's project must exist here
   intake/<date>-<topic>/ # research hand-offs, copied in by `desk intake`
   tracks/<project>/<slug>.md  # optional track descriptions (title, kind sprint|milestone|epic|theme, starts, ends, goal)
