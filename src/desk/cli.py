@@ -916,6 +916,26 @@ def cmd_migrate_events(args):
         print(f"Wrote {wrote:,} events to {nt:,} {tk}. Running it again adds nothing.")
 
 
+def cmd_history(args):
+    """DESK-0171: a ticket's timeline in the terminal: the latest change, then every event newest first; --by groups and --filter narrows."""
+    from . import timeline
+
+    s = _store(args)
+    try:
+        t = s.get(args.id)
+    except KeyError as e:
+        _die(str(e).strip("'"))
+    try:
+        filters = timeline.parse_filters(args.filter or [])
+    except ValueError as e:
+        _die(str(e))
+    view = timeline.view(s, t, filters=filters)
+    if args.json:
+        print(json.dumps([r.as_json() for r in view.shown], indent=2, ensure_ascii=False))
+        return
+    print(timeline.text(view, by=args.by, colour=sys.stdout.isatty()))
+
+
 def cmd_migrate_assignee(args):
     """DESK-0168: fill blank assignees from the rules. Blank is James's "not yet scanned" marker, so --apply is run only when he says."""
     from . import assign_rules as ar, people
@@ -1158,6 +1178,13 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--rules", help="rules file (default tracks/rules.yaml in the store)")
     sp.set_defaults(fn=cmd_migrate)
 
+    sp = sub.add_parser("history", help="a ticket's timeline from its activity log: the latest change, then every event newest first (who, kind, where from, what, when); --by groups by a dimension, --filter key=value narrows (repeat it; a,b means either)")
+    sp.add_argument("id")
+    sp.add_argument("--by", choices=["actor", "kind", "source", "project", "company", "track", "sprint", "field"], help="group the events by this dimension, with counts")
+    sp.add_argument("--filter", action="append", metavar="KEY=VALUE", help="keep only events where KEY (actor, kind, source, project, company, track, sprint, field) is VALUE")
+    sp.add_argument("--json", action="store_true", help="the events shown, as JSON")
+    sp.set_defaults(fn=cmd_history)
+
     sp = sub.add_parser("home", help="print the resolved store path")
     sp.set_defaults(fn=cmd_home)
 
@@ -1368,7 +1395,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 READ_ONLY = {"list", "show", "search", "validate", "board", "stats", "doctor", "bench", "home", "index", "people", "assign-rules", "dispatch", "next",
-             "outbox", "whoami", "stop", "refresh", "init", "upgrade", "sync", "brand-check"}
+             "outbox", "whoami", "stop", "refresh", "init", "upgrade", "sync", "brand-check", "history"}
 
 
 def _identify(args):
