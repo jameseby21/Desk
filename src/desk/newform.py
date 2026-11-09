@@ -9,13 +9,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from . import assign_rules, people as peoplemod, sprints as sprintmod, tracks as trk
+from . import assign_rules, deadlines, people as peoplemod, sprints as sprintmod, tracks as trk
 from .rules import RuleError
 from .store import Store
 from .ticket import PRIORITIES, SIZES, TYPE_HELP, TYPES, Ticket
 
 # What the form posts. Every key is optional on the wire; `check` says which ones a ticket cannot do without.
-KEYS = ("project", "title", "type", "priority", "size", "owner", "assignee", "associated", "track", "sprint", "context", "outcome", "acceptance", "steps")
+KEYS = ("project", "title", "type", "priority", "size", "owner", "assignee", "associated", "track", "sprint", "deadline", "deadline_kind", "context", "outcome", "acceptance", "steps")
 SAY = {
     "project": "Pick the project this ticket belongs to.",
     "title": "Give the ticket a title, a few words with the ask first (Approve, Choose, Fix, Add).",
@@ -95,6 +95,13 @@ def check(store: Store, values: dict) -> dict[str, str]:
             errors["associated"] = f"{who} is not in the people list. Pick someone from the list."
     if v["sprint"] and sprintmod.norm(v["sprint"]) not in sprintmod.names(store):
         errors["sprint"] = f"There is no sprint called {v['sprint']}. Pick one from the list, or leave it empty."
+    if v["deadline"]:
+        try:
+            deadlines.parse_arg(v["deadline"])
+        except ValueError as e:
+            errors["deadline"] = str(e)
+    if v["deadline_kind"] and v["deadline_kind"] not in deadlines.KINDS:
+        errors["deadline_kind"] = "Kind of deadline is hard, soft or sprint."
     if not lines(v["acceptance"]):
         errors["acceptance"] = SAY["acceptance"]
     return errors
@@ -113,6 +120,9 @@ def build(store: Store, values: dict, creator: str) -> Ticket:
         t.meta["track"] = v["track"]
     if v["sprint"]:
         t.meta["sprint"] = next((s.name for s in sprintmod.load(store.home) if sprintmod.norm(s.name) == sprintmod.norm(v["sprint"])), v["sprint"])
+    if v["deadline"]:
+        t.meta["deadline"] = deadlines.parse_arg(v["deadline"]).isoformat()
+        t.meta["deadline_kind"] = v["deadline_kind"] or "hard"
     if v["context"]:
         t.sections["Context"] = v["context"] + "\n"
     if v["outcome"]:

@@ -6,7 +6,7 @@ import datetime as dt
 import re
 from typing import TYPE_CHECKING
 
-from . import commands, ladder, people
+from . import commands, deadlines, ladder, people
 from .store import id_parts
 from .ticket import CLOSED, ID_LISTS_LOOSE, ID_LISTS_STRICT, PRIORITIES, REQUIRED, LEGACY_TYPES, SIZES, STATUSES, TYPES, Ticket, canon_type, parse_checks, validate_steps
 
@@ -82,6 +82,14 @@ def validate_ticket(t: Ticket, store: "Store", known_ids: set[str] | None = None
     for field_ in ("created", "updated", "review_by"):
         if m.get(field_) not in (None, "") and not _date_ok(m[field_]):
             errors.append(f"{where}: {field_} must be a YYYY-MM-DD date")
+    if m.get("deadline") not in (None, "") and not _date_ok(m["deadline"]):
+        errors.append(f"{where}: deadline must be a YYYY-MM-DD date")
+    if m.get("deadline_kind") not in (None, "") and m["deadline_kind"] not in deadlines.KINDS:
+        errors.append(f"{where}: deadline_kind `{m['deadline_kind']}` is not one of {', '.join(deadlines.KINDS)}")
+    if m.get("deadline") not in (None, "") and m.get("deadline_kind") in (None, ""):
+        errors.append(f"{where}: deadline needs deadline_kind ({', '.join(deadlines.KINDS)}); `drew deadline {where} DATE --hard` sets both")
+    if m.get("deadline_kind") not in (None, "") and m.get("deadline") in (None, ""):
+        errors.append(f"{where}: deadline_kind is set but deadline is not")
     for field_ in ("depends_on", "blocks", "related", "docs_to_update", "dod"):
         if field_ in m and m[field_] is not None and not isinstance(m[field_], list):
             errors.append(f"{where}: {field_} must be a list")

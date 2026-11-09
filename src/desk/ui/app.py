@@ -20,7 +20,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from .. import timing
-from .. import newform, notify, asks, boardfilter as bf, boardview as bv, commands, companies as compmod, identity as idmod, ladder, sprints as sprintmod, todayview as tv, people as peoplemod, search as srch, nav as navmod, buildstamp as bs, comments as cm, docs as docsmod, ops, profanity, review as rv, style as styles, tracks as trk, version as ver
+from .. import deadlines, newform, notify, asks, boardfilter as bf, boardview as bv, commands, companies as compmod, identity as idmod, ladder, sprints as sprintmod, todayview as tv, people as peoplemod, search as srch, nav as navmod, buildstamp as bs, comments as cm, docs as docsmod, ops, profanity, review as rv, style as styles, tracks as trk, version as ver
 from ..config import find_home
 from ..rules import RuleError
 from ..store import Store, id_parts, split_profile
@@ -218,7 +218,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
     templates = Jinja2Templates(directory=str(TEMPLATES))
     templates.TemplateResponse = timing.timed_render(templates.TemplateResponse)
     mermaid_src = "/static/mermaid.min.js" if (STATIC / "mermaid.min.js").exists() else MERMAID_CDN
-    templates.env.globals.update(ladder=ladder.shape, cmds=commands.parse, screen=lambda st: words.screen(st, shown["style"]), heading=lambda key: words.heading(key, shown["style"]), md=md_html, has_mermaid=has_mermaid, statuses=STATUSES,
+    templates.env.globals.update(deadline_of=lambda t: (lambda d, k: (k, d.isoformat(), deadlines.words(deadlines.days_left(t)), deadlines.days_left(t) < 0) if d else None)(*deadlines.of(t)), ladder=ladder.shape, cmds=commands.parse, screen=lambda st: words.screen(st, shown["style"]), heading=lambda key: words.heading(key, shown["style"]), md=md_html, has_mermaid=has_mermaid, statuses=STATUSES,
                                  sections=SECTIONS, mermaid_src=mermaid_src, by_project=by_project, token=tokens.issue, check_summary=lambda text: Markup(summary_html(text)), track_slug=trk.track_slug, track_of=trk.track_of,
                                  build=ver.describe(), who=who_html, person=person_name, sprint_slug=lambda n: sprintmod.slugify(str(n), 60), ask_badge=lambda t: ((asks.ask_of(t) or {}).get("kind") or "").capitalize(),
                                  card_extra=lambda t, st: [x for x in [str(t.meta.get("type") or "")] + ([words.screen("stale")] if st.is_stale(t) else []) + [f"#{x}" for x in t.tags] if x],
@@ -469,13 +469,13 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
     @app.post("/new")
     def post_new_ticket(request: Request, token: str = Form(""), project: str = Form(""), title: str = Form(""), type: str = Form(""), priority: str = Form(""),
                         size: str = Form(""), owner: str = Form(""), assignee: str = Form(""), associated: list[str] = Form([]), track: str = Form(""),
-                        sprint: str = Form(""), context: str = Form(""), outcome: str = Form(""), acceptance: str = Form(""), steps: str = Form("")):
+                        sprint: str = Form(""), deadline: str = Form(""), deadline_kind: str = Form(""), context: str = Form(""), outcome: str = Form(""), acceptance: str = Form(""), steps: str = Form("")):
         """Create a ticket from the form. Nothing is written unless every check passes. With `Accept: application/json` the reply is
         `{ok, id, url, message}` or `{error, errors, token}` (a fresh one-time key); a plain form post redirects to the new ticket or draws the form again."""
         js = "application/json" in request.headers.get("accept", "")
         s = store()
         v = {"project": project, "title": title, "type": type, "priority": priority, "size": size, "owner": owner, "assignee": assignee, "associated": associated,
-             "track": track, "sprint": sprint, "context": context, "outcome": outcome, "acceptance": acceptance, "steps": steps}
+             "track": track, "sprint": sprint, "deadline": deadline, "deadline_kind": deadline_kind, "context": context, "outcome": outcome, "acceptance": acceptance, "steps": steps}
         if not tokens.valid(token):
             msg = "That form was already sent, so no second ticket was made. Open Today to find it, or reload this page for a fresh form."
             return JSONResponse({"error": msg, "errors": {"form": msg}, "token": tokens.issue()}, status_code=409) if js else new_form_page(request, s, v, {"form": msg}, 409)

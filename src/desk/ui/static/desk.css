@@ -323,6 +323,9 @@ header .actas select{font:inherit;padding:3px 6px}
 .badge{display:inline-block;margin-right:8px;padding:2px 7px;border-radius:6px;font:700 12px var(--font-body);vertical-align:1px}.badge.bug{background:var(--red);color:var(--on-red)}.badge.urgent{background:var(--ball);color:#141414}
 .fold{margin:10px 0}.fold>summary{cursor:pointer;color:var(--muted);padding:6px 0}.fold>summary b{color:var(--ink)}
 .t-sec .asked{margin-top:12px}
+/* Immediate Action Required (DESK-0193): the top row of Today; red while any hard deadline is missed */
+.imm{margin-top:18px}.imm-empty{margin:0;font-size:14px}.imm .rows{border-color:var(--ink)}.imm-when{font-weight:700;color:var(--ink)}
+.imm-missed .rows{border:1.5px solid var(--red)}.imm-missed h2{color:var(--red)}.imm-row.late{background:#FBF6F6}.imm-row.late .imm-when{color:var(--red)}
 @media (max-width:700px){.trow{grid-template-columns:minmax(0,1fr);gap:2px}.tr-title{white-space:normal}}
 /* Board filters as three searchable dropdowns (DESK-0034) */
 .filters{gap:10px;align-items:center;margin:12px 0 4px;position:relative}

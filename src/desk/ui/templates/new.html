@@ -32,6 +32,10 @@
       <input type="text" name="track" id="f-track" value="{{ v.track }}" list="tracks" autocomplete="off"><datalist id="tracks">{% for tr in opt.tracks %}<option value="{{ tr }}">{% endfor %}</datalist>{{ err('track') }}</label>
     <label>Sprint <span class="muted">(optional)</span>
       <select name="sprint" id="f-sprint"><option value="">No sprint</option>{% for sp in opt.sprints %}<option value="{{ sp }}"{% if v.sprint == sp %} selected{% endif %}>{{ sp }}</option>{% endfor %}</select>{{ err('sprint') }}</label>
+    <label>Deadline <span class="muted">(optional date)</span>
+      <input type="date" name="deadline" id="f-deadline" value="{{ v.deadline }}">{{ err('deadline') }}</label>
+    <label>Kind of deadline <span class="muted">(only a hard one shows in Immediate Action Required)</span>
+      <select name="deadline_kind" id="f-deadline_kind">{% for k, label in (('hard', 'Hard: it cannot move'), ('soft', 'Soft: a date to aim for'), ('sprint', 'Sprint: the sprint end')) %}<option value="{{ k }}"{% if (v.deadline_kind or 'hard') == k %} selected{% endif %}>{{ label }}</option>{% endfor %}</select>{{ err('deadline_kind') }}</label>
     <label class="nf-wide">Context <span class="muted">(why this ticket exists, in a sentence or two)</span>
       <textarea name="context" id="f-context" rows="3">{{ v.context }}</textarea>{{ err('context') }}</label>
     <label class="nf-wide">Outcome <span class="muted">(what is true when it is done)</span>

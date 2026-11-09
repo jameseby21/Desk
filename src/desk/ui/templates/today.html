@@ -2,6 +2,13 @@
 {% from "_row.html" import row, dropdown with context %}
 {% from "_mascot.html" import empty %}
 {% block title %}Desk · Today{% endblock %}
+{% macro imm_row(t) -%}
+<a class="imm-row trow{% if v.missed(t) %} late{% endif %}" href="/ticket/{{ t.id }}">
+  <span class="tr-lead imm-when">{{ v.days_text(t) }}</span>
+  <span class="tr-title">{{ t.meta.get('title') }}</span>
+  <span class="tr-id">{{ who(t.meta.get('owner')) }} · {% set pl = placeof(t) %}{{ pl[0] }} › {{ pl[1] }}</span>
+</a>
+{%- endmacro %}
 {% block body %}
 <div class="row t-head">
   <div>
@@ -21,6 +28,14 @@
   </div>
 </div>
 {% if review_line %}<p class="muted" style="margin:10px 0 0"><span class="label">Ticket review</span> <a href="/ticket/{{ review_line[0].id }}">{{ review_line[0].meta.get('title') }}</a> · {{ review_line[1] }} waiting</p>{% endif %}
+
+<section id="immediate" class="t-sec imm{% if v.imm_missed %} imm-missed{% endif %}" aria-label="Immediate Action Required">
+  {% if v.imm %}
+  <h2>Immediate Action Required <small>{% if v.imm_missed %}A hard deadline has passed{% else %}Hard deadlines in the next {{ v.window }} days, soonest first{% endif %}</small></h2>
+  <div class="rows">{% for t in v.imm_shown %}{{ imm_row(t) }}{% endfor %}</div>
+  {% if v.imm_more %}<details class="fold"><summary>{{ v.imm_more|length }} more · <b>Show</b></summary><div class="rows">{% for t in v.imm_more %}{{ imm_row(t) }}{% endfor %}</div></details>{% endif %}
+  {% else %}<p class="muted imm-empty">Nothing has a hard deadline in the next {{ v.window }} days.</p>{% endif %}
+</section>
 
 <section class="t-sec" id="needs-you">
   <h2>{{ heading('needs') }} <small>Answer these and the rest can move</small></h2>

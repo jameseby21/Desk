@@ -8,7 +8,7 @@ import json
 import sys
 from pathlib import Path
 
-from . import accept_migrate, check_migrate, commands_migrate, nav, ops, profanity, retype, review as rv, style as styles, tests_migrate, tracks as trk, version as ver
+from . import accept_migrate, check_migrate, commands_migrate, deadlines, nav, ops, profanity, retype, review as rv, style as styles, tests_migrate, tracks as trk, version as ver
 from .config import HomeNotFound, find_home
 from .rules import RuleError, validate_store
 from .store import Store
@@ -67,6 +67,8 @@ def cmd_new(args):
     dod = [x.strip() for x in (args.dod or "core").split(",") if x.strip()]
     try:
         t = ops.new(s, args.title, args.project, args.type, priority=args.priority, size=args.size, owner=args.owner, dod=dod, source=args.source or "", assignee=args.assignee)
+        if args.deadline:
+            deadlines.set_deadline(s, t, deadlines.parse_arg(args.deadline), args.deadline_kind, args.as_ or "main")
     except (RuleError, ValueError) as e:
         _die(str(e))
     if not args.assignee:
@@ -98,6 +100,19 @@ def cmd_list(args):
     s = _store(args)
     who = people.load(s.home)
     rows = []
+    due = None
+    if args.due is not None:
+        due = deadlines.immediate(s.tickets(), days=args.due)  # the same set as Today's Immediate Action Required row, soonest first
+        if not due:
+            print(f"No hard deadline within {args.due} days, and none missed.")
+            return
+        for t in due:
+            if args.project and t.project != args.project:
+                continue
+            rows.append([_id_label(s, t), t.project, deadlines.of(t)[0].isoformat(), deadlines.words(deadlines.days_left(t)), t.status, t.meta.get("priority", ""),
+                         str(t.meta.get("owner", "")), str(t.meta.get("title", ""))[:60]])
+        print(_table(rows, ["id", "project", "deadline", "when", "status", "pri", "owner", "title"]) if rows else "No tickets match.")
+        return
     for t in _by_project(s.tickets()):
         stale = s.is_stale(t)
         if args.project and t.project != args.project:
@@ -501,6 +516,26 @@ def cmd_repeats(args):
                 s.save(t)
                 print(f"{t.id} -> p0, emergency")
         s.sync_after("desk: repeats --apply")
+
+
+def cmd_deadline(args):
+    """DESK-0193: set or clear a ticket's deadline and its kind."""
+    s = _store(args)
+    s.sync_before()
+    try:
+        t = s.get(args.id)
+        if args.clear:
+            deadlines.set_deadline(s, t, None, "", args.as_ or "main")
+            print(f"{t.id}: deadline cleared")
+        else:
+            if not args.date or not args.kind:
+                _die("Give a date and one of --hard, --soft or --sprint, for example: drew deadline DESK-0193 2026-11-12 --hard")
+            d = deadlines.parse_arg(args.date)
+            deadlines.set_deadline(s, t, d, args.kind, args.as_ or "main")
+            print(f"{t.id}: deadline {d.isoformat()} ({args.kind}), {deadlines.words(deadlines.days_left(t))}")
+    except (KeyError, RuleError, ValueError) as e:
+        _die(str(e).strip("'"))
+    s.sync_after(f"desk: deadline {t.id}")
 
 
 def cmd_refine(args):
@@ -1141,6 +1176,9 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--dod", help="comma-separated Definition of Done modules (default core)")
     sp.add_argument("--source", help="path#section into intake/")
     sp.add_argument("--assignee", help="who will execute it: main, james, codex, a project key, or any name")
+    sp.add_argument("--deadline", metavar="YYYY-MM-DD", help="a date the ticket must not slip past (see `drew deadline`)")
+    sp.add_argument("--deadline-kind", default="hard", choices=deadlines.KINDS, help="with --deadline: hard (default), soft or sprint")
+    actor(sp)
     sp.set_defaults(fn=cmd_new)
 
     sp = sub.add_parser("list", help="table of tickets (open ones unless --all or --status)")
@@ -1150,8 +1188,20 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--assignee", help="only tickets assigned to this name")
     sp.add_argument("--sprint", help="only tickets in this sprint")
     sp.add_argument("--stale", action="store_true", help="only tickets untouched past the stale window")
+    sp.add_argument("--due", type=int, metavar="DAYS", help="open tickets with a hard deadline within DAYS days or already missed, soonest first (what Today's Immediate Action Required row shows)")
     sp.add_argument("--all", action="store_true")
     sp.set_defaults(fn=cmd_list)
+
+    sp = sub.add_parser("deadline", help="set a ticket's deadline: `drew deadline ID 2026-11-12 --hard` (or --soft, --sprint); `drew deadline ID --clear` removes it. Only a hard deadline reaches Today's Immediate Action Required row")
+    sp.add_argument("id")
+    sp.add_argument("date", nargs="?", metavar="YYYY-MM-DD")
+    kind = sp.add_mutually_exclusive_group()
+    kind.add_argument("--hard", action="store_const", const="hard", dest="kind", help="a date that cannot move")
+    kind.add_argument("--soft", action="store_const", const="soft", dest="kind", help="a date to aim for")
+    kind.add_argument("--sprint", action="store_const", const="sprint", dest="kind", help="the sprint's end")
+    sp.add_argument("--clear", action="store_true", help="remove the deadline")
+    actor(sp)
+    sp.set_defaults(fn=cmd_deadline)
 
     sp = sub.add_parser("next", help="the highest-priority ready ticket, printed in full")
     sp.add_argument("--project")

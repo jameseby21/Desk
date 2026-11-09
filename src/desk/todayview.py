@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import datetime as dt
 
-from . import asks, ops
+from . import asks, deadlines, ops
 from .store import Store
 from .ticket import PRIORITIES, Ticket
 
@@ -50,5 +50,8 @@ def build(store: Store, tickets: list[Ticket]) -> dict:
     hand = sorted([t for t in tickets if t.status in HAND and t.id not in need_ids], key=queue_key)
     pile = sorted([t for t in tickets if t.status == "review" and t.id not in need_ids], key=queue_key)
     counts = {st: sum(1 for t in tickets if t.status == st) for st in OTHER}
-    return {"needs": needs, "hand": hand, "hand_shown": hand[:HAND_ROWS], "hand_more": hand[HAND_ROWS:], "pile": pile, "pile_shown": pile[:PREVIEW],
+    imm = deadlines.immediate(tickets)  # DESK-0193: the row above everything else on Today
+    return {"imm": imm, "imm_shown": imm[:deadlines.SHOWN], "imm_more": imm[deadlines.SHOWN:], "imm_missed": any(deadlines.days_left(t) < 0 for t in imm),
+            "days_text": lambda t: deadlines.words(deadlines.days_left(t)), "missed": lambda t: deadlines.days_left(t) < 0, "window": deadlines.WINDOW_DAYS,
+            "needs": needs, "hand": hand, "hand_shown": hand[:HAND_ROWS], "hand_more": hand[HAND_ROWS:], "pile": pile, "pile_shown": pile[:PREVIEW],
             "other_counts": counts, "ask_label": lambda t: ask_label(t, owner), "due_text": due_text}

@@ -27,6 +27,7 @@
   {% if brand and brand.mark_url %}<img src="{{ brand.mark_url }}" width="24" height="24" alt="{{ titles.get(t.project, t.project) }}">{% else %}<span class="initial" title="{{ titles.get(t.project, t.project) }}">{{ (titles.get(t.project, t.project) or '?')[0]|upper }}</span>{% endif %}
   <span class="chip">{{ t.id }}</span>{% if formerly %}<span class="muted formerly">(formerly {{ formerly }})</span>{% endif %}<span class="chip" title="{{ titles.get(t.project, t.project) }}">{{ t.project }}</span><span class="chip ty ty-{{ t.meta.get('type') }}">{{ t.meta.get('type') }}</span>
   <span class="chip {% if t.status=='review' %}ball{% elif t.status=='blocked' %}red{% endif %}">{{ screen(t.status) }}</span>
+  {% set dl = deadline_of(t) %}{% if dl %}<span class="chip{% if dl[0] == 'hard' and dl[3] %} red{% endif %} deadline" title="Deadline {{ dl[1] }}">{{ dl[0]|capitalize }} deadline {{ dl[1] }} · {{ dl[2] }}</span>{% endif %}
   {% if stale %}<span class="chip red">{{ screen('stale') }}</span>{% endif %}
   {% if t.meta.get('sprint') %}<a class="chip" href="/sprint/{{ sprint_slug(t.meta.get('sprint')) }}" title="Sprint page">{{ t.meta.get('sprint') }}</a>{% endif %}
   {% for tag in t.tags %}<span class="tag">#{{ tag }}</span>{% endfor %}
