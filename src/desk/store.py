@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import datetime as dt
 import json
 import re
@@ -20,6 +21,7 @@ from .ticket import SIZES, canon_type, Ticket, new_ticket, slugify
 _ID = re.compile(r"^(?P<key>[A-Z0-9][A-Z0-9-]*)-(?P<num>\d{4,})$")
 _PROFILE_FM = re.compile(r"\A---\r?\n(.*?)\r?\n---\r?\n?(.*)\Z", re.S)
 _PROFILE_CACHE: dict = {}
+_PARSE_CACHE: dict = {}  # path -> (file text, meta, sections): a file whose text is unchanged is not parsed again (DESK-0183)
 _KV = re.compile(r"^([A-Za-z_][\w-]*):\s?(.*)$")
 
 
@@ -110,6 +112,14 @@ class Store:
     @property
     def stale_days(self) -> int:
         return int(self.config["stale"]["days"])
+
+    @property
+    def assignee_required_from(self) -> dt.date | None:
+        """The date from which a blank assignee on an open ticket is an error instead of a warning ([rules] assignee_required_from)."""
+        try:
+            return dt.date.fromisoformat(str(self.config.get("rules", {}).get("assignee_required_from") or "")[:10])
+        except ValueError:
+            return None
 
     @property
     def combos(self) -> bool:
@@ -244,9 +254,18 @@ class Store:
 
     @timed_db
     def tickets(self) -> list[Ticket]:
+        """Every ticket, read from disk on every call. Parsing is most of the cost (210 of 370 ms at 1,417 tickets), so a file whose text is
+        exactly what was parsed before reuses that parse; each caller gets its own copy, so changing a ticket never changes the cache."""
         out = []
         for p in self.ticket_paths():
-            out.append(Ticket.load(p))
+            text = p.read_text(encoding="utf-8")
+            hit = _PARSE_CACHE.get(p)
+            if hit is None or hit[0] != text:
+                t = Ticket.parse(text, p)
+                _PARSE_CACHE[p] = (text, copy.deepcopy(t.meta), dict(t.sections))
+                out.append(t)
+                continue
+            out.append(Ticket(copy.deepcopy(hit[1]), dict(hit[2]), p))
         out.sort(key=lambda t: t.id)
         return out
 
@@ -299,7 +318,21 @@ class Store:
         if ticket.path is None:
             ticket.path = self.path_for(ticket)
         self.tickets_dir.mkdir(parents=True, exist_ok=True)
-        return ticket.write()
+        try:  # the version on disk, so the activity log can say what this save changed (DESK-0162)
+            before = Ticket.load(ticket.path) if ticket.path.is_file() else None
+        except Exception:  # an unreadable old version is logged as a fresh start, never a refused save
+            before = None
+        path = ticket.write()
+        from . import activity, identity  # every write records who made it (DESK-0144) and what it changed (DESK-0162)
+
+        identity.record_write(self.home, ticket.id)
+        try:
+            activity.record_save(self, before, ticket)
+        except Exception as e:  # the ticket is already written; the log is a record, never a reason to report a save as failed
+            import logging
+
+            logging.getLogger("desk.activity").warning("activity log not written for %s: %s", ticket.id, e)
+        return path
 
     # -- derived -----------------------------------------------------------
     def is_stale(self, ticket: Ticket, on: dt.date | None = None) -> bool:

@@ -8,12 +8,11 @@ import json
 import sys
 from pathlib import Path
 
-from . import accept_migrate, check_migrate, nav, ops, profanity, retype, review as rv, style as styles, tests_migrate, tracks as trk, version as ver
+from . import accept_migrate, check_migrate, commands_migrate, nav, ops, profanity, retype, review as rv, style as styles, tests_migrate, tracks as trk, version as ver
 from .config import HomeNotFound, find_home
 from .rules import RuleError, validate_store
 from .store import Store
 from .ticket import PRIORITIES, SIZES, STATUSES, TYPES
-from .words import screen
 
 
 def _store(args) -> Store:
@@ -70,12 +69,34 @@ def cmd_new(args):
         t = ops.new(s, args.title, args.project, args.type, priority=args.priority, size=args.size, owner=args.owner, dod=dod, source=args.source or "", assignee=args.assignee)
     except (RuleError, ValueError) as e:
         _die(str(e))
+    if not args.assignee:
+        _fill_from_rules(s, t)
     s.sync_after(f"desk: new {t.id}")
     print(t.path)
 
 
+def _fill_from_rules(s: Store, t) -> None:
+    """DESK-0168: a new ticket with no assignee gets one when assign.yaml (or the built-in table) names exactly one person."""
+    from . import assign_rules
+
+    try:
+        out = assign_rules.apply_new(s, t)
+    except assign_rules.RulesError as e:
+        print(f"warning: {e}", file=sys.stderr)
+        return
+    if out.state == "filled":
+        print(f"{t.id}: assignee {out.assignee} (rule {out.rule})", file=sys.stderr)
+    elif out.state == "conflict":
+        print(f"warning: {t.id}: {out.warning}", file=sys.stderr)
+
+
 def cmd_list(args):
+    from . import people
+
+    from . import sprints
+
     s = _store(args)
+    who = people.load(s.home)
     rows = []
     for t in _by_project(s.tickets()):
         stale = s.is_stale(t)
@@ -85,14 +106,16 @@ def cmd_list(args):
             continue
         if args.owner and str(t.meta.get("owner")) != args.owner:
             continue
-        if args.assignee and ops.assignee_of(t).lower() != args.assignee.lower():
+        if args.assignee and ops.assignee_of(t).lower() != who.resolve(args.assignee).lower():
+            continue
+        if args.sprint and sprints.norm(sprints.sprint_of(t)) != sprints.norm(args.sprint):
             continue
         if args.stale and not stale:
             continue
         if not args.all and not t.is_open and not args.status:
             continue
         rows.append([_id_label(s, t), t.project, t.meta.get("type", ""), t.status + (" (stale)" if stale else ""), t.meta.get("priority", ""),
-                     t.meta.get("size", ""), str(t.meta.get("owner", "")), ops.assignee_of(t), str(t.meta.get("title", ""))[:60]])
+                     t.meta.get("size", ""), str(t.meta.get("owner", "")), who.display(ops.assignee_of(t)), str(t.meta.get("title", ""))[:60]])
     if not rows:
         print("No tickets match.")
         return
@@ -157,7 +180,7 @@ def _write_cmd(args, fn, label):
     except (KeyError, RuleError, ValueError) as e:
         _die(str(e))
     s.sync_after(f"desk: {label} {t.id}")
-    print(f"{t.id} -> {t.status} ({screen(t.status)})")
+    print(f"{t.id} -> {t.status}")
 
 
 def cmd_claim(args):
@@ -193,9 +216,14 @@ def cmd_decide(args):
 
 
 def cmd_comments(args):
-    from . import comments as cm
+    from . import comments as cm, identity
 
     s = _store(args)
+    if args.mark_sweep:  # the flags come first in the sweep: repeated asks, then hand-offs nobody answered (DESK-0158)
+        from . import repeats
+
+        for f in repeats.flags(s):
+            print(f"FLAG {f}")
     if args.mark_sweep and not (args.author or args.since or args.unanswered):
         print(f"sweep marked at {cm.mark_sweep(s.home).isoformat(sep=' ')}")
         return
@@ -210,7 +238,7 @@ def cmd_comments(args):
         for r in rows:
             mark = "" if r.answered else "  [open]"
             kind = f" {r.kind}" if r.kind else ""
-            print(f"{r.ticket_id}  {r.when.strftime('%Y-%m-%d %H:%M')}  {r.author}{kind}{mark}\n    {r.text}")
+            print(f"{r.ticket_id}  {r.when.strftime('%Y-%m-%d %H:%M')}  {r.author} [{identity.describe(r.ident or {})}]{kind}{mark}\n    {r.text}")
         print(f"{len(rows)} comment(s)")
     if args.mark_sweep:
         cm.mark_sweep(s.home)
@@ -233,7 +261,22 @@ def cmd_reject(args):
 
 
 def cmd_move(args):
-    _write_cmd(args, lambda s, t: ops.move(s, t, args.to, actor=args.as_, reason=args.reason), "move")
+    from . import sprints
+
+    if not args.to and args.sprint is None:
+        _die("Say where: --to <status>, --sprint <name> (or --sprint '' to take it out of its sprint), or both.")
+
+    def run(s, t):
+        if args.sprint is not None:
+            t = sprints.set_sprint(s, t, args.sprint, actor=args.as_)
+        if args.to:
+            t = ops.move(s, t, args.to, actor=args.as_, reason=args.reason)
+        return t
+
+    try:
+        _write_cmd(args, run, "move")
+    except sprints.SprintError as e:
+        _die(str(e))
 
 
 def cmd_assign(args):
@@ -257,7 +300,7 @@ def cmd_comment(args):
         print(f"{res.id}: that comment is already on the ticket; nothing written")
         return
     s.sync_after(f"desk: comment {res.id}")
-    print(f"{res.id} -> {res.status} ({screen(res.status)})")
+    print(f"{res.id} -> {res.status}")
 
 
 def cmd_validate(args):
@@ -293,6 +336,213 @@ def cmd_brand_check(args):
             print(f"already open {i}")
 
 
+def cmd_search(args):
+    from . import search as srch
+
+    s = _store(args)
+    ix = srch.open_index(s)
+    ix.refresh(s)
+    res = ix.search(" ".join(args.query), limit=args.limit)
+    if args.json:
+        print(json.dumps(res.as_json(), indent=2, ensure_ascii=False))
+        return
+    if res.query.empty:
+        _die("Give words to find, filters like status:review, or both. See docs/COMMANDS.md for the grammar.")
+    note = " (closest spellings; nothing matched exactly)" if res.fuzzy and not any(not h.fuzzy for _, _, hs in res.groups for h in hs) else ""
+    print(f"{res.total}{'+' if res.capped else ''} match(es) for: {res.query.raw}{note}")
+    for project, n, hits in res.groups:
+        print(f"{chr(10)}{project} ({n})")
+        for h in hits:
+            print(f"  {h.id}  {h.status}  {h.priority}  {h.title[:70]}" + (f"  [{h.assignee}]" if h.assignee else ""))
+            if h.snippet:
+                print(f"      {h.snippet[:110]}")
+        if n > len(hits):
+            print(f"  ... {n - len(hits)} more in {project}: add project:{project} and --limit {n}")
+
+
+def cmd_people(args):
+    from . import people
+
+    s = _store(args)
+    if args.action == "init":
+        try:
+            print(people.write_seed(s.home, force=args.force))
+        except FileExistsError as e:
+            _die(str(e))
+        return
+    pe = people.load(s.home)
+    src = s.home / "people.yaml"
+    print(f"people from {src if src.is_file() else 'the built-in team (run `drew people init` to write people.yaml)'}"
+          + (f" plus {people.private_path()}" if people.private_path().is_file() else ""))
+    for label, ps in pe.groups():
+        print(f"{chr(10)}{label}")
+        for p in ps:
+            print(f"  {p.key:<16} {p.name:<18} {p.kind:<9} {p.colour or '-':<8} {p.role}")
+
+
+def cmd_outbox(args):
+    """DESK-0174: the entry that lists, for one coworker thread, the tickets to look at since the last entry."""
+    from . import comments as cm, outbox as ob, people
+
+    s = _store(args)
+    if not (args.for_ or args.all):
+        _die("Say whose: --for <actor> (chaz, em, lily, bri, joe, bigd) or --all.")
+    pe = people.load(s.home)
+    now = dt.datetime.now().replace(microsecond=0)
+    names = ob.actors(s) if args.all else [pe.resolve(args.for_)]
+    shared = cm.entries(s)
+    out = []
+    for actor in names:
+        try:
+            since, how = ob.parse_since(args.since, s.home, actor)
+        except ValueError as e:
+            _die(str(e))
+        lines = ob.collect(s, actor, since, shared)
+        out.append((actor, since, how, lines))
+    if args.json:
+        print(json.dumps([ob.as_json(s, a, ln, sn, hw) for a, sn, hw, ln in out], indent=2, ensure_ascii=False))
+    else:
+        shown = 0
+        for actor, since, how, lines in out:
+            if not lines:
+                if not args.all:
+                    print(f"Nothing new for {pe.display(actor)} since {since.strftime('%Y-%m-%d %H:%M')} ({how}).")
+                continue
+            if shown:
+                print(chr(10) + "-" * 60 + chr(10))
+            print(ob.render(s, actor, lines, since, how), end="")
+            shown += 1
+        if args.all and not shown:
+            print("Nothing new for any thread.")
+    if args.posted:
+        for actor, _, _, lines in out:
+            if lines:
+                ob.set_cutoff(s.home, actor, now)
+                print(f"cut-off for {actor} is now {now.isoformat()}", file=sys.stderr)
+
+
+def cmd_dispatch(args):
+    """DESK-0166: the ready tickets nobody has started, grouped by repository, so one worker per repo can be started."""
+    from . import dispatch as dp
+
+    s = _store(args)
+    rows = dp.undispatched(s)
+    groups = dp.by_repo(s, rows)
+    if args.json:
+        print(json.dumps([{"repo": repo, "tickets": [dp.brief(t, h) for t, h in rs]} for repo, rs in groups], indent=2, ensure_ascii=False))
+        return
+    if not rows:
+        print("Nothing is waiting for a worker: no ticket is ready, unblocked and Patch's for more than an hour.")
+        return
+    for repo, rs in groups:
+        print(f"{repo}: {len(rs)} ticket(s), oldest first")
+        for t, h in rs:
+            b = dp.brief(t, h)
+            print(f"  {b['id']}  {b['size']:<2} {b['effort']:<8} waiting {b['idle_hours']:>5.1f} h  deps: {', '.join(b['deps']) or 'none'}  {b['title'][:60]}")
+
+
+def cmd_sprint(args):
+    """DESK-0147: sprints.yaml. `new` creates, `list` lists, `show` prints a sprint's tickets in score order with the burn-down numbers."""
+    from . import sprints as sp
+
+    s = _store(args)
+    if args.action == "new":
+        if not args.name:
+            _die("Give the sprint a name: drew sprint new 'sprint 6 2026' --start 2026-11-09 --end 2026-11-22 --project desk")
+        try:
+            x = sp.create(s, args.name, start=args.start or "", end=args.end or "", owner=args.owner or "", project=args.project or "", note=args.note or "")
+        except sp.SprintError as e:
+            _die(str(e))
+        s.sync_after(f"desk: sprint new {x.name}")
+        print(f"sprint `{x.name}`" + (f" in {x.project}" if x.project else "") + f" created in {s.home / sp.PATH}")
+        return
+    if args.action == "list":
+        rows = sp.all_sprints(s)
+        defs = {x.slug: x for x in sp.load(s.home)}
+        print(_table([[n, defs[slug].start if slug in defs else "", defs[slug].end if slug in defs else "", defs[slug].project if slug in defs else "", str(total), str(op)]
+                      for slug, n, total, op in rows] or [["(none)", "", "", "", "0", "0"]], ["sprint", "start", "end", "project", "tickets", "open"]))
+        return
+    if not args.name:
+        _die("Which sprint? drew sprint show 'sprint 6 2026'")
+    import datetime as _dt
+
+    gs = sp.groups(s, sp.slugify(args.name, 60), today=_dt.date.today())
+    if not gs:
+        _die(f"No sprint `{args.name}` in sprints.yaml and no ticket names it.")
+    for g in gs:
+        meta = f"{g.sprint.start} to {g.sprint.end}" if g.sprint and g.sprint.start else "no dates"
+        print(f"{g.name}: {meta}" + (f" · owner {g.sprint.owner}" if g.sprint and g.sprint.owner else ""))
+        print(f"  {g.total} ticket(s): {g.done} done, {g.remaining} remaining" + (f"; {g.days_left} of {g.days_total} days left; ideal remaining today {g.ideal_now}" if g.days_left is not None else ""))
+        for t in g.tickets:
+            print(f"  {t.id}  {t.meta.get('priority')}  {t.status:<12} {str(t.meta.get('title', ''))[:60]}")
+        if g.series:
+            print("  burn-down (day: remaining / ideal): " + ", ".join(f"{d[5:]}: {r}/{i}" for d, r, i in g.series[-7:]))
+
+
+def cmd_repeats(args):
+    """DESK-0158: repeated asks and stale hand-offs. --apply makes the tickets with a repeated ask p0 with the tag emergency."""
+    from . import repeats
+
+    s = _store(args)
+    tickets = s.tickets()
+    rs = repeats.repeats(s, tickets)
+    stale = repeats.stale_handoffs(s, tickets)
+    for r in rs:
+        print(r.message(s.owner))
+    for t, at in stale:
+        print(repeats.stale_message(s, t, at))
+    print(f"{len(rs)} repeated ask(s), {len(stale)} stale hand-off(s)")
+    if args.apply and rs:
+        s.sync_before()
+        for r in rs:
+            t = s.get(r.ticket.id)
+            if repeats.escalate(s, t):
+                t.append_line("Comments", ops._stamp("desk", "repeated ask: priority p0, tag emergency", at_time=True))
+                s.save(t)
+                print(f"{t.id} -> p0, emergency")
+        s.sync_after("desk: repeats --apply")
+
+
+def cmd_refine(args):
+    """DESK-0145: tracked refinement of the requirements: a dated Acceptance line and a Comments note; review_by may move with a reason."""
+    s = _store(args)
+    s.sync_before()
+    try:
+        t = ops.refine(s, s.get(args.id), args.line, actor=args.as_, review_by=args.review_by, reason=args.reason or "")
+    except (KeyError, RuleError, ValueError) as e:
+        _die(str(e))
+    s.sync_after(f"desk: refine {t.id}")
+    print(f"{t.id}: refinement added to Acceptance" + (f"; review_by is now {t.meta['review_by']}" if args.review_by else ""))
+
+
+def cmd_split(args):
+    """DESK-0145: a change of scope is a new ticket, linked both ways, with a completion decision asked on the old one."""
+    s = _store(args)
+    s.sync_before()
+    try:
+        old = s.get(args.id)
+        new = ops.split(s, old, args.title, size=args.size, due=args.due, details=args.details or "", outcome=args.outcome or "", acceptance=args.acceptance, actor=args.as_)
+    except (KeyError, RuleError, ValueError) as e:
+        _die(str(e))
+    s.sync_after(f"desk: split {old.id} -> {new.id}")
+    print(f"{new.id} created from {old.id}: depends_on {old.id}; {old.id} lists it under blocks and asks for the completion decision (done as scoped, or closed in favour)")
+    print(new.path)
+
+
+def cmd_whoami(args):
+    """DESK-0144: how this command line would be recorded: the actor, kind, instance, source and how it was established."""
+    from . import identity
+
+    s = _store(args)
+    a = identity.resolve_cli(s, args.as_)
+    if args.json:
+        print(json.dumps(a.as_dict(), indent=2))
+        return
+    print(f"{a.display()}: {a.short()}" + (f" · instance {a.instance}" if a.instance else "") + (f" · parent {a.parent}" if a.parent else ""))
+    if not a.confirmed:
+        print("This is a claim, not a check: Desk records it as claimed. To be confirmed, run as your own operating-system user, listed under os_users in people.yaml.")
+
+
 def cmd_index(args):
     s = _store(args)
     print(s.index())
@@ -308,7 +558,7 @@ def cmd_board(args):
         items = [t for t in tickets if t.status == st]
         if not items and st not in ("ready", "in_progress", "review"):
             continue
-        print(f"\n{screen(st)} ({st}) · {len(items)}")
+        print(f"\n{st} · {len(items)}")
         for t in items:
             flag = " · chewed back" if s.is_stale(t) else ""
             proj = "" if args.project else f"  [{t.project}]"
@@ -371,6 +621,7 @@ def cmd_intake(args):
         t, dest = ops.intake(s, Path(args.path), args.topic, args.project, actor=args.as_ or "main")
     except (RuleError, ValueError) as e:
         _die(str(e))
+    _fill_from_rules(s, t)
     s.sync_after(f"desk: intake {t.id}")
     print(f"{dest}\n{t.path}")
 
@@ -456,6 +707,10 @@ def _home_or_none(args) -> Path | None:
 def cmd_bench(args):
     from . import bench
 
+    if args.search_rows:
+        r = bench.search_scale(args.search_rows)
+        print(f"search over {r['rows']} synthetic rows (index built in {r['built_s']} s): p50 {r['p50_ms']} ms, p95 {r['p95_ms']} ms over {r['n']} queries; budget {bench.load_budgets()['budgets_ms']['search']} ms")
+        return
     result = bench.run(args.tickets, runs=args.runs, progress=lambda m: print(m, file=sys.stderr))
     print(bench.table(result))
     for f in bench.budget_failures(result):
@@ -524,6 +779,75 @@ def _upgrade_detached(uv: str, repo: Path):
     print(f"If Desk stops starting (No module named 'desk'), restore it with: {ver.restore_command(repo)}")
 
 
+def cmd_stop(args):
+    """DESK-0169: end whatever listens on the UI port, by PID. Exit 0 when nothing listens."""
+    port = args.port or ver.ui_port()
+    pids = ver.listeners(port)
+    if not pids:
+        print(f"nothing listens on port {port}; nothing to stop")
+        return
+    failed = 0
+    for pid in pids:
+        if ver.stop_pid(pid):
+            print(f"PID {pid} stopped (was listening on port {port})")
+        else:
+            failed += 1
+            print(f"PID {pid} did not stop; end it by hand with `{ver.stop_hint(pid)}`", file=sys.stderr)
+    if failed:
+        sys.exit(1)
+
+
+def cmd_refresh(args):
+    """DESK-0169: stop the UI, install from the repo (or a git ref of it), start the UI again, print the version."""
+    import shutil
+    import subprocess
+    import tempfile
+    import time
+
+    repo = ver.find_repo(args.repo, _home_or_none(args))
+    if repo is None:
+        _die("No Desk repo found. Pass --repo PATH, set DESK_REPO, or keep the repo at <store>/desk.")
+    uv = shutil.which("uv")
+    if not uv:
+        _die("uv is not on PATH; install uv first (https://docs.astral.sh/uv/).")
+    if args.ref and not ver.ref_exists(repo, args.ref):
+        _die(f"{args.ref} is not a branch, tag or commit of {repo}. Nothing was stopped or installed.")
+    source = ver.install_source(repo, args.ref)
+    port = ver.ui_port()
+    for pid in ver.listeners(port):
+        if ver.stop_pid(pid):
+            print(f"PID {pid} stopped (was listening on port {port})")
+        else:
+            _die(f"PID {pid} did not stop; end it with `{ver.stop_hint(pid)}` and run `drew refresh` again. Nothing was installed.")
+    if ver.on_windows() and ver.in_uv_tools_dir():  # drew.exe cannot replace itself while it runs: a detached script installs after we exit (DESK-0132)
+        tmp = Path(tempfile.gettempdir())
+        script, log = tmp / "desk-refresh.cmd", tmp / "desk-refresh.log"
+        script.write_bytes(ver.refresh_script(uv, source, str(log), port, repo).encode("utf-8"))
+        flags = getattr(subprocess, "DETACHED_PROCESS", 0x8) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x200)
+        subprocess.Popen(["cmd.exe", "/c", str(script)], creationflags=flags, close_fds=True, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        print(f"Refresh handed off to a separate process (installing {source}); it starts in 2 seconds, after this command exits, then opens drew-ui in its own window.")
+        print(f"In about 30 seconds read {log}: it ends with `Desk <version> · <commit>` from `drew --version`. If Desk stops starting, restore it with: {ver.restore_command(repo)}")
+        return
+    r = subprocess.run([uv, "tool", "install", "--force", source])
+    if r.returncode != 0:
+        _die(f"uv tool install failed (exit {r.returncode}). If Desk no longer starts, restore it with `{ver.restore_command(repo)}`.", r.returncode)
+    exe = shutil.which("drew-ui")
+    if exe:
+        log = Path(tempfile.gettempdir()) / "desk-ui.log"
+        out = open(log, "ab")
+        kw = {"creationflags": getattr(subprocess, "DETACHED_PROCESS", 0x8) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0x200)} if ver.on_windows() else {"start_new_session": True}
+        subprocess.Popen([exe], stdin=subprocess.DEVNULL, stdout=out, stderr=out, close_fds=True, **kw)
+        for _ in range(60):
+            if ver.listeners(port):
+                break
+            time.sleep(0.5)
+        print(f"drew-ui started on port {port} (log: {log})")
+    else:
+        print("drew-ui is not on PATH after the install; start it yourself.")
+    d = shutil.which("drew")
+    print(subprocess.run([d, "--version"], capture_output=True, text=True).stdout.strip() if d else "run `drew --version` to see the installed commit")
+
+
 def cmd_migrate(args):
     if args.what == "type":
         return cmd_migrate_type(args)
@@ -533,6 +857,12 @@ def cmd_migrate(args):
         return cmd_migrate_checks(args)
     if args.what == "tests":
         return cmd_migrate_tests(args)
+    if args.what == "assignee":
+        return cmd_migrate_assignee(args)
+    if args.what == "commands":
+        return cmd_migrate_commands(args)
+    if args.what == "events":
+        return cmd_migrate_events(args)
     s = _store(args)
     rules_path = Path(args.rules) if args.rules else s.home / trk.RULES_PATH
     if not rules_path.is_absolute() and not rules_path.exists():
@@ -556,6 +886,105 @@ def cmd_migrate(args):
         return
     wrote = sum(1 for t, name in pairs if trk.write_track(t, name))
     print(f"Wrote track: to {wrote} tickets. updated dates were not changed.")
+
+
+def cmd_migrate_events(args):
+    """DESK-0162 / DESK-0045: the Comments lines and the git history of every ticket file become events in its log, so old tickets
+    have a timeline. A dry run lists the counts per ticket; --apply writes each event once (a second run writes nothing)."""
+    from . import activity
+
+    s = _store(args)
+
+    def progress(i, n):
+        print(f"Looked at {i:,} of {n:,} tickets", file=sys.stderr, flush=True)
+
+    print("Reading the git history of tickets/ (one git log call) ...", file=sys.stderr, flush=True)
+    rows, wrote, note = activity.migrate(s, apply=args.apply, progress=progress)
+    if rows:
+        print(_table([[tid, str(c), str(g), str(c + g)] for tid, c, g, _ in rows], ["ticket", "comments", "git commits", "events"]))
+        print()
+    if note:
+        print(f"Note: {note}. Comments were still read.")
+    total, nt = sum(c + g for _, c, g, _ in rows), len(rows)
+    tk = "ticket" if nt == 1 else "tickets"
+    if not rows:
+        print("Nothing to add: every ticket's history is already in its log.")
+    elif not args.apply:
+        print(f"Dry run: nothing written. {total:,} events would be added to {nt:,} {tk} "
+              f"({sum(c for _, c, _, _ in rows):,} from comments, {sum(g for _, _, g, _ in rows):,} from git). Add --apply to write them.")
+    else:
+        print(f"Wrote {wrote:,} events to {nt:,} {tk}. Running it again adds nothing.")
+
+
+def cmd_history(args):
+    """DESK-0171: a ticket's timeline in the terminal: the latest change, then every event newest first; --by groups and --filter narrows."""
+    from . import timeline
+
+    s = _store(args)
+    try:
+        t = s.get(args.id)
+    except KeyError as e:
+        _die(str(e).strip("'"))
+    try:
+        filters = timeline.parse_filters(args.filter or [])
+    except ValueError as e:
+        _die(str(e))
+    view = timeline.view(s, t, filters=filters)
+    if args.json:
+        print(json.dumps([r.as_json() for r in view.shown], indent=2, ensure_ascii=False))
+        return
+    print(timeline.text(view, by=args.by, colour=sys.stdout.isatty()))
+
+
+def cmd_migrate_assignee(args):
+    """DESK-0168: fill blank assignees from the rules. Blank is James's "not yet scanned" marker, so --apply is run only when he says."""
+    from . import assign_rules as ar, people
+
+    s = _store(args)
+    try:
+        rules, source = ar.load(s.home)
+    except ar.RulesError as e:
+        _die(str(e))
+    pairs = ar.plan(s.tickets(), rules, people.load(s.home), include_closed=args.include_closed)
+    fill = [(t, o) for t, o in pairs if o.state == "filled"]
+    rows = [[t.id, str(t.meta.get("title", ""))[:50], o.assignee, o.rule] for t, o in fill]
+    if rows:
+        print(_table(rows, ["ticket", "title", "assignee", "rule"]))
+        print()
+    by_rule: dict = {}
+    for _, o in fill:
+        by_rule[(o.assignee, o.rule)] = by_rule.get((o.assignee, o.rule), 0) + 1
+    print(_table([[a, r, str(n)] for (a, r), n in sorted(by_rule.items(), key=lambda kv: (-kv[1], kv[0]))] or [["(none)", "", "0"]], ["assignee", "rule", "tickets"]))
+    conflict = [t.id for t, o in pairs if o.state == "conflict"]
+    print()
+    print(f"{len(fill)} blank assignee(s) to fill; {len(conflict)} left blank because two rules disagree; {len(pairs) - len(fill) - len(conflict)} left blank because no rule matches; "
+          f"tickets that already have an assignee are never changed; rules: {source}")
+    if conflict:
+        print("disagree: " + ", ".join(conflict[:12]) + (" ..." if len(conflict) > 12 else ""))
+    if not args.apply:
+        print("Dry run: nothing written. --apply writes `assignee:` and `assigned_by: rule:<name>` into the blank tickets (updated dates are not changed). Run it only when James says: blank is his not-yet-scanned marker.")
+        return
+    wrote = sum(ar.write_assignee(t, o.assignee, o.rule) for t, o in fill)
+    print(f"Filled {wrote} ticket(s). updated dates were not changed.")
+
+
+def cmd_assign_rules(args):
+    from . import assign_rules as ar
+
+    s = _store(args)
+    if args.action == "init":
+        try:
+            print(ar.write_seed(s.home, force=args.force))
+        except FileExistsError as e:
+            _die(str(e))
+        return
+    try:
+        rules, source = ar.load(s.home)
+    except ar.RulesError as e:
+        _die(str(e))
+    print(f"assignment rules from {source}")
+    for r in rules:
+        print(f"  {r.name:<26} -> {r.assign:<14} {'(fallback) ' if r.fallback else ''}when {r.when}")
 
 
 def cmd_migrate_type(args):
@@ -612,6 +1041,21 @@ def cmd_migrate_tests(args):
     print(f"Added the Tests section to {wrote} ticket(s).")
 
 
+def cmd_migrate_commands(args):
+    s = _store(args)
+    todo = commands_migrate.plan(s.tickets())
+    seeded = 0
+    for t, found in todo:
+        seeded += bool(found)
+        print(f"{t.id}  {str(t.meta.get('title', ''))[:50]}  " + (", ".join(f"`{c}`" for c in found) if found else "(placeholder)"))
+    print(f"\n{len(todo)} ticket(s) without a Commands section would get one ({seeded} seeded from How to validate, {len(todo) - seeded} with the placeholder); {len(s.tickets()) - len(todo)} left alone.")
+    if not args.apply:
+        print("Dry run: nothing written. Add --apply to add the section (only `## Commands` is added; updated dates are not touched).")
+        return
+    wrote = sum(commands_migrate.apply_file(t, found) for t, found in todo)
+    print(f"Added the Commands section to {wrote} ticket(s).")
+
+
 def cmd_migrate_checks(args):
     s = _store(args)
     tickets = s.tickets()
@@ -663,6 +1107,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--tickets", type=int, default=1000)
     sp.add_argument("--runs", type=int, default=7, help="timed requests per page path")
     sp.add_argument("--out", help="write the results as JSON here")
+    sp.add_argument("--search-rows", type=int, default=0, metavar="N", help="instead: time search over N synthetic rows in memory (50000 for the budget case)")
     sp.add_argument("--save-baseline", action="store_true", help="record these numbers in desk/bench/baseline.json for this ticket count")
     sp.set_defaults(fn=cmd_bench)
 
@@ -673,13 +1118,72 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--repo", help="the Desk repo (else DESK_REPO, else <store>/desk)")
     sp.set_defaults(fn=cmd_upgrade)
 
-    sp = sub.add_parser("migrate", help="one-off bulk edits; `migrate track` assigns tracks from tracks/rules.yaml, `migrate type` retires the legacy slice and chore types, `migrate acceptance` strips boilerplate Acceptance lines that restate the Definition of Done, `migrate checks` rewrites inline `not accepted` lines as the quoted-reason block, `migrate tests` adds the Tests section to every ticket without one")
-    sp.add_argument("what", choices=["track", "type", "acceptance", "checks", "tests"])
+    sp = sub.add_parser("dispatch", help="the ready tickets assigned to Patch with nothing blocking them and no worker, grouped by repository, oldest first: id, size, effort, dependencies")
+    sp.add_argument("--json", action="store_true")
+    sp.set_defaults(fn=cmd_dispatch)
+
+    sp = sub.add_parser("sprint", help="sprints (sprints.yaml): `sprint new 'sprint 6 2026' --start --end --owner --project`, `sprint list`, `sprint show NAME` (tickets in score order and burn-down numbers); put a ticket in one with `drew move ID --sprint NAME`")
+    sp.add_argument("action", choices=["new", "list", "show"])
+    sp.add_argument("name", nargs="?")
+    sp.add_argument("--start", metavar="YYYY-MM-DD")
+    sp.add_argument("--end", metavar="YYYY-MM-DD")
+    sp.add_argument("--owner")
+    sp.add_argument("--project", help="the project that runs it (the same name may exist in two projects); leave out for a sprint that spans projects")
+    sp.add_argument("--note", help="the scope note")
+    sp.set_defaults(fn=cmd_sprint)
+
+    sp = sub.add_parser("whoami", help="how this command line would be recorded on a write: actor, kind (person, thread, session, subagent), instance, source and how it was established; a name that is only claimed is shown as claimed. Environment: DESK_ACTOR, DESK_ACTOR_KIND, DESK_INSTANCE, DESK_SUBAGENT_ID, DESK_PARENT_SESSION")
+    sp.add_argument("--json", action="store_true")
+    actor(sp)
+    sp.set_defaults(fn=cmd_whoami)
+
+    sp = sub.add_parser("repeats", help="repeated asks (the owner asked for the same thing twice on a ticket within 7 days) and stale hand-offs (blocked_on names the owner, unchanged across two sweeps); --apply makes the repeated-ask tickets p0 with the tag emergency")
+    sp.add_argument("--apply", action="store_true")
+    sp.set_defaults(fn=cmd_repeats)
+
+    sp = sub.add_parser("refine", help="a tracked refinement: adds `- [ ] <date> refinement: LINE` to Acceptance and a note to Comments; --review-by DATE --reason TEXT moves review_by and writes the slip down. A change of scope is not a refinement: use `split`")
+    sp.add_argument("id")
+    sp.add_argument("line")
+    sp.add_argument("--review-by", metavar="YYYY-MM-DD")
+    sp.add_argument("--reason", help="why the refinement costs time (required with --review-by)")
+    actor(sp)
+    sp.set_defaults(fn=cmd_refine)
+
+    sp = sub.add_parser("split", help="a change of scope becomes a new ticket with details and a timeline: it depends_on ID, ID lists it under blocks and asks for the completion decision (done as scoped, or closed in favour)")
+    sp.add_argument("id")
+    sp.add_argument("--title", required=True)
+    sp.add_argument("--size", default="s", choices=["xs", "s", "m"])
+    sp.add_argument("--due", metavar="YYYY-MM-DD", help="the new ticket's review_by")
+    sp.add_argument("--details", help="what the new ticket is for")
+    sp.add_argument("--outcome")
+    sp.add_argument("--acceptance", action="append", help="an Acceptance line (repeat for more)")
+    actor(sp)
+    sp.set_defaults(fn=cmd_split)
+
+    sp = sub.add_parser("stop", help="stop the Desk UI: end whatever listens on the UI port (DESK_UI_PORT, default 8765) by PID and say which; exit 0 when nothing listens")
+    sp.add_argument("--port", type=int, help="the port (default: the UI port)")
+    sp.set_defaults(fn=cmd_stop)
+
+    sp = sub.add_parser("refresh", help="stop the UI, install Desk from the repo (or --ref, a branch, tag or commit of it), start drew-ui again and print the version")
+    sp.add_argument("--repo", help="the Desk repo (else DESK_REPO, else <store>/desk)")
+    sp.add_argument("--ref", help="install this git ref of the repo instead of its working folder")
+    sp.set_defaults(fn=cmd_refresh)
+
+    sp = sub.add_parser("migrate", help="one-off bulk edits; `migrate track` assigns tracks from tracks/rules.yaml, `migrate type` retires the legacy slice and chore types, `migrate acceptance` strips boilerplate Acceptance lines that restate the Definition of Done, `migrate checks` rewrites inline `not accepted` lines as the quoted-reason block, `migrate tests` adds the Tests section to every ticket without one, `migrate commands` adds the Commands section (seeded from the How to validate lines that look like commands), `migrate assignee` fills blank assignees from assign.yaml (never overrides one), `migrate events` turns every ticket's Comments lines and the git history of its file into events in its activity log (events/<ID>.jsonl), once")
+    sp.add_argument("what", choices=["track", "type", "acceptance", "checks", "tests", "assignee", "commands", "events"])
+    sp.add_argument("--include-closed", action="store_true", help="assignee: also fill closed tickets (default: open tickets only)")
     mode = sp.add_mutually_exclusive_group(required=True)
     mode.add_argument("--dry-run", action="store_true", help="print ticket -> track and counts; write nothing")
     mode.add_argument("--apply", action="store_true", help="write track: into each matched ticket's frontmatter")
     sp.add_argument("--rules", help="rules file (default tracks/rules.yaml in the store)")
     sp.set_defaults(fn=cmd_migrate)
+
+    sp = sub.add_parser("history", help="a ticket's timeline from its activity log: the latest change, then every event newest first (who, kind, where from, what, when); --by groups by a dimension, --filter key=value narrows (repeat it; a,b means either)")
+    sp.add_argument("id")
+    sp.add_argument("--by", choices=["actor", "kind", "source", "project", "company", "track", "sprint", "field"], help="group the events by this dimension, with counts")
+    sp.add_argument("--filter", action="append", metavar="KEY=VALUE", help="keep only events where KEY (actor, kind, source, project, company, track, sprint, field) is VALUE")
+    sp.add_argument("--json", action="store_true", help="the events shown, as JSON")
+    sp.set_defaults(fn=cmd_history)
 
     sp = sub.add_parser("home", help="print the resolved store path")
     sp.set_defaults(fn=cmd_home)
@@ -701,6 +1205,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--status", choices=STATUSES)
     sp.add_argument("--owner")
     sp.add_argument("--assignee", help="only tickets assigned to this name")
+    sp.add_argument("--sprint", help="only tickets in this sprint")
     sp.add_argument("--stale", action="store_true", help="only tickets untouched past the stale window")
     sp.add_argument("--all", action="store_true")
     sp.set_defaults(fn=cmd_list)
@@ -767,7 +1272,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     sp = sub.add_parser("move", help="a guarded status move (inbox → triage → ready, and the rest)")
     sp.add_argument("id")
-    sp.add_argument("--to", required=True, choices=STATUSES)
+    sp.add_argument("--to", choices=STATUSES)
+    sp.add_argument("--sprint", help="put the ticket in this sprint (it must exist in sprints.yaml); an empty name takes it out")
     sp.add_argument("--reason")
     actor(sp)
     sp.set_defaults(fn=cmd_move)
@@ -803,6 +1309,30 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--create", action="store_true", help="open one chore per missing project in project `brand`")
     sp.add_argument("--assignee", default="chaz")
     sp.set_defaults(fn=cmd_brand_check)
+
+    sp = sub.add_parser("search", help="find tickets by part of an id or title, typos allowed, with filters (project: status: type: tag: ask: owner: assignee: track: sprint: priority: is:stale|open|closed before: after:); grouped by project")
+    sp.add_argument("query", nargs="+")
+    sp.add_argument("--json", action="store_true")
+    sp.add_argument("--limit", type=int, default=12, help="most tickets shown per project (default 12)")
+    sp.set_defaults(fn=cmd_search)
+
+    sp = sub.add_parser("outbox", help="the entry for a coworker thread's team folder: the tickets to look at since the last entry (assigned, changed by Patch or James, new and naming them), one line each, with the Tickets: header; the cut-off per actor is kept in .desk/state")
+    sp.add_argument("--for", dest="for_", metavar="ACTOR", help="chaz, em, lily, bri, joe, bigd (or any key or name in people.yaml)")
+    sp.add_argument("--all", action="store_true", help="one entry for every coworker thread that has changes")
+    sp.add_argument("--since", help="last-entry (default; a week back when there is none), YYYY-MM-DD or YYYY-MM-DD HH:MM")
+    sp.add_argument("--json", action="store_true", help="for the poster: actor, cut-off, the tickets with changes and ask, and the text")
+    sp.add_argument("--posted", action="store_true", help="after printing, move the cut-off to now (use it when the entry is posted)")
+    sp.set_defaults(fn=cmd_outbox)
+
+    sp = sub.add_parser("assign-rules", help="show the auto-assignment rules (assign.yaml, or the built-in table); `assign-rules init` writes assign.yaml")
+    sp.add_argument("action", nargs="?", choices=["list", "init"], default="list")
+    sp.add_argument("--force", action="store_true", help="init: replace an existing assign.yaml")
+    sp.set_defaults(fn=cmd_assign_rules)
+
+    sp = sub.add_parser("people", help="list the people owners and assignees can be (people.yaml, the built-in team when there is none, plus the private file); `people init` writes people.yaml")
+    sp.add_argument("action", nargs="?", choices=["list", "init"], default="list")
+    sp.add_argument("--force", action="store_true", help="init: replace an existing people.yaml")
+    sp.set_defaults(fn=cmd_people)
 
     sp = sub.add_parser("index", help="rebuild .desk/index.sqlite from the files")
     sp.set_defaults(fn=cmd_index)
@@ -864,6 +1394,24 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
+READ_ONLY = {"list", "show", "search", "validate", "board", "stats", "doctor", "bench", "home", "index", "people", "assign-rules", "dispatch", "next",
+             "outbox", "whoami", "stop", "refresh", "init", "upgrade", "sync", "brand-check", "history"}
+
+
+def _identify(args):
+    """DESK-0144: work out who is acting and keep it for the rest of the command, so every write (Comments lines, the write log) records
+    the actor, its kind, instance, source and how sure we are. `--as` is kept for agents and is recorded as claimed."""
+    from . import identity
+
+    if args.cmd in READ_ONLY and args.cmd != "whoami":
+        return None
+    try:
+        s = Store(find_home(args.home))
+    except HomeNotFound:
+        return None
+    return identity.CURRENT.set(identity.resolve_cli(s, getattr(args, "as_", None)))
+
+
 def main(argv: list[str] | None = None) -> None:
     for stream in (sys.stdout, sys.stderr):  # Windows consoles default to cp1252; tickets are UTF-8
         try:
@@ -871,7 +1419,14 @@ def main(argv: list[str] | None = None) -> None:
         except (AttributeError, ValueError):
             pass
     args = build_parser().parse_args(argv)
-    args.fn(args)
+    token = _identify(args)
+    try:
+        args.fn(args)
+    finally:
+        if token is not None:
+            from . import identity
+
+            identity.CURRENT.reset(token)
 
 
 if __name__ == "__main__":

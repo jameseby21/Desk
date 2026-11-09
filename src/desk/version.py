@@ -171,6 +171,67 @@ def upgrade_script(uv: str, repo: Path, log: str) -> str:
     ])
 
 
+def stop_pid(pid: int) -> bool:
+    """End one process and its children by PID (never by name). True when the PID is gone afterwards."""
+    import signal
+    import time
+
+    try:
+        if sys.platform == "win32":
+            subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"], capture_output=True, timeout=30)
+        else:
+            os.kill(pid, signal.SIGTERM)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    for _ in range(40):
+        if not pid_alive(pid):
+            return True
+        time.sleep(0.1)
+    return not pid_alive(pid)
+
+
+def pid_alive(pid: int) -> bool:
+    if sys.platform == "win32":
+        out = subprocess.run(["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"], capture_output=True, text=True, timeout=20).stdout
+        return f'"{pid}"' in out
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
+
+
+def install_source(repo: Path, ref: str | None = None) -> str:
+    """What `uv tool install` is given: the repo folder, or a git ref of it (a branch, tag or commit) as a file URL."""
+    return f"git+{Path(repo).resolve().as_uri()}@{ref}" if ref else str(repo)
+
+
+def ref_exists(repo: Path, ref: str) -> bool:
+    return _git(repo, "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}") is not None
+
+
+def refresh_script(uv: str, source: str, log: str, port: int, repo: Path) -> str:
+    """The .cmd a detached process runs after drew.exe has exited (Windows cannot replace it while it runs): wait, install, start
+    drew-ui in its own window, log `drew --version`. Everything it prints goes to `log`."""
+    q = lambda v: str(v).replace("%", "%%")
+    return "\r\n".join([
+        "@echo off",
+        "%SystemRoot%\\System32\\ping.exe -n 3 127.0.0.1 >nul",
+        f'echo Desk refresh started %date% %time% > "{q(log)}"',
+        f'"{q(uv)}" tool install --force "{q(source)}" >> "{q(log)}" 2>&1',
+        "if errorlevel 1 goto failed",
+        f'start "Desk UI" cmd /c "set DESK_UI_PORT={port}&& drew-ui"',
+        "%SystemRoot%\\System32\\ping.exe -n 4 127.0.0.1 >nul",
+        f'drew --version >> "{q(log)}" 2>&1',
+        f'echo Refresh finished. >> "{q(log)}"',
+        "exit /b 0",
+        ":failed",
+        f'echo Refresh failed. To restore Desk run: {q(restore_command(repo))} >> "{q(log)}"',
+        "exit /b 1",
+        "",
+    ])
+
+
 def stop_hint(pid: int) -> str:
     return f"taskkill /PID {pid} /T /F" if sys.platform == "win32" else f"kill {pid}"
 
