@@ -11,6 +11,7 @@
   <div><h1 style="margin:0">Board</h1>
     <nav class="crumbs" aria-label="Where you are"><a href="{{ links.top }}"{% if level == 'company' %} aria-current="page"{% endif %}>jeby</a>{% if crumb %} <span aria-hidden="true">&rsaquo;</span> <a href="{{ links.company }}" aria-current="page">{{ crumb }}</a>{% endif %}
     <span class="muted">· {{ total }} ticket{{ 's' if total != 1 }}{% if tokens %} match the filter{% endif %} · {{ open_n }} open</span></nav></div>
+  <div class="row"><a class="btn ball" href="/new" id="new-ticket">New ticket</a></div>
   {% if level != 'company' %}<div class="row"><span class="label">Group by</span>
     <a class="btn{% if by == 'track' %} ball{% endif %}" href="{{ links.track }}">Tracks</a><a class="btn{% if by == 'sprint' %} ball{% endif %}" href="{{ links.sprint }}">Sprints</a>
     <a class="btn" href="{{ links.expand }}">Expand all</a><a class="btn" href="{{ links.collapse }}">Collapse all</a></div>{% endif %}

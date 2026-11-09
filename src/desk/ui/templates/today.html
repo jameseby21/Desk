@@ -9,6 +9,7 @@
     <p class="muted" style="margin:2px 0 0">Asks first · <b>{{ v.hand|length }}</b> in hand · {{ v.pile|length }} waiting for review{% if cap == 'rough' %} · a rough week: {{ screen('stale')|lower }} hidden, smallest steps shown{% endif %}</p>
   </div>
   <div class="row t-controls">
+    <a class="btn ball" href="/new" id="new-ticket">New ticket</a>
     {{ dropdown("Company", "company", cchips, company, "/", {"cap": cap, "track": track, "sprint": sprint}) }}
     {{ dropdown("Track", "track", chips, track, "/", {"cap": cap, "sprint": sprint, "company": company}) }}
     {{ dropdown("Sprint", "sprint", schips, sprint, "/", {"cap": cap, "track": track, "company": company}) }}

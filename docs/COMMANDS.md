@@ -71,6 +71,7 @@ Every command a person or an agent runs day to day, with what it does and when. 
 ## In the UI
 | Where | What |
 | --- | --- |
+| `/new` (the **New ticket** button on Today and `/board`) | the browser path to `drew new`: project, title, type, priority, size, owner, assignee, associated, track, sprint, Context, Outcome, Acceptance lines and How to validate lines. Save gives the next id for the project, writes `tickets/<ID>-<slug>.md` through the same writer, sets `creator` from who is acting, checks it as `drew validate` would, and opens the ticket. A missing title, project or Acceptance line is said in words under the box and nothing is written. `drew show <id>` shows the same file |
 | every response | a `Server-Timing: db;dur=..., render;dur=..., total;dur=...` header; a request over 300 ms logs `slow request METHOD /path N ms` to stderr (logger `desk.slow`) |
 | every page | the search box in the header and `Ctrl K` (or `/` outside a field) open the search palette: results as you type grouped by project with counts, arrow keys to move, Enter to open, Ctrl Enter for a new tab, Esc to close. `/search?q=...` is the same as a full page, `/search.json?q=...` the data. Statuses are shown in the words setting |
 | `/projects?p=<key>&t=<track slug>&k=<ID>` | project, track, ticket and peek panel; what is open lives in the address |

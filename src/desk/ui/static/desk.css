@@ -368,3 +368,16 @@ header .search-open kbd{position:absolute;right:10px;top:50%;transform:translate
 /* Commands with a copy button (DESK-0177) */
 .cmd{display:flex;align-items:center;gap:10px;margin:6px 0;padding:6px 6px 6px 12px;background:var(--paper);border:1px solid var(--line);border-radius:10px}
 .cmd code{flex:1;min-width:0;overflow-x:auto;white-space:pre;font:500 13.5px var(--font-mono)}.cmd .copy{flex:none}
+
+/* New ticket form (DESK-0189): one column on a phone, two columns from 700 px; nothing under 12 px. */
+.newform-wrap{max-width:860px}
+.nf-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:14px}
+.nf-grid label{min-width:0}
+.nf-grid .muted{font-size:12px;font-weight:400}
+.nf-grid input[type=text],.nf-grid select,.nf-grid textarea{font-size:16px}
+.nf-grid select[multiple]{padding:6px}
+.ferr{color:#8E1218;font-size:13px;font-weight:600}
+.ferr:empty{display:none}
+.nf-actions{margin-top:16px}
+@media (min-width:700px){.nf-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.nf-grid .nf-wide{grid-column:1 / -1}}
+@media (prefers-color-scheme:dark){.ferr{color:#FF8C92}}

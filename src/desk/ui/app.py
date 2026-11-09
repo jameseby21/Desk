@@ -20,7 +20,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from .. import timing
-from .. import asks, boardfilter as bf, boardview as bv, commands, companies as compmod, identity as idmod, ladder, sprints as sprintmod, todayview as tv, people as peoplemod, search as srch, nav as navmod, buildstamp as bs, comments as cm, docs as docsmod, ops, profanity, review as rv, style as styles, tracks as trk, version as ver
+from .. import newform, asks, boardfilter as bf, boardview as bv, commands, companies as compmod, identity as idmod, ladder, sprints as sprintmod, todayview as tv, people as peoplemod, search as srch, nav as navmod, buildstamp as bs, comments as cm, docs as docsmod, ops, profanity, review as rv, style as styles, tracks as trk, version as ver
 from ..config import find_home
 from ..rules import RuleError
 from ..store import Store, id_parts, split_profile
@@ -116,7 +116,7 @@ def combos_for(tickets, on: dt.date | None = None) -> list[tuple]:
 
 
 MAX_TOKENS = 5000
-_OK_TEXT = {"comment": "Comment added", "decide": "Decision recorded", "check": "Checkbox saved", "move": "Ticket moved", "attach": "Image attached", "assign": "Assignee saved"}
+_OK_TEXT = {"comment": "Comment added", "decide": "Decision recorded", "check": "Checkbox saved", "move": "Ticket moved", "attach": "Image attached", "assign": "Assignee saved", "new": "Ticket created"}
 _AT = re.compile(r"\d{2}:\d{2}")
 
 
@@ -440,6 +440,48 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         if js:
             return JSONResponse({"ok": True, "message": "Saved. Other pages show it the next time you open them."})
         return RedirectResponse("/settings?saved=1", status_code=303)
+
+    def new_form_page(request: Request, st: Store, v: dict | None = None, errors: dict | None = None, status: int = 200) -> HTMLResponse:
+        v = newform.clean(v or {})
+        v["type"], v["priority"], v["size"] = v["type"] or "feature", v["priority"] or "p2", v["size"] or "s"
+        opt = newform.options(st)
+        v["owner"] = v["owner"] or opt.default_owner
+        return templates.TemplateResponse(request, "new.html", ctx(request, st, v=v, opt=opt, errors=errors or {}), status_code=status)
+
+    @app.get("/new", response_class=HTMLResponse)
+    def new_ticket_page(request: Request, project: str = "", type: str = "", priority: str = "", size: str = "", track: str = "", sprint: str = ""):
+        """The New ticket form (DESK-0189). The query may pre-fill project, type, priority, size, track and sprint."""
+        return new_form_page(request, store(), {"project": project, "type": type, "priority": priority, "size": size, "track": track, "sprint": sprint})
+
+    @app.post("/new")
+    def post_new_ticket(request: Request, token: str = Form(""), project: str = Form(""), title: str = Form(""), type: str = Form(""), priority: str = Form(""),
+                        size: str = Form(""), owner: str = Form(""), assignee: str = Form(""), associated: list[str] = Form([]), track: str = Form(""),
+                        sprint: str = Form(""), context: str = Form(""), outcome: str = Form(""), acceptance: str = Form(""), steps: str = Form("")):
+        """Create a ticket from the form. Nothing is written unless every check passes. With `Accept: application/json` the reply is
+        `{ok, id, url, message}` or `{error, errors, token}` (a fresh one-time key); a plain form post redirects to the new ticket or draws the form again."""
+        js = "application/json" in request.headers.get("accept", "")
+        s = store()
+        v = {"project": project, "title": title, "type": type, "priority": priority, "size": size, "owner": owner, "assignee": assignee, "associated": associated,
+             "track": track, "sprint": sprint, "context": context, "outcome": outcome, "acceptance": acceptance, "steps": steps}
+        if not tokens.valid(token):
+            msg = "That form was already sent, so no second ticket was made. Open Today to find it, or reload this page for a fresh form."
+            return JSONResponse({"error": msg, "errors": {"form": msg}, "token": tokens.issue()}, status_code=409) if js else new_form_page(request, s, v, {"form": msg}, 409)
+        errors = newform.check(s, v)
+        if not errors:
+            me = acting(request)
+            try:
+                t = newform.create(s, v, me.as_ or me.name)
+            except ValueError as e:
+                errors = getattr(e, "errors", None) or {"form": str(e)}
+        if errors:
+            if js:
+                return JSONResponse({"error": " ".join(errors.values()), "errors": errors, "token": token}, status_code=422)
+            return new_form_page(request, s, v, errors, 422)
+        tokens.use(token)
+        title_text = str(t.meta.get("title") or "")
+        if js:
+            return JSONResponse({"ok": True, "id": t.id, "url": f"/ticket/{t.id}?done=new&at={dt.datetime.now().strftime('%H:%M')}", "message": f"Created {t.id}: {title_text}."})
+        return RedirectResponse(f"/ticket/{t.id}?done=new&at={dt.datetime.now().strftime('%H:%M')}", status_code=303)
 
     def board_url(**kw) -> str:
         q = "&".join(f"{k}={quote(','.join(v) if isinstance(v, list) else str(v), safe=',:*')}" for k, v in kw.items() if v)
