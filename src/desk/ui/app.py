@@ -308,6 +308,9 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         held[eid] = info
         while len(held) > 50:
             held.popitem(last=False)
+        if wants_json(request):  # a script's post (DESK-0205): the exception's own words for the progress line, and a fresh key for Try again
+            return JSONResponse({"error": f"Desk hit an error: {info['type']}: {info['message']} (in {info['frame']}). Check the ticket before you try again.",
+                                 "token": tokens.issue(), "eid": eid}, status_code=500)
         return error_page(
             f'<h1>Desk hit a bug</h1><p><b>{e(info["type"])}</b>: {e(info["message"])}</p>'
             f'<p>On <code>{e(info["method"])} {e(info["route"])}</code></p><p>First frame: <code>{e(info["frame"])}</code></p>'

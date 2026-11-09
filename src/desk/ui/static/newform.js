@@ -29,16 +29,16 @@
     if (box) box.hidden = true;
     var p = DeskProgress.start(DeskProgress.slotFor(btn), { steps: DeskProgress.stepsOf(f) });
     function end() { f.removeAttribute("data-busy"); btn.disabled = false; }
-    DeskProgress.post(f.action, new FormData(f), { progress: p, timeoutMs: 30000 }).then(function (x) {
+    DeskProgress.post(f.getAttribute("action"), new FormData(f), { progress: p, timeoutMs: 30000 }).then(function (x) {
       var t = f.querySelector("[name=token]"); if (t && x.j && x.j.token) t.value = x.j.token;
       if (x.ok && x.j.url) {
         p.done((x.j.message || "Saved.") + " Opening it now.");
         location.href = x.j.url;  // the form stays locked: a second click cannot make a second ticket
         return;
       }
-      p.fail(x.j && x.j.errors ? "Not saved. Fix the lines marked below." : DeskProgress.failText(x));
+      p.fail(x.j && x.j.errors ? "Not saved. Fix the lines marked below." : DeskProgress.failText(x), x.j && x.j.errors ? "" : DeskProgress.failDetail(x));
       show(x.j && x.j.errors ? x.j.errors : { form: DeskProgress.failText(x) });
       end();
-    }, function (err) { p.fail(DeskProgress.failText(null, err)); end(); });
+    }, function (err) { p.fail(DeskProgress.failText(null, err), DeskProgress.failDetail(null, err)); end(); });
   }, true);
 })();
