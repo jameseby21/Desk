@@ -91,6 +91,15 @@ def test_ticking_an_acceptance_line_says_which_line_was_ticked(store, as_patch):
     assert activity.read(store.home, t.id)[-1].what == "Acceptance changed: ticked: Second thing"
 
 
+def test_a_log_that_cannot_be_written_never_fails_the_save(store, as_patch, monkeypatch, caplog):
+    t = ops.new(store, "Saved anyway", "desk")
+    monkeypatch.setattr(activity, "append", lambda *a, **k: (_ for _ in ()).throw(PermissionError("locked")))
+    x = store.get(t.id)
+    x.meta["priority"] = "p1"
+    store.save(x)
+    assert store.get(t.id).meta["priority"] == "p1" and "activity log not written" in caplog.text
+
+
 def test_a_save_with_no_change_writes_no_event(store, as_patch):
     t = ops.new(store, "Quiet", "desk")
     n = len(activity.read(store.home, t.id))

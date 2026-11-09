@@ -328,8 +328,10 @@ class Store:
         identity.record_write(self.home, ticket.id)
         try:
             activity.record_save(self, before, ticket)
-        except OSError:
-            pass  # the log is a record, never a reason to refuse a save
+        except Exception as e:  # the ticket is already written; the log is a record, never a reason to report a save as failed
+            import logging
+
+            logging.getLogger("desk.activity").warning("activity log not written for %s: %s", ticket.id, e)
         return path
 
     # -- derived -----------------------------------------------------------
