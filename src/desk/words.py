@@ -49,3 +49,15 @@ def screen(status: str, style: str = "plain") -> str:
 def heading(key: str, style: str = "plain") -> str:
     plain, dogs = HEADINGS[key]
     return dogs if style == "dogs" else plain
+
+
+# Empty state of the flag component (Chaz F5): the only words that differ between Plain, Dogs and Cat.
+FLAG_EMPTY = {
+    "plain": ("Nothing flagged", "No masked comments and no rejected notes on this ticket."),
+    "dogs": ("Nothing to growl at", "Drew checked: no masked comments and no rejected notes here."),
+    "cat": ("Nothing hissed at", "Soot checked: no masked comments and no rejected notes here."),
+}
+
+
+def flag_empty(style_name: str) -> tuple[str, str]:
+    return FLAG_EMPTY.get(style_name, FLAG_EMPTY["plain"])

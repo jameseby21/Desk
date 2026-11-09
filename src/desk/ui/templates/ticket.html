@@ -10,6 +10,7 @@
 {% block body %}
 <p style="font-size:14px"><a href="/">Today</a> › <a href="/board?project={{ t.project }}">{{ titles.get(t.project, t.project) }}</a> › <code>{{ t.id }}</code>{% if formerly %} <span class="muted">(formerly {{ formerly }})</span>{% endif %}</p>
 {% if error %}<div class="error">{{ error }}</div>{% endif %}
+{% if rejected %}<div class="rejected-note flagged" id="rejected-note"><span class="who"><span class="flag">&#10005; Rejected</span><span>{{ rejected.who }}{% if rejected.when %} &middot; {{ rejected.when }}{% endif %}</span></span><span class="reason" title="{{ rejected.reason }}">{{ rejected.reason }}</span></div>{% endif %}
 <nav class="tnav" id="tnav" aria-label="Ticket navigation">
   {% if walk.prev %}<a class="btn small" rel="prev" href="/ticket/{{ walk.prev }}" title="Previous ticket (k or the left arrow)">&larr; Previous</a>{% else %}<span class="btn small off" aria-disabled="true">&larr; Previous</span>{% endif %}
   <span class="pos" aria-live="polite">{{ walk.text }}</span>
@@ -140,7 +141,7 @@
       {% endif %}</div>
     {% endif %}
 
-    <div class="card section" id="comments"><span class="label">Talk (Comments)</span>
+    <div class="card section" id="comments"><span class="label">Talk (Comments)</span>{% if flag_empty %} <span class="flag-empty" title="{{ flag_empty[1] }}">{{ flag_empty[0] }}</span>{% endif %}
       <div class="md" data-comments>{% if t.section('Comments') %}{{ comments_html(t.section('Comments'))|safe }}{% else %}<p class="muted">No comments.</p>{% endif %}</div>
       <details class="addc" id="add-comment"><summary>Add a comment</summary>
       <form class="post-once composer" id="composer" method="post" action="/ticket/{{ t.id }}/comment" data-timeout-ms="10000" data-posting="Posting…" data-progress="Sending,Saving,Done">

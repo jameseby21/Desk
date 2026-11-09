@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% from "_row.html" import row, dropdown with context %}
 {% from "_mascot.html" import empty %}
+{% from "_needs_me.html" import block as needs_block with context %}
 {% block title %}Desk · Today{% endblock %}
 {% macro imm_row(t) -%}
 <a class="imm-row trow{% if v.missed(t) %} late{% endif %}" href="/ticket/{{ t.id }}">
@@ -36,6 +37,8 @@
   {% if v.imm_more %}<details class="fold"><summary>{{ v.imm_more|length }} more · <b>Show</b></summary><div class="rows">{% for t in v.imm_more %}{{ imm_row(t) }}{% endfor %}</div></details>{% endif %}
   {% else %}<p class="muted imm-empty">Nothing has a hard deadline in the next {{ v.window }} days.</p>{% endif %}
 </section>
+
+{{ needs_block(nm, style, all_open_href, n_open, back) }}
 
 <section class="t-sec" id="needs-you">
   <h2>{{ heading('needs') }} <small>Answer these and the rest can move</small></h2>

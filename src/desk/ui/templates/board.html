@@ -20,7 +20,7 @@
   {% for name, label, plural in (('project', 'Project', 'projects'), ('assignee', 'Assignee', 'people'), ('track', 'Track', 'tracks'), ('sprint', 'Sprint', 'sprints')) %}{% if show[name] or name in ('project','assignee','track') %}
   {{ dropdown(label, name, opts[name], plural, tokens|selectattr('facet', 'equalto', name)|map(attribute='label')|list, fhidden, clear[name]) }}{% endif %}{% endfor %}
   {% for tk in tokens %}<a class="tok" href="{{ tk.href }}" title="Remove {{ tk.label }}">{{ tk.label }} <span aria-hidden="true">&times;</span><span class="vh"> remove</span></a>{% endfor %}
-  <span class="views">Views: <a href="{{ mine_url }}">Mine</a>{% if tokens %} <a href="{{ links.clear_all }}">Clear all</a>{% endif %}</span>
+  <span class="views">Views: <a href="{{ mine_url }}">Mine</a> <a href="{{ needs_href }}" id="needs-me-view"{% if needs %} aria-current="page"{% endif %} title="Asks for you and changes by someone else since you last acted, as on Today">Needs me · {{ nm_count }}</a>{% if needs %} <a href="{{ all_href }}">All open</a>{% endif %}{% if tokens %} <a href="{{ links.clear_all }}">Clear all</a>{% endif %}</span>
 </div>
 {% if level == 'company' %}
 <p class="muted" style="margin:2px 0 10px">Companies first. Open one to see its projects.</p>

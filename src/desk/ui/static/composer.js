@@ -62,7 +62,7 @@
         var item = list.querySelectorAll("li")[x.j.index];
         if (item) { item.classList.add("fresh"); setTimeout(function () { item.classList.remove("fresh"); }, 2000); }
         ta.value = ""; shots = []; drawShots(); tell("");
-        say(x.j.duplicate ? "That comment is already on the ticket." : "Posted", "ok");
+        say(x.j.duplicate ? (x.j.message || "That comment is already on the ticket") + "." : "Posted", "ok");
       })
       .catch(function (err) { fail(FAILED, P.failDetail(null, err)); });
   }

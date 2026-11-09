@@ -20,13 +20,14 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from .. import timing
-from .. import deadlines, newform, notify, asks, boardfilter as bf, boardview as bv, commands, companies as compmod, identity as idmod, ladder, sprints as sprintmod, todayview as tv, people as peoplemod, search as srch, nav as navmod, buildstamp as bs, comments as cm, docs as docsmod, ops, profanity, review as rv, style as styles, tracks as trk, version as ver
+from .. import deadlines, newform, notify, asks, boardfilter as bf, boardview as bv, commands, companies as compmod, identity as idmod, ladder, sprints as sprintmod, todayview as tv, people as peoplemod, search as srch, nav as navmod, needs_me as nmod, buildstamp as bs, comments as cm, docs as docsmod, ops, profanity, review as rv, style as styles, tracks as trk, version as ver
 from ..config import find_home
 from ..rules import RuleError
 from ..store import Store, id_parts, split_profile
 from ..ticket import SECTIONS, STATUSES, check_states, parse_checks
 from .. import words
 from .. import timeline as tlmod
+from ..words import flag_empty
 from urllib.parse import quote
 
 from markupsafe import Markup
@@ -264,7 +265,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
             project = getattr(owner_t, "project", "") or ""
             return md_html(text, known=known, check=check, actions=actions, docs=exists, ids=doc,
                            resolve=lambda p: docsmod.resolve_for(st, project, p)[0],
-                           glossary={} if doc == 'glossary' else gloss, seen=seen, censor=censor)
+                           glossary={} if doc == 'glossary' else gloss, seen=seen, censor=censor, mask=censor is not None)
 
         def comments_html(text):
             """The Comments section: markdown plus the kind label on each comment."""
@@ -373,9 +374,16 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
             stale = []
         combos = combos_for(ts) if s.combos else []
         asked = cm.query(s, author=s.owner, unanswered=True)
+        nm = nmod.build(s, tickets=ts)  # Needs me (DESK-0149): asks for the owner and changes by someone else, after the page's filters
+        head, body = nmod.empty_words(styles.load(s.home)["name"])
+        keep_q = "&".join(x for x in (f"cap={cap}" if cap != "normal" else "", f"track={quote(track)}" if track else "",
+                                      f"sprint={quote(sprint)}" if sprint else "", f"company={quote(company)}" if company else "") if x)
+        board_q = "&".join(x for x in (f"track={quote(track)}" if track else "", f"sprint={quote(sprint)}" if sprint else "",
+                                       f"company={quote(company)}" if company else "") if x)
         view = tv.build(s, ts)
         now = dt.date.today()
-        return templates.TemplateResponse(request, "today.html", ctx(request, s, asked=asked, v=view, stale=sorted(stale, key=tv.queue_key), decided=by_project(decided),
+        return templates.TemplateResponse(request, "today.html", ctx(request, s, asked=asked, nm=nm, empty_head=head, empty_body=body, back="/" + ("?" + keep_q if keep_q else ""),
+                                                             all_open_href="/board" + ("?" + board_q if board_q else ""), n_open=sum(1 for t in ts if t.is_open), v=view, stale=sorted(stale, key=tv.queue_key), decided=by_project(decided),
                                                              cap=cap, s=s, combos=combos, review_line=review_line, long_today=f"{now.strftime('%A, %B')} {now.day}",
                                                              chips=chips, track=track, schips=schips, sprint=sprint, cchips=cchips, company=company,
                                                              placeof=lambda t: (compmod.title(of.get(t.project) or compmod.of(s, t.project)), s.project_title(t.project)),
@@ -506,11 +514,11 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
 
     @app.get("/board", response_class=HTMLResponse)
     def board(request: Request, project: list[str] = Query([]), track: list[str] = Query([]), assignee: list[str] = Query([]), sprint: list[str] = Query([]),
-              by: str = "track", open: str = "", g: str = "", company: str = ""):
+              by: str = "track", open: str = "", g: str = "", company: str = "", needs: str = ""):
         """The broad-context board (DESK-0084): projects, then tracks or sprints with counts and the top priority, then (when opened) the
         tickets. `open` lists the projects drawn open, `g` the groups as `project:slug` (`*` for all). The four dropdowns (DESK-0034)
         hold their values in the address; a filter narrows the board and opens what is left, since asking for it means wanting to see
-        the tickets."""
+        the tickets. `needs=1` (DESK-0149) keeps the Needs me set, the same as Today's block, with the reason line under each card title."""
         s = store()
         by = by if by in bv.BY else "track"
         sel = board_sel(project, assignee, track, sprint)
@@ -524,51 +532,70 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         if company and company != compmod.ALL and company not in names:
             company = ""  # a company that no longer exists: back to the top
         level = "project" if company else "company"
+        if level == "project" and company != compmod.ALL:
+            ts = [t for t in ts if of.get(t.project) == names[company]]
+        nm_items = {i.id: i for i in nmod.build(s, tickets=ts)}  # Needs me (DESK-0149): the same set as Today's block, within the filters
+        needs = "1" if needs == "1" else ""
+        if needs:
+            ts = [t for t in ts if t.id in nm_items]
         if level == "company":  # DESK-0183: the board opens at companies and shows nothing else; the filters narrow their counts
             rows, comps = [], bv.companies(s, bv.build(s, ts, by))
         else:
-            ts = ts if company == compmod.ALL else [t for t in ts if of.get(t.project) == names[company]]
-            rows, comps = bv.build(s, ts, by, open, g, expand_all=any(sel.values())), []
+            rows, comps = bv.build(s, ts, by, open, g, expand_all=any(sel.values()) or bool(needs)), []
         opts = bf.options(s, every, sel, peoplemod.load(s.home))
         by_extra = {"by": by} if by != "track" else {}
-        here = {**by_extra, **({"company": company} if company else {})}  # what every link and form carries so the drill survives a filter
+        nm_extra = {"needs": needs} if needs else {}
+        here = {**by_extra, **nm_extra, **({"company": company} if company else {})}  # what every link and form carries so the drill survives a filter
         keep = {**sel, **here}
         links = {"track": board_url(**{**keep, "by": ""}), "sprint": board_url(**{**keep, "by": "sprint"}), "expand": board_url(**keep, open="*", g="*"),
                  "collapse": board_url(**keep, open="-"), "all_projects": board_url(**{**sel, "project": [], **here}),
-                 "top": board_url(**sel, **by_extra), "company": board_url(**keep), "clear_all": board_url(**here)}
+                 "top": board_url(**sel, **by_extra, **nm_extra), "company": board_url(**keep), "clear_all": board_url(**here)}
         for c in comps:
-            c.href = board_url(**sel, **by_extra, company=c.slug)
+            c.href = board_url(**sel, **by_extra, **nm_extra, company=c.slug)
         crumb = ("All companies" if company == compmod.ALL else compmod.title(names[company])) if company else ""
         mine = peoplemod.load(s.home).get(s.owner)
         clear = {f: board_url(**{**sel, f: [], **here}) for f in bf.FACETS}
         return templates.TemplateResponse(request, "board.html", ctx(request, s, rows=rows, comps=comps, level=level, company=company, crumb=crumb, by=by, links=links, s=s, sel=sel, opts=opts,
                                                            tokens=bf.tokens(sel, opts, here),
-                                                           show={f: any(g for _h, g in opts[f]) for f in bf.FACETS}, hidden=here, fhidden={**sel, **here}, clear=clear, filter_q=bf.query({**sel, "project": []}), total=len(ts), open_n=sum(1 for t in ts if t.is_open),
-                                                           mine_url=board_url(assignee=[mine.key if mine else s.owner], **here), events_url="/events", events_since=ev.tickets_stamp(s)))
+                                                           show={f: any(g for _h, g in opts[f]) for f in bf.FACETS}, hidden=here, fhidden={**sel, **here}, clear=clear, filter_q=bf.query({**sel, "project": []}, **nm_extra), total=len(ts), open_n=sum(1 for t in ts if t.is_open),
+                                                           mine_url=board_url(assignee=[mine.key if mine else s.owner], **here), needs=needs, nm_items=nm_items, nm_count=len(nm_items),
+                                                           needs_href=board_url(**{**keep, "needs": "1"}), all_href=board_url(**{**keep, "needs": ""}),
+                                                           events_url="/events", events_since=ev.tickets_stamp(s)))
 
     @app.get("/board/group", response_class=HTMLResponse)
-    def board_group(request: Request, project: str, slug: str, by: str = "track", track: list[str] = Query([]), assignee: list[str] = Query([]), sprint: list[str] = Query([])):
+    def board_group(request: Request, project: str, slug: str, by: str = "track", track: list[str] = Query([]), assignee: list[str] = Query([]), sprint: list[str] = Query([]),
+                    needs: str = ""):
         """The status columns of one group, for the board to load when a group is opened."""
         s = store()
         by = by if by in bv.BY else "track"
         sel = board_sel([], assignee, track, sprint)
         ts = [t for t in bf.apply(s.tickets(), sel) if t.project == project and trk.track_slug(bv.group_name(t, by) if bv.group_name(t, by) not in (bv.UNTRACKED, bv.NO_SPRINT) else "") == slug]
-        return templates.TemplateResponse(request, "_bcols_frag.html", ctx(request, s, tickets=sorted(ts, key=lambda t: t.id), s=s, project=project, slug=slug, by=by, filter_q=bf.query(sel)))
+        ts, nm_items, nm_extra = needs_only(s, ts, needs)
+        return templates.TemplateResponse(request, "_bcols_frag.html", ctx(request, s, tickets=sorted(ts, key=lambda t: t.id), s=s, project=project, slug=slug, by=by,
+                                                                    filter_q=bf.query(sel, **nm_extra), needs=nm_extra.get("needs", ""), nm_items=nm_items))
 
     @app.get("/board/column", response_class=HTMLResponse)
     def board_column(request: Request, project: str, slug: str, col: str, offset: int = bv.FIRST_CARDS, by: str = "track", frag: int = 0,
-                     track: list[str] = Query([]), assignee: list[str] = Query([]), sprint: list[str] = Query([])):
+                     track: list[str] = Query([]), assignee: list[str] = Query([]), sprint: list[str] = Query([]), needs: str = ""):
         """The cards of one column after the first ones ("N more"): a fragment for the board to fill in place (`frag=1`), a page otherwise."""
         s = store()
         by = by if by in bv.BY else "track"
         sel = board_sel([], assignee, track, sprint)
         ts = [t for t in bf.apply(s.tickets(), sel) if t.project == project and trk.track_slug(bv.group_name(t, by) if bv.group_name(t, by) not in (bv.UNTRACKED, bv.NO_SPRINT) else "") == slug]
+        ts, nm_items, nm_extra = needs_only(s, ts, needs)
         items = bv.column_items(ts, col)[max(offset, 0):]
         if frag:
-            return templates.TemplateResponse(request, "_bmore.html", ctx(request, s, items=items, s=s))
+            return templates.TemplateResponse(request, "_bmore.html", ctx(request, s, items=items, s=s, needs=nm_extra.get("needs", ""), nm_items=nm_items))
         label = "Finished" if col == "finished" else words.screen(col, shown["style"])
         return templates.TemplateResponse(request, "board_more.html", ctx(request, s, items=items, s=s, project=project, label=label, offset=offset,
-                                                                  group=bv.group_name(ts[0], by) if ts else slug))
+                                                                  group=bv.group_name(ts[0], by) if ts else slug, needs=nm_extra.get("needs", ""), nm_items=nm_items))
+
+    def needs_only(s: Store, ts: list, needs: str) -> tuple[list, dict, dict]:
+        """The board's Needs me view (DESK-0149) for a fragment: (the tickets left, their Needs me items, the query that keeps it)."""
+        if needs != "1":
+            return ts, {}, {}
+        items = {i.id: i for i in nmod.build(s, tickets=ts)}
+        return [t for t in ts if t.id in items], items, {"needs": "1"}
 
     @app.get("/sprint", response_class=HTMLResponse)
     def sprint_index(request: Request):
@@ -683,7 +710,14 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
             dep = by_id.get(str(d))
             deps.append((str(d), dep.status if dep else "missing"))
         mermaid = any(has_mermaid(t.section(name)) for name in t.sections)
-        return templates.TemplateResponse(request, "ticket.html", ctx(request, s, t=t, deps=deps, stale=s.is_stale(t), error=error, s=s,
+        rejected, flagged = rejected_note(t), False
+        if rejected or t.failed_checks():
+            flagged = True
+        else:
+            rx = getattr(censor_for(s), "rx", None)
+            flagged = bool(rx and rx.search(re.sub(r"`[^`]*`", "", t.section("Comments"))))
+        empty_head, empty_body = flag_empty(styles.load(s.home)["name"])
+        return templates.TemplateResponse(request, "ticket.html", ctx(request, s, t=t, deps=deps, rejected=rejected, flag_empty=None if flagged else (empty_head, empty_body), stale=s.is_stale(t), error=error, s=s,
                                                              formerly=s.formerly(t), mermaid=mermaid, mentions=docsmod.mentioned_in(list(by_id.values()), ticket_id=t.id),
                                                              owning=docsmod.owning_docs(s, t), source_doc=source_doc(s, t), acc_lines=[(i + 1, c.text) for i, c in enumerate(parse_checks(t.section("Acceptance")))], dod=dod_view(s, t), reply_ask=reply_ask(s, t), doc_links=doc_links(s, t), **assign_view(s, t), **nav_view(s, t), events_url=f"/events/{t.id}", events_since=ev.ticket_stamp(s, t.id),
                                                              tl=tlmod.view(s, t)))
@@ -694,6 +728,17 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         cur = ops.assignee_of(t)
         found = pe.get(cur) if cur else None
         return {"assign_groups": pe.groups(), "cur_assignee": found.key if found else cur, "cur_known": bool(found) or not cur}
+
+    def rejected_note(t) -> dict | None:
+        """Who let this ticket go, when and why, from the last `rejected` line of Decision (DESK-0154, Chaz F3)."""
+        if t.status != "rejected":
+            return None
+        for line in reversed(t.section("Decision").splitlines()):
+            m = re.match(r"^- (\d{4}-\d{2}-\d{2}) · (.+?) · rejected(?: · \"(.*)\")?\s*$", line)
+            if m:
+                d = dt.date.fromisoformat(m.group(1))
+                return {"who": nmod.display(m.group(2)), "when": f"{d.strftime('%b')} {d.day}", "reason": m.group(3) or "No reason was written."}
+        return {"who": "Someone", "when": "", "reason": "No reason was written."}
 
     def nav_view(s: Store, t) -> dict:
         """Previous and Next for this ticket in the walk this person chose (scope and order, kept in .desk/settings.toml)."""
@@ -778,7 +823,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
 
     def notice(ok: str, at: str, dup: int) -> str:
         if dup:
-            return "That comment is already on the ticket"
+            return ops.NEAR_NOTICE if dup == 2 else ops.DUP_NOTICE
         if ok in _OK_TEXT:
             return f"{_OK_TEXT[ok]} {at}" if _AT.fullmatch(at) else _OK_TEXT[ok]
         return ""
@@ -818,7 +863,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
             return HTMLResponse("<p>No such asset</p>", status_code=404)
         return FileResponse(str(target))
 
-    def _back(t_id: str, error: str | None = None, next_: str = "", ok: str = "", dup: bool = False, anchor: str = "") -> RedirectResponse:
+    def _back(t_id: str, error: str | None = None, next_: str = "", ok: str = "", dup: int = 0, anchor: str = "") -> RedirectResponse:
         """The no-JavaScript fallback of every form: redirect back to the ticket at the part of the page the form sits in (#comments,
         #acceptance, ...), so the browser lands where the person was and not at the top (DESK-0141)."""
         frag = f"#{anchor}" if anchor else ""
@@ -830,7 +875,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         if error:
             url += f"?error={quote(error)}"
         elif dup:
-            url += "?dup=1"
+            url += f"?dup={int(dup)}"
         elif ok:
             url += f"?done={ok}&at={dt.datetime.now().strftime('%H:%M')}"
         return RedirectResponse(url + frag, status_code=303)
@@ -849,6 +894,17 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
             "<!doctype html><meta charset=utf-8><title>Already sent</title><body style=\"font:16px system-ui;max-width:40em;margin:3em auto;padding:0 1em\">"
             "<h1>That form was already sent</h1><p>This button works once, so a double click or a refresh can not post twice. "
             f"Nothing more was written.</p><p><a href=\"/ticket/{e}\">Back to {e}</a></p></body>", status_code=409)
+
+    @app.post("/needs-me/seen")
+    def post_needs_seen(ids: list[str] = Form([]), every: str = Form("", alias="all"), next: str = Form("/"), token: str = Form("")):
+        """Mark seen (DESK-0149): clears changes, never asks. `all=1` marks every change on the list; `ids` marks the named tickets."""
+        if not tokens.use(token):
+            return _spent("")
+        s = store()
+        want = {i.upper() for i in ids}
+        items = [i for i in nmod.build(s) if i.group == "change" and (every or i.id in want)]
+        nmod.mark(s, [i.ticket for i in items])
+        return RedirectResponse(next if re.fullmatch(r"/[A-Za-z0-9_?=&%.\-]*", next or "") else "/", status_code=303)
 
     @app.post("/ticket/{ticket_id}/decide")
     def post_decide(request: Request, ticket_id: str, action: str = Form(""), words: str = Form(""), next: str = Form(""), token: str = Form(""),
@@ -990,7 +1046,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
             return JSONResponse({"ok": True, "message": "Outcome saved.", "stamp": str(ev.ticket_stamp(s, t.id))})
         return _back(ticket_id, None, anchor="acceptance")
 
-    posted: OrderedDict[str, tuple[str, int, "int | None"]] = OrderedDict()  # a post's key -> (ticket id, comment index, Acceptance line it put evidence on)
+    posted: OrderedDict[str, tuple[str, int, "int | None", str]] = OrderedDict()  # a post's key -> (ticket id, comment index, Acceptance line it put evidence on, notice)
     post_lock = threading.Lock()
 
     def comment_as(request: Request, s: Store, t, text: str, who: str, kind: str):
@@ -1067,7 +1123,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
                     s.sync_after(f"desk: comment {t.id}")
             except (KeyError, RuleError, ValueError) as e:
                 return _back(ticket_id, str(e), anchor="comments")
-            return _back(ticket_id, ok="comment", dup=not res.added, anchor="comments")
+            return _back(ticket_id, ok="comment", dup=0 if res.added else (2 if res.near else 1), anchor="comments")
 
         def refuse(msg: str, code: int):
             body = {"error": msg}
@@ -1109,16 +1165,16 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
                         ops.add_evidence(s, t.id, "Acceptance", pick, rels)
                     if res.added or pick is not None:
                         s.sync_after(f"desk: comment {t.id}")
-                    idx = ops.locate_comment(res.ticket, who_, body)
+                    idx = res.existing if (duplicate and res.existing is not None) else ops.locate_comment(res.ticket, who_, body)
                     tokens.use(token)
-                    posted[token] = (t.id, -1 if idx is None else idx, pick)
+                    posted[token] = (t.id, -1 if idx is None else idx, pick, res.message)
                     while len(posted) > MAX_TOKENS:
                         posted.popitem(last=False)
                 t = s.get(ticket_id)
-                _, idx, pick = posted[token]
+                _, idx, pick, message = posted[token]
                 lines = ops.comment_lines(t)
                 render = ctx(request, s, t=t)["render"]
-                out = {"ok": True, "repeat": repeat, "duplicate": duplicate, "index": idx, "line": lines[idx] if 0 <= idx < len(lines) else "",
+                out = {"ok": True, "repeat": repeat, "duplicate": duplicate, "message": message, "index": idx, "line": lines[idx] if 0 <= idx < len(lines) else "",
                        "html": ctx(request, s, t=t)["comments_html"](t.section("Comments")), "stamp": str(ev.ticket_stamp(s, t.id)), "token": tokens.issue()}
                 if pick is not None:  # the Acceptance line changed too: send it again with its summary
                     out["check_html"] = render(t.section("Acceptance"), t, "Acceptance")

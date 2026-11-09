@@ -60,6 +60,8 @@ drew doctor
 ```
 Expected: the tests pass, `validate` prints no errors and exits 0, and `doctor` lists the installed version and commit, the repo path, the tool and store paths and exits 0 when the installed copy matches the repo.
 
+After the first run, `drew needs-me` is the shortest way to see what is waiting on you (or open Today: Needs me is the first block).
+
 ## If it fails
 | You see | It means | Do |
 | --- | --- | --- |
