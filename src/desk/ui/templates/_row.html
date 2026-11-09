@@ -8,6 +8,6 @@
 {%- endmacro %}
 {% macro dropdown(label, name, options, current, base, hidden) -%}
 {% if options %}
-<form class="dd-form" method="get" action="{{ base }}" data-progress="none"><label>{{ label }} <select name="{{ name }}" aria-label="{{ label }}" onchange="this.form.submit()"><option value="">All</option>{% for slug, text, n in options %}<option value="{{ slug }}"{% if slug == current %} selected{% endif %}>{{ text }} ({{ n }})</option>{% endfor %}</select></label>{% for k, v in hidden.items() %}{% if v %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endif %}{% endfor %}<noscript><button class="btn small" type="submit">Go</button></noscript></form>
+<form class="dd-form" method="get" action="{{ base }}" data-progress="none"><label>{{ label }} <select name="{{ name }}" aria-label="{{ label }}" onchange="this.form.submit()"><option value="">All</option>{% for slug, text, n in options %}<option value="{{ slug }}"{% if slug == current %} selected{% endif %}>{{ text }} ({{ n }})</option>{% endfor %}</select></label>{% for k, v in hidden.items() %}{% if v and k != name %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endif %}{% endfor %}<noscript><button class="btn small" type="submit">Go</button></noscript></form>
 {% endif %}
 {%- endmacro %}

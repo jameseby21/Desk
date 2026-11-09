@@ -1,17 +1,21 @@
 {% extends "base.html" %}
-{% from "_chips.html" import bar, abar %}
+{% from "_filters.html" import dropdown %}
 {% block title %}Desk · Projects{% endblock %}
 {% block body %}
 <h1>Projects</h1>
-<p class="muted">Project, then track, then ticket, then a peek at the details. One row per <code>projects/&lt;key&gt;.md</code>; tracks come from each ticket's <code>track:</code> line. What is open stays in the address, so you can share it.</p>
-{{ abar(achips, assignee, abase, aextra) }}
+<p class="muted">Every project, then its tracks, then their tickets; open a ticket for a quick look at the details. What you open and the filters you pick stay in the address, so you can share it.</p>
+<div class="row filters" id="filters">
+  {% for name, label, plural in facets %}{{ dropdown(label, name, opts[name], plural, picked[name], fhidden, clear[name], "/projects", "open") }}
+  {% endfor %}
+</div>
+{% if filtering %}<p class="pf-shown" role="status">Showing {{ rows|length }} of {{ total_n }} project{{ 's' if total_n != 1 }} · <a href="{{ clear_all }}">Clear filters</a></p>{% endif %}
 <div class="tree">
 {% for r in rows %}
 {% set brand = s.brand_for(r.key) %}
 <details class="proj" data-key="p" data-val="{{ r.key }}"{% if sel_p == r.key %} open{% endif %}>
   <summary>
     {% if brand and brand.mark_url %}<img src="{{ brand.mark_url }}" width="22" height="22" alt="">{% else %}<span class="initial">{{ (r.title or '?')[0]|upper }}</span>{% endif %}
-    <a class="name" href="/projects?p={{ r.key }}">{{ r.title }}</a> <span class="chip">{{ r.key }}</span> <code>{{ r.prefix }}</code>{% if r.aliases %} <span class="muted" style="font-size:12.5px">formerly {{ r.aliases|join(', ') }}</span>{% endif %}
+    <a class="name" href="/projects?{{ fq_amp }}p={{ r.key }}">{{ r.title }}</a> <span class="chip">{{ r.key }}</span> <code>{{ r.prefix }}</code>{% if r.aliases %} <span class="muted" style="font-size:12.5px">formerly {{ r.aliases|join(', ') }}</span>{% endif %}
     {% if r.area %}<span class="muted area">{{ r.area }}</span>{% endif %}
     <span class="counts">{{ r.open }} open · {{ r.counts['ready'] }} {{ screen('ready')|lower }} · {{ r.counts['review'] }} {{ screen('review')|lower }} · {{ r.counts['blocked'] }} {{ screen('blocked')|lower }} · {{ r.done }} {{ screen('done')|lower }}</span>
     <span class="pct" title="{{ r.done }} of {{ r.total }} done"><span class="barwrap"><span class="bar" style="width:{{ r.pct }}%"></span></span>{{ r.pct }}%</span>
@@ -21,7 +25,7 @@
   {% for tr in r.tracks %}
   <details class="track" data-key="t" data-val="{{ tr.slug }}"{% if sel_p == r.key and sel_t == tr.slug %} open{% endif %}>
     <summary>
-      <a class="name" href="/projects?p={{ r.key }}&amp;t={{ tr.slug }}">{{ tr.name }}</a>
+      <a class="name" href="/projects?{{ fq_amp }}p={{ r.key }}&amp;t={{ tr.slug }}">{{ tr.name }}</a>
       {% if tr.kind %}<span class="chip">{{ tr.kind }}</span>{% endif %}
       {% if tr.starts or tr.ends %}<span class="muted">{{ tr.starts }}{% if tr.ends %} to {{ tr.ends }}{% endif %}</span>{% endif %}
       <span class="counts">{{ tr.open }} open of {{ tr.total }}</span>
@@ -48,7 +52,9 @@
 </details>
 {% endfor %}
 </div>
-{% if not rows %}<p class="muted">No projects yet. Add <code>projects/&lt;key&gt;.md</code> files to the store.</p>{% endif %}
+{% if not rows %}{% if filtering %}<p class="muted">No project has a ticket that matches these filters. <a href="{{ clear_all }}">Clear filters</a></p>
+{% else %}<p class="muted">No projects yet. Add <code>projects/&lt;key&gt;.md</code> files to the store.</p>{% endif %}{% endif %}
+<script src="/static/board-filter.js" defer></script>
 <script>
 (function () {
   function sync() {
@@ -62,7 +68,7 @@
         if (tk) u.searchParams.set("k", tk.dataset.val); } }
     history.replaceState(null, "", u);
   }
-  document.querySelectorAll("details").forEach(function (d) {
+  document.querySelectorAll(".tree details").forEach(function (d) {  /* the filter dropdowns are not part of what is open */
     d.addEventListener("toggle", function () {
       if (d.open && d.dataset.peek && !d.dataset.loaded) {
         d.dataset.loaded = "1";

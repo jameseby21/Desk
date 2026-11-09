@@ -20,7 +20,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from .. import timing
-from .. import deadlines, newform, notify, asks, boardfilter as bf, boardview as bv, commands, companies as compmod, identity as idmod, ladder, sprints as sprintmod, todayview as tv, people as peoplemod, search as srch, nav as navmod, needs_me as nmod, buildstamp as bs, comments as cm, docs as docsmod, ops, profanity, review as rv, style as styles, tracks as trk, version as ver
+from .. import deadlines, newform, notify, asks, boardfilter as bf, boardview as bv, commands, companies as compmod, identity as idmod, ladder, sprints as sprintmod, todayview as tv, people as peoplemod, projectfilter as pf, search as srch, nav as navmod, needs_me as nmod, buildstamp as bs, comments as cm, docs as docsmod, ops, profanity, review as rv, style as styles, tracks as trk, version as ver
 from ..config import find_home
 from ..rules import RuleError
 from ..store import Store, id_parts, split_profile
@@ -54,14 +54,23 @@ _ASSET_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._ -]*$")
 IMAGE_TYPES = "PNG, JPEG, WebP or GIF"
 
 
-def assignee_chips(tickets) -> list[tuple[str, int]]:
-    """(assignee, open tickets) for every name that has at least one ticket, for the filter chips."""
-    names: dict = {}
+def tag_chips(tickets) -> list[tuple[str, str, int]]:
+    """(tag, tag, tickets) for every tag the tickets carry, for Today's Tag dropdown (DESK-0207)."""
+    seen: dict = {}
     for t in tickets:
-        n = ops.assignee_of(t)
-        if n:
-            names[n] = names.get(n, 0) + t.is_open
-    return sorted(names.items(), key=lambda kv: kv[0].lower())
+        for x in bf.tags_of(t):
+            seen[x] = seen.get(x, 0) + 1
+    return [(x, x, n) for x, n in sorted(seen.items(), key=lambda kv: kv[0].lower())]
+
+
+def type_chips(tickets) -> list[tuple[str, str, int]]:
+    """(type, Type, tickets) for every type the tickets carry, for Today's Type dropdown (DESK-0207)."""
+    seen: dict = {}
+    for t in tickets:
+        x = bf.type_of(t)
+        if x:
+            seen[x] = seen.get(x, 0) + 1
+    return [(x, bf.type_label(x), n) for x, n in sorted(seen.items())]
 
 
 def sprint_chips(tickets) -> list[tuple[str, str, int]]:
@@ -352,11 +361,12 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         return RedirectResponse(f"/ticket/{t.id}", status_code=303)
 
     @app.get("/", response_class=HTMLResponse)
-    def today(request: Request, cap: str = "normal", track: str = "", sprint: str = "", company: str = ""):
+    def today(request: Request, cap: str = "normal", track: str = "", sprint: str = "", company: str = "", tag: str = "", type: str = ""):
         s = store()
         ts = s.tickets()
         chips = trk.track_chips(ts)
         schips = sprint_chips(ts)
+        gchips, ychips, ttype = tag_chips(ts), type_chips(ts), type.strip().lower()  # DESK-0207: Tag and Type narrow Today too
         of = compmod.by_project(s)  # DESK-0183: every card says company > project; the Company dropdown narrows the page
         cchips = company_chips(ts, of)
         if company:
@@ -365,6 +375,10 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
             ts = [t for t in ts if trk.track_slug(trk.track_of(t)) == track and trk.track_of(t)]
         if sprint:
             ts = [t for t in ts if in_sprint(t, sprint)]
+        if tag:
+            ts = [t for t in ts if tag in bf.tags_of(t)]
+        if ttype:
+            ts = [t for t in ts if bf.type_of(t) == ttype]
         week = ops.week_ago()
         stale = [t for t in ts if s.is_stale(t)]
         decided = [t for t in ts if t.status in ("approved", "done", "rejected", "changes_requested") and str(t.meta.get("updated", "")) >= week]
@@ -376,16 +390,18 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         asked = cm.query(s, author=s.owner, unanswered=True)
         nm = nmod.build(s, tickets=ts)  # Needs me (DESK-0149): asks for the owner and changes by someone else, after the page's filters
         head, body = nmod.empty_words(styles.load(s.home)["name"])
-        keep_q = "&".join(x for x in (f"cap={cap}" if cap != "normal" else "", f"track={quote(track)}" if track else "",
-                                      f"sprint={quote(sprint)}" if sprint else "", f"company={quote(company)}" if company else "") if x)
         board_q = "&".join(x for x in (f"track={quote(track)}" if track else "", f"sprint={quote(sprint)}" if sprint else "",
-                                       f"company={quote(company)}" if company else "") if x)
+                                       f"company={quote(company)}" if company else "", f"tag={quote(tag)}" if tag else "",
+                                       f"type={quote(ttype)}" if ttype else "") if x)
+        keep_q = "&".join(x for x in (f"cap={cap}" if cap != "normal" else "", board_q) if x)
         view = tv.build(s, ts)
         now = dt.date.today()
         return templates.TemplateResponse(request, "today.html", ctx(request, s, asked=asked, nm=nm, empty_head=head, empty_body=body, back="/" + ("?" + keep_q if keep_q else ""),
                                                              all_open_href="/board" + ("?" + board_q if board_q else ""), n_open=sum(1 for t in ts if t.is_open), v=view, stale=sorted(stale, key=tv.queue_key), decided=by_project(decided),
                                                              cap=cap, s=s, combos=combos, review_line=review_line, long_today=f"{now.strftime('%A, %B')} {now.day}",
                                                              chips=chips, track=track, schips=schips, sprint=sprint, cchips=cchips, company=company,
+                                                             gchips=gchips, tag=tag, ychips=ychips, ttype=ttype, board_q=board_q,
+                                                             fhidden={"cap": cap, "track": track, "sprint": sprint, "company": company, "tag": tag, "type": ttype},
                                                              placeof=lambda t: (compmod.title(of.get(t.project) or compmod.of(s, t.project)), s.project_title(t.project)),
                                                              events_url="/events", events_since=ev.tickets_stamp(s)))
 
@@ -509,19 +525,20 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         q = "&".join(f"{k}={quote(','.join(v) if isinstance(v, list) else str(v), safe=',:*')}" for k, v in kw.items() if v)
         return "/board" + ("?" + q if q else "")
 
-    def board_sel(project, assignee, track, sprint) -> dict:
-        return {"project": bf.split(project), "assignee": bf.split(assignee), "track": bf.split(track), "sprint": bf.split(sprint)}
+    def board_sel(project, assignee, track, sprint, tag=(), type_=()) -> dict:
+        return {"project": bf.split(project), "assignee": bf.split(assignee), "track": bf.split(track), "sprint": bf.split(sprint),
+                "tag": bf.split(list(tag)), "type": [x.lower() for x in bf.split(list(type_))]}
 
     @app.get("/board", response_class=HTMLResponse)
     def board(request: Request, project: list[str] = Query([]), track: list[str] = Query([]), assignee: list[str] = Query([]), sprint: list[str] = Query([]),
-              by: str = "track", open: str = "", g: str = "", company: str = "", needs: str = ""):
+              by: str = "track", open: str = "", g: str = "", company: str = "", needs: str = "", tag: list[str] = Query([]), type: list[str] = Query([])):
         """The broad-context board (DESK-0084): projects, then tracks or sprints with counts and the top priority, then (when opened) the
         tickets. `open` lists the projects drawn open, `g` the groups as `project:slug` (`*` for all). The four dropdowns (DESK-0034)
         hold their values in the address; a filter narrows the board and opens what is left, since asking for it means wanting to see
         the tickets. `needs=1` (DESK-0149) keeps the Needs me set, the same as Today's block, with the reason line under each card title."""
         s = store()
         by = by if by in bv.BY else "track"
-        sel = board_sel(project, assignee, track, sprint)
+        sel = board_sel(project, assignee, track, sprint, tag, type)
         every = s.tickets()
         ts = bf.apply(every, sel)
         of = compmod.by_project(s)
@@ -564,11 +581,11 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
 
     @app.get("/board/group", response_class=HTMLResponse)
     def board_group(request: Request, project: str, slug: str, by: str = "track", track: list[str] = Query([]), assignee: list[str] = Query([]), sprint: list[str] = Query([]),
-                    needs: str = ""):
+                    needs: str = "", tag: list[str] = Query([]), type: list[str] = Query([])):
         """The status columns of one group, for the board to load when a group is opened."""
         s = store()
         by = by if by in bv.BY else "track"
-        sel = board_sel([], assignee, track, sprint)
+        sel = board_sel([], assignee, track, sprint, tag, type)
         ts = [t for t in bf.apply(s.tickets(), sel) if t.project == project and trk.track_slug(bv.group_name(t, by) if bv.group_name(t, by) not in (bv.UNTRACKED, bv.NO_SPRINT) else "") == slug]
         ts, nm_items, nm_extra = needs_only(s, ts, needs)
         return templates.TemplateResponse(request, "_bcols_frag.html", ctx(request, s, tickets=sorted(ts, key=lambda t: t.id), s=s, project=project, slug=slug, by=by,
@@ -576,11 +593,12 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
 
     @app.get("/board/column", response_class=HTMLResponse)
     def board_column(request: Request, project: str, slug: str, col: str, offset: int = bv.FIRST_CARDS, by: str = "track", frag: int = 0,
-                     track: list[str] = Query([]), assignee: list[str] = Query([]), sprint: list[str] = Query([]), needs: str = ""):
+                     track: list[str] = Query([]), assignee: list[str] = Query([]), sprint: list[str] = Query([]), needs: str = "",
+                     tag: list[str] = Query([]), type: list[str] = Query([])):
         """The cards of one column after the first ones ("N more"): a fragment for the board to fill in place (`frag=1`), a page otherwise."""
         s = store()
         by = by if by in bv.BY else "track"
-        sel = board_sel([], assignee, track, sprint)
+        sel = board_sel([], assignee, track, sprint, tag, type)
         ts = [t for t in bf.apply(s.tickets(), sel) if t.project == project and trk.track_slug(bv.group_name(t, by) if bv.group_name(t, by) not in (bv.UNTRACKED, bv.NO_SPRINT) else "") == slug]
         ts, nm_items, nm_extra = needs_only(s, ts, needs)
         items = bv.column_items(ts, col)[max(offset, 0):]
@@ -613,19 +631,37 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         return templates.TemplateResponse(request, "sprint.html", ctx(request, s, groups=gs, slug=slug, title=gs[0].sprint.name if gs[0].sprint else slug, s=s, events_url="/events", events_since=ev.tickets_stamp(s)))
 
     @app.get("/projects", response_class=HTMLResponse)
-    def projects(request: Request, p: str = "", t: str = "", k: str = "", assignee: str = ""):
-        """Project > track > ticket > peek. What is open lives in the URL: ?p=<project>&t=<track slug>&k=<ticket id>."""
+    def projects(request: Request, p: str = "", t: str = "", k: str = "", assignee: list[str] = Query([]), tag: list[str] = Query([]),
+                 type: list[str] = Query([]), company: list[str] = Query([])):
+        """Project > track > ticket > peek. What is open lives in the URL: ?p=<project>&t=<track slug>&k=<ticket id>. The four dropdowns
+        (DESK-0207: Assigned to, Tag, Type, Company) live there too; with any of them on, only projects and tracks with a matching ticket
+        are drawn, under a line that says how many of all the projects are shown."""
         s = store()
-        every = s.tickets()
-        achips = assignee_chips(every)
-        rows = trk.hierarchy(s, [x for x in every if ops.assignee_of(x).lower() == assignee.lower()] if assignee else every)
+        fx = pf.Facets(s, peoplemod.load(s.home))
+        sel = fx.selection(assignee, tag, type, company)
+        kept, opts = fx.apply(s.tickets(), sel)
+        filtering = any(sel.values())
+        rows = trk.hierarchy(s, kept)
+        if filtering:
+            rows = [r for r in rows if r["total"]]
+        here = {"p": p, "t": t, "k": k}
+
+        def url(**kw) -> str:
+            q = bf.query(kw)
+            return "/projects" + ("?" + q if q else "")
+
+        fq = bf.query(sel)
         peek_html = ""
         if k:
             try:
                 peek_html = peek_panel(s, s.get(k))
             except KeyError:
                 pass
-        return templates.TemplateResponse(request, "projects.html", ctx(request, s, rows=rows, sel_p=p, sel_t=t, sel_k=k.upper(), peek_html=peek_html, s=s, achips=achips, assignee=assignee, abase="/projects", aextra="", events_url="/events", events_since=ev.tickets_stamp(s)))
+        return templates.TemplateResponse(request, "projects.html", ctx(request, s, rows=rows, sel_p=p, sel_t=t, sel_k=k.upper(), peek_html=peek_html, s=s,
+                                                              facets=pf.FACETS, opts=opts, picked={f: [fx.label(f, v) for v in sel[f]] for f in pf.NAMES},
+                                                              fhidden={**sel, **here}, clear={f: url(**{**sel, f: [], **here}) for f in pf.NAMES},
+                                                              clear_all=url(**here), filtering=filtering, total_n=len(fx.projects), fq_amp=fq + "&" if fq else "",
+                                                              events_url="/events", events_since=ev.tickets_stamp(s)))
 
     def peek_panel(s: Store, t) -> str:
         """The small panel under a ticket row: summary, acceptance, the latest report line, a link to the full page."""

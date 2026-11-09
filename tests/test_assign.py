@@ -58,7 +58,7 @@ def test_board_and_projects_filter_chips(store):
     assert "Alpha thing" in page and "Beta thing" not in page and 'value="chaz" checked' in page
     page = c.get("/projects?assignee=codex").text
     assert "Beta thing" in page or "1 open" in page
-    assert "assignee=chaz" in page  # the Projects page keeps its own assignee chips
+    assert 'name="assignee" value="chaz"' in page and 'value="codex" checked' in page  # DESK-0207: an Assigned to dropdown replaced the chips
     only = c.get("/projects?assignee=codex&p=jre").text
     assert "Alpha thing" not in only
     shown = c.get(f"/ticket/{a.id}").text

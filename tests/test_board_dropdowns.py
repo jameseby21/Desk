@@ -30,9 +30,9 @@ def test_three_dropdowns_replace_the_chip_walls(store):
         _mk(store, f"T{i}", track=f"Track {i}", assignee="chaz" if i % 2 else "main", status="ready")
     page = _client(store).get("/board").text
     assert 'class="trackchips"' not in page
-    for name in ("Project", "Assignee", "Track"):
+    for name in ("Project", "Assignee", "Track", "Type"):
         assert f'<summary><b>{name}</b>' in page
-    assert page.count('class="dd"') == 3
+    assert page.count('class="dd"') == 4  # Type joined in DESK-0207; Tag and Sprint show only when a ticket carries one
     assert re.search(r'name="track" value="track-3"', page) and re.search(r'name="assignee" value="chaz"', page)
     assert re.search(r'name="project" value="desk"[^>]*>\s*<span>[^<]*desk[^<]*</span>\s*<i>8</i>', page, re.S)  # a count beside each choice
     assert len(re.findall(r'class="chip[^"]*"[^>]*href="/board\?', page)) == 0  # no filter chips

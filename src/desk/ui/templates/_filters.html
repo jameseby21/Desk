@@ -1,12 +1,13 @@
-{# The board's dropdown filters (DESK-0034). A plain GET form of checkboxes, so it works without script; board-filter.js adds typing to search. #}
-{% macro dropdown(label, name, groups, plural, sel_values, hidden, clear_url) -%}
+{# The board's dropdown filters (DESK-0034), also on the Projects page (DESK-0207: `action` is the page the form sends to, `unit` the word
+   after each count, "open" there). A plain GET form of checkboxes, so it works without script; board-filter.js adds typing to search. #}
+{% macro dropdown(label, name, groups, plural, sel_values, hidden, clear_url, action="/board", unit="") -%}
 {% set n_all = namespace(v=0) %}{% for head, opts in groups %}{% set n_all.v = n_all.v + opts|length %}{% endfor %}
 <details class="dd" data-name="{{ name }}"><summary><b>{{ label }}</b> <span class="dd-sel">{% if sel_values %}{{ sel_values|join(', ') }}{% else %}All{% endif %}</span></summary>
-  <form class="dd-panel" method="get" action="/board" data-progress="none">
+  <form class="dd-panel" method="get" action="{{ action }}" data-progress="none">
     <input type="search" class="dd-q" placeholder="Search {{ n_all.v }} {{ plural }}..." aria-label="Search {{ plural }}" autocomplete="off">
     <ul class="dd-list">
     {% for head, opts in groups %}{% if head %}<li class="dd-head">{{ head }}</li>{% endif %}
-    {% for o in opts %}<li data-text="{{ (o.label ~ ' ' ~ o.value)|lower }}"><label><input type="checkbox" name="{{ name }}" value="{{ o.value }}"{% if o.on %} checked{% endif %}> <span>{{ o.label }}</span> <i>{{ o.n }}</i></label></li>{% endfor %}
+    {% for o in opts %}<li data-text="{{ (o.label ~ ' ' ~ o.value)|lower }}"><label><input type="checkbox" name="{{ name }}" value="{{ o.value }}"{% if o.on %} checked{% endif %}> <span>{{ o.label }}</span> <i>{{ o.n }}{% if unit %} {{ unit }}{% endif %}</i></label></li>{% endfor %}
     {% else %}<li class="muted dd-none">Nothing to pick.</li>{% endfor %}
     <li class="muted dd-none" hidden>No match.</li>
     </ul>

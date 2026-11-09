@@ -19,6 +19,7 @@ from . import yamlio
 
 KINDS = ("person", "coworker", "agent", "code", "external")
 GROUPS = [("People", ("person", "agent", "coworker")), ("Code sessions", ("code",)), ("People outside the team", ("external",))]
+SESSIONS = GROUPS[1][0]
 NEUTRAL = "#8A877D"
 PALETTE = ["#C8F03C", "#7AA2F7", "#F7A072", "#B28DFF", "#4FD1C5", "#F6C453", "#FF8FB1", "#9AD066", "#6EC6FF", "#E5989B"]
 
@@ -127,6 +128,19 @@ class People:
 
     def external_keys(self) -> set[str]:
         return {p.key for p in self.list if p.kind == "external"}
+
+    def facet(self, value: str, projects) -> tuple[str, str, str]:
+        """(key, group, label) of an owner or assignee for a filter (DESK-0207). A listed person is their key, their group of the dropdown
+        and their display name. A project key nobody listed (`temujin`), or `code:<project>`, is that project's own code session:
+        `code:temujin`, Code sessions, `temujin session`. Anything else is itself, under People."""
+        v = " ".join(str(value or "").split())
+        p = self.get(v)
+        if p is not None:
+            return p.key.lower(), next((g for g, kinds in GROUPS if p.kind in kinds), GROUPS[0][0]), p.name
+        bare = v[5:] if v.lower().startswith("code:") else v
+        if bare.lower() in {str(k).lower() for k in projects}:
+            return f"code:{bare.lower()}", SESSIONS, f"{bare.lower()} session"
+        return v.lower(), GROUPS[0][0], v
 
 
 _CACHE: dict = {}
