@@ -124,7 +124,7 @@ def test_today_first_block_counts_and_mark_seen_buttons(store):
     ask, due, changed, *_ = _fixture(store)
     c = TestClient(create_app(store.home))
     page = c.get("/").text
-    assert page.index('id="needs-me"') < page.index("Dropped at your feet")
+    assert page.index('id="immediate"') < page.index('id="needs-me"') < page.index('id="needs-you"')  # DESK-0193 keeps the top row
     assert "2 asks for you · 1 changed by someone else" in page
     assert page.count("Asks for you") == 1 and "Changed since you last acted" in page
     assert "Mark all changes seen" in page and "All open (" in page
@@ -139,11 +139,13 @@ def test_today_first_block_counts_and_mark_seen_buttons(store):
 def test_board_chip_filters_and_shows_reason_lines(store):
     ask, due, changed, viewed, answered = _fixture(store)
     c = TestClient(create_app(store.home))
-    page = c.get("/board?needs=1").text
+    assert "Needs me · 3" in c.get("/board").text and "3 open" in c.get("/board?needs=1").text  # DESK-0183: the top level counts companies
+    page = c.get("/board?company=unsorted&needs=1").text  # inside a company the view opens what is left, like every filter
     assert "Needs me · 3" in page
     assert "Only viewed" not in page and "Changed by Patch" in page
     assert re.search(r"ask: choose · 3 options · due (Nov 10|Tue)", page)
-    assert "Only viewed" in c.get("/board").text and "Needs me · 3" in c.get("/board").text
+    every = c.get("/board?company=unsorted&open=*&g=*").text
+    assert "Only viewed" in every and "Needs me · 3" in every
 
 
 def test_only_the_empty_state_differs_across_styles(store):
