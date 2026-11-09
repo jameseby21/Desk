@@ -31,6 +31,7 @@ MAX_VALUE = 120
 _ID = re.compile(r"^([A-Za-z][A-Za-z0-9]*-\d+)")
 _ANY_COMMENT = re.compile(r"^- (\d{4}-\d{2}-\d{2})(?:[ T](\d{2}:\d{2}))? · (.+?) · (.*)$")
 _TAGS = re.compile(r"\s*<!--.*?-->")
+_BOX = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+\[([ xX!])\]\s")
 
 
 class AppendOnlyError(RuntimeError):
@@ -224,7 +225,11 @@ def diff(old, new) -> list[dict]:
                 out.append({"change": "comment", "field": "comment", "old": "", "new": words, "what": words or "(an empty comment)"})
             if comments and set(a.splitlines()) <= set(b.splitlines()):
                 continue  # only new comments (and their continuation lines): the comment events say it all
-        first = _val(re.sub(r"^\s*(?:[-*+]|\d+[.)])\s+(?:\[[ xX!]\]\s+)?", "", added[0])) if added else ""
+        first = ""
+        if added:
+            box = _BOX.match(added[0])
+            mark = {"x": "ticked: ", "X": "ticked: ", "!": "not accepted: "}.get(box.group(1), "") if box else ""
+            first = _val(mark + re.sub(r"^\s*(?:[-*+]|\d+[.)])\s+(?:\[[ xX!]\]\s+)?", "", _TAGS.sub("", added[0])))
         out.append({"change": "section", "field": name, "old": "", "new": first,
                     "what": f"{name} changed" + (f": {first}" if first else " (lines removed)")})
     return out
@@ -253,11 +258,12 @@ def comment_events(t, pe, owner: str) -> list[Event]:
     """Each dated Comments line as an event, keyed by its own text so it is migrated once."""
     from .ops import comment_identity
 
-    out = []
+    out, seen = [], {}
     for ln in (t.section("Comments") or "").splitlines():
         m = _ANY_COMMENT.match(ln.strip())
         if not m:
             continue
+        seen[ln.strip()] = n = seen.get(ln.strip(), 0) + 1  # two identical lines are two comments, each migrated once
         day, hm, who, rest = m.group(1), m.group(2) or "00:00", m.group(3).strip(), m.group(4)
         try:
             dt.date.fromisoformat(day)
@@ -267,7 +273,8 @@ def comment_events(t, pe, owner: str) -> list[Event]:
         actor = pe.resolve(ident.get("as") or who) if pe is not None else who
         words = comment_words(rest)
         out.append(Event(t.id, f"{day}T{hm}:00", actor, kind_for(actor, ident.get("kind", ""), owner, pe), "migration", "comment", "comment", "", words,
-                         words or "(an empty comment)", ident.get("inst", ""), ident.get("ok") == "1", "comment:" + _hash(ln.strip())))
+                         words or "(an empty comment)", ident.get("inst", ""), ident.get("ok") == "1",
+                         "comment:" + _hash(ln.strip()) + ("" if n == 1 else f":{n}")))
     return out
 
 

@@ -80,6 +80,17 @@ def test_appends_only_ever_add_lines_at_the_end(store, as_patch):
     assert after.startswith(before) and len(after) > len(before)
 
 
+def test_ticking_an_acceptance_line_says_which_line_was_ticked(store, as_patch):
+    t = ops.new(store, "Ticks", "desk")
+    x = store.get(t.id)
+    x.set_section("Acceptance", "- [ ] First thing\n- [ ] Second thing\n")
+    store.save(x)
+    x = store.get(t.id)
+    x.set_section("Acceptance", "- [ ] First thing\n- [x] Second thing\n")
+    store.save(x)
+    assert activity.read(store.home, t.id)[-1].what == "Acceptance changed: ticked: Second thing"
+
+
 def test_a_save_with_no_change_writes_no_event(store, as_patch):
     t = ops.new(store, "Quiet", "desk")
     n = len(activity.read(store.home, t.id))
@@ -148,6 +159,17 @@ def test_migration_dry_run_counts_equal_what_apply_writes_and_a_second_apply_wri
     rows3, wrote3, _ = activity.migrate(store, apply=True)
     assert rows3 == [] and wrote3 == 0  # idempotent
     assert activity.verify(store.home, a.id) == []
+
+
+def test_two_identical_comment_lines_are_two_events_and_a_third_added_later_is_migrated_too(store):
+    line = "- 2026-11-08 · james · testing duplication"
+    a = _old_ticket(store, "Twice", [line, line])
+    assert activity.migrate(store, apply=True)[1] == 2
+    x = store.get(a.id)
+    x.set_section("Comments", "\n".join([line, line, line]) + "\n")
+    x.write()
+    rows, wrote, _ = activity.migrate(store, apply=True)
+    assert wrote == 1 and [e.what for e in activity.read(store.home, a.id)] == ["testing duplication"] * 3
 
 
 def test_migration_without_git_says_so_and_still_migrates_comments(store):
