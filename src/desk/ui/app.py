@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import datetime as dt
 import html
 import os
@@ -13,18 +14,18 @@ import traceback
 from collections import OrderedDict
 from pathlib import Path
 
-from fastapi import FastAPI, File, Form, Request, UploadFile
+from fastapi import FastAPI, File, Form, Query, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from .. import timing
-from .. import asks, nav as navmod, buildstamp as bs, comments as cm, docs as docsmod, ops, profanity, review as rv, style as styles, tracks as trk, version as ver
+from .. import newform, notify, asks, boardfilter as bf, boardview as bv, commands, companies as compmod, identity as idmod, ladder, sprints as sprintmod, todayview as tv, people as peoplemod, search as srch, nav as navmod, buildstamp as bs, comments as cm, docs as docsmod, ops, profanity, review as rv, style as styles, tracks as trk, version as ver
 from ..config import find_home
 from ..rules import RuleError
 from ..store import Store, id_parts, split_profile
 from ..ticket import SECTIONS, STATUSES, check_states, parse_checks
-from ..words import screen
+from .. import words
 from urllib.parse import quote
 
 from markupsafe import Markup
@@ -46,6 +47,7 @@ MERMAID_CDN = "https://cdn.jsdelivr.net/npm/mermaid@11.4.1/dist/mermaid.min.js"
 COMBO_WINDOW = dt.timedelta(minutes=30)
 BRAND_TYPES = {".svg", ".png", ".jpg", ".jpeg", ".webp", ".gif"}
 _SECTION_ANCHOR = {"Acceptance": "acceptance", "How to validate": "validate", "Evidence": "evidence", "Prompt": "prompt"}  # where a check box sits on the page
+_CHECK_LINE = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+\S")  # a list item in a Definition of Done file is one check
 _ASSET_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._ -]*$")
 IMAGE_TYPES = "PNG, JPEG, WebP or GIF"
 
@@ -58,6 +60,32 @@ def assignee_chips(tickets) -> list[tuple[str, int]]:
         if n:
             names[n] = names.get(n, 0) + t.is_open
     return sorted(names.items(), key=lambda kv: kv[0].lower())
+
+
+def sprint_chips(tickets) -> list[tuple[str, str, int]]:
+    """(slug, name, tickets) for every sprint the tickets name, for the sprint filter chips."""
+    seen: dict = {}
+    for t in tickets:
+        n = sprintmod.sprint_of(t)
+        if n:
+            slug = sprintmod.slugify(n, 60)
+            seen[slug] = (seen[slug][0], seen[slug][1] + 1) if slug in seen else (n, 1)
+    return sorted(((slug, n, k) for slug, (n, k) in seen.items()), key=lambda r: r[1].lower())
+
+
+def company_chips(tickets, of: dict) -> list[tuple[str, str, int]]:
+    """(slug, company title, tickets) for every company the tickets fall in, for Today's Company dropdown (DESK-0183)."""
+    seen: dict = {}
+    for t in tickets:
+        name = of.get(t.project) or compmod.UNSORTED
+        slug = compmod.slug(name)
+        seen[slug] = (seen[slug][0], seen[slug][1] + 1) if slug in seen else (compmod.title(name), 1)
+    return sorted(((slug, n, k) for slug, (n, k) in seen.items()), key=lambda r: r[1].lower())
+
+
+def in_sprint(t, slug: str) -> bool:
+    n = sprintmod.sprint_of(t)
+    return bool(n) and sprintmod.slugify(n, 60) == slug
 
 
 def by_project(tickets):
@@ -88,7 +116,7 @@ def combos_for(tickets, on: dt.date | None = None) -> list[tuple]:
 
 
 MAX_TOKENS = 5000
-_OK_TEXT = {"comment": "Comment added", "decide": "Decision recorded", "check": "Checkbox saved", "move": "Ticket moved", "attach": "Image attached"}
+_OK_TEXT = {"comment": "Comment added", "decide": "Decision recorded", "check": "Checkbox saved", "move": "Ticket moved", "attach": "Image attached", "assign": "Assignee saved", "new": "Ticket created"}
 _AT = re.compile(r"\d{2}:\d{2}")
 
 
@@ -124,18 +152,77 @@ def why_text(home: Path) -> str:
     return "WHY.md not found: set DESK_REPO to your Desk repo."
 
 
+class IdentityMiddleware:
+    """Pure ASGI. Works out who is behind each request (DESK-0144) and keeps it for the request: `scope["state"]["actor"]` for the routes
+    and `identity.CURRENT` for every write. A browser that has no device cookie gets one, which names the browser as the instance."""
+
+    def __init__(self, app, find_store):
+        self.app, self.find_store = app, find_store
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http" or scope["path"].startswith(("/static", "/events")):
+            return await self.app(scope, receive, send)
+        raw = next((v.decode("latin-1") for k, v in scope.get("headers", []) if k == b"cookie"), "")
+        cookies = {k.strip(): v.strip() for k, _, v in (p.partition("=") for p in raw.split(";")) if k.strip()}
+        new_device = "" if cookies.get("desk_device") else secrets.token_hex(4)
+        if new_device:
+            cookies["desk_device"] = new_device
+        actor = idmod.resolve_ui(self.find_store(), cookies)
+        scope.setdefault("state", {})["actor"] = actor
+        token = idmod.CURRENT.set(actor)
+
+        async def send_wrapped(message):
+            if new_device and message["type"] == "http.response.start":
+                message = {**message, "headers": [*message.get("headers", []), (b"set-cookie", f"desk_device={new_device}; Path=/; SameSite=Lax; Max-Age=31536000".encode())]}
+            await send(message)
+
+        try:
+            await self.app(scope, receive, send_wrapped)
+        finally:
+            idmod.CURRENT.reset(token)
+
+
+def acting(request) -> "idmod.Actor":
+    """The resolved actor of this request (the store owner, assumed, when nothing could be worked out)."""
+    return request.scope.get("state", {}).get("actor") or idmod.Actor("desk", "person", "", "ui", "assumed-owner", False)
+
+
 def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastAPI:
-    app = FastAPI(title="Desk")
+    def who_html(key) -> Markup:
+        """An owner or assignee as a colour dot and the display name from people.yaml; a value nobody listed renders as written."""
+        key = " ".join(str(key or "").split())
+        if not key:
+            return Markup("")
+        pe = peoplemod.load(home or find_home())
+        shown = key if pe.get(key) is None else pe.display(key)
+        return Markup(f'<span class="who" title="{html.escape(key)}"><i class="wdot" style="background:{html.escape(pe.colour(key))}"></i>{html.escape(shown)}</span>')
+
+    def person_name(key) -> str:
+        """The plain display name of an owner or assignee, for a hover title."""
+        key = " ".join(str(key or "").split())
+        pe = peoplemod.load(home or find_home())
+        return key if not key or pe.get(key) is None else pe.display(key)
+
+    @contextlib.asynccontextmanager
+    async def lifespan(_app):
+        yield
+        _app.state.stopping = True  # open event streams end at their next look, so Ctrl+C can stop the server
+
+    app = FastAPI(title="Desk", lifespan=lifespan)
+    app.state.stopping = False
     app.add_middleware(timing.TimingMiddleware)
+    app.add_middleware(IdentityMiddleware, find_store=lambda: Store(home or find_home()))
     tokens = Tokens()
     app.state.tokens = tokens
+    shown = {"censor": None, "style": "plain"}  # per request: the profanity filter (None when switched off) and the style that picks the words on screen
     templates = Jinja2Templates(directory=str(TEMPLATES))
     templates.TemplateResponse = timing.timed_render(templates.TemplateResponse)
     mermaid_src = "/static/mermaid.min.js" if (STATIC / "mermaid.min.js").exists() else MERMAID_CDN
-    templates.env.globals.update(screen=screen, md=md_html, has_mermaid=has_mermaid, statuses=STATUSES,
+    templates.env.globals.update(ladder=ladder.shape, cmds=commands.parse, screen=lambda st: words.screen(st, shown["style"]), heading=lambda key: words.heading(key, shown["style"]), md=md_html, has_mermaid=has_mermaid, statuses=STATUSES,
                                  sections=SECTIONS, mermaid_src=mermaid_src, by_project=by_project, token=tokens.issue, check_summary=lambda text: Markup(summary_html(text)), track_slug=trk.track_slug, track_of=trk.track_of,
-                                 build=ver.describe())
-    shown = {"censor": None}  # the profanity filter for the request being rendered; None when the person switched it off
+                                 build=ver.describe(), who=who_html, person=person_name, sprint_slug=lambda n: sprintmod.slugify(str(n), 60), ask_badge=lambda t: ((asks.ask_of(t) or {}).get("kind") or "").capitalize(),
+                                 card_extra=lambda t, st: [x for x in [str(t.meta.get("type") or "")] + ([words.screen("stale")] if st.is_stale(t) else []) + [f"#{x}" for x in t.tags] if x],
+                                 card_age=bv.age_days, card_review=bv.review_by_text, card_proof=bv.proof_dot, columns_of=bv.five, finished_of=bv.finished, first_cards=bv.FIRST_CARDS)
 
     def finalize(v):
         fn = shown["censor"]
@@ -155,6 +242,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
 
     def ctx(request: Request, st: Store, **kw) -> dict:
         censor = shown["censor"] = censor_for(st)
+        shown["style"] = styles.load(st.home)["name"]
         known = None
         seen: set = set()
         gloss = docsmod.glossary(st.home)
@@ -185,7 +273,10 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         done_kind = qp.get("done") or qp.get("ok") or ""
         events_url, events_since = kw.pop("events_url", ""), kw.pop("events_since", "")
         events = {"url": events_url, "since": events_since} if events_url and styles.load(st.home)["autorefresh"] else None
-        return {"build_stale": bs.stale(STAMP_DIR), "stale_text": bs.STALE_TEXT, "assign_dod": ops.ASSIGN_DOD, "events": events, "notice": notice(done_kind, qp.get("at", ""), int(qp.get("dup") or 0) if str(qp.get("dup") or "0").isdigit() else 0), "render": render, "comments_html": comments_html, "request": request, "owner": st.owner, "style": styles.load(st.home), "favicon": FAVICON, "home": str(st.home), "today": dt.date.today().isoformat(),
+        me = acting(request)
+        can_act = me.confirmed and me.name == st.owner
+        return {"me": me, "unnamed": idmod.unnamed(me), "can_act_as": can_act, "act_people": [p for p in peoplemod.load(st.home).list if p.key != st.owner] if can_act else [],
+                "build_stale": bs.stale(STAMP_DIR), "stale_text": bs.STALE_TEXT, "assign_dod": ops.ASSIGN_DOD, "events": events, "notice": notice(done_kind, qp.get("at", ""), int(qp.get("dup") or 0) if str(qp.get("dup") or "0").isdigit() else 0), "render": render, "comments_html": comments_html, "request": request, "owner": st.owner, "style": styles.load(st.home), "favicon": FAVICON, "home": str(st.home), "today": dt.date.today().isoformat(),
                 "titles": {k: st.project_title(k) for k in st.projects()}, **kw}
 
     held: OrderedDict[str, dict] = OrderedDict()  # unhandled errors a person may file as a bug, by one-time id
@@ -256,17 +347,20 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         return RedirectResponse(f"/ticket/{t.id}", status_code=303)
 
     @app.get("/", response_class=HTMLResponse)
-    def today(request: Request, cap: str = "normal", track: str = ""):
+    def today(request: Request, cap: str = "normal", track: str = "", sprint: str = "", company: str = ""):
         s = store()
         ts = s.tickets()
         chips = trk.track_chips(ts)
+        schips = sprint_chips(ts)
+        of = compmod.by_project(s)  # DESK-0183: every card says company > project; the Company dropdown narrows the page
+        cchips = company_chips(ts, of)
+        if company:
+            ts = [t for t in ts if compmod.slug(of.get(t.project) or compmod.of(s, t.project)) == company]
         if track:
             ts = [t for t in ts if trk.track_slug(trk.track_of(t)) == track and trk.track_of(t)]
+        if sprint:
+            ts = [t for t in ts if in_sprint(t, sprint)]
         week = ops.week_ago()
-        mouth = [t for t in ts if t.status in ("claimed", "in_progress")]
-        feet = [t for t in ts if t.status == "review"]
-        decisions = [t for t in ts if t.meta.get("type") == "decision" and t.status in ("ready", "inbox", "triage")]
-        others = [t for t in ts if t.status in ("ready", "blocked", "changes_requested", "approved", "triage", "inbox")]
         stale = [t for t in ts if s.is_stale(t)]
         decided = [t for t in ts if t.status in ("approved", "done", "rejected", "changes_requested") and str(t.meta.get("updated", "")) >= week]
         rt = rv.find(s, rv.monday_of(dt.date.today()))
@@ -275,13 +369,16 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
             stale = []
         combos = combos_for(ts) if s.combos else []
         asked = cm.query(s, author=s.owner, unanswered=True)
-        return templates.TemplateResponse(request, "today.html", ctx(request, s, asked=asked, mouth=by_project(mouth), feet=by_project(feet + decisions),
-                                                             others=by_project(others), stale=by_project(stale),
-                                                             decided=by_project(decided), cap=cap, s=s, combos=combos, review_line=review_line,
-                                                             chips=chips, track=track, chip_base="/", chip_extra=f"cap={cap}", events_url="/events", events_since=ev.tickets_stamp(s)))
+        view = tv.build(s, ts)
+        now = dt.date.today()
+        return templates.TemplateResponse(request, "today.html", ctx(request, s, asked=asked, v=view, stale=sorted(stale, key=tv.queue_key), decided=by_project(decided),
+                                                             cap=cap, s=s, combos=combos, review_line=review_line, long_today=f"{now.strftime('%A, %B')} {now.day}",
+                                                             chips=chips, track=track, schips=schips, sprint=sprint, cchips=cchips, company=company,
+                                                             placeof=lambda t: (compmod.title(of.get(t.project) or compmod.of(s, t.project)), s.project_title(t.project)),
+                                                             events_url="/events", events_since=ev.tickets_stamp(s)))
 
     def sse(stamp, since: str, timeout: float) -> StreamingResponse:
-        return StreamingResponse(ev.stream(stamp, int(since) if since.isdigit() else None, poll, min(max(timeout, 0), 3600)), media_type="text/event-stream",
+        return StreamingResponse(ev.stream(stamp, int(since) if since.isdigit() else None, poll, min(max(timeout, 0), 3600), stopping=lambda: app.state.stopping), media_type="text/event-stream",
                                  headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})
 
     @app.get("/events/{ticket_id}")
@@ -295,6 +392,41 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         """Server-sent events for the Today, board and projects pages: the tickets directory's latest mtime."""
         s = store()
         return sse(lambda: ev.tickets_stamp(s), since, timeout)
+
+    feed = app.state.feed = notify.Feed()
+
+    @app.get("/notify/changes")
+    def notify_changes(request: Request, since: str = ""):
+        """Popup notifications (DESK-0192): the ticket changes after `since` that the person looking should hear about, each with who made
+        it and what changed. Without `since` it only says where the feed is now. Nothing is stored or sent anywhere."""
+        me = acting(request)
+        out = feed.since(store(), int(since) if since.isdigit() else None, me.as_ or me.name, me.name)
+        return JSONResponse(out, headers={"Cache-Control": "no-store"})
+
+    search_ix: dict = {}  # one index per store path, kept for the life of the process
+
+    def search_for(s: Store, text: str, limit: int):
+        ix = search_ix.get(str(s.home))
+        if ix is None:
+            ix = search_ix[str(s.home)] = srch.open_index(s)
+        ix.refresh(s, every=1.0)  # a stat of each ticket file at most once a second
+        return ix.search(text, limit=limit)
+
+    @app.get("/search.json")
+    def search_json(q: str = "", limit: int = srch.PER_GROUP):
+        """The palette's data: groups by project, each with its count and top hits. Status labels follow the words setting."""
+        res = search_for(store(), q[:300], min(max(limit, 1), 100))
+        out = res.as_json()
+        for g in out["groups"]:
+            for h in g["hits"]:
+                h["status_label"] = words.screen(h["status"], styles.load(store().home)["name"])
+        return JSONResponse(out)
+
+    @app.get("/search", response_class=HTMLResponse)
+    def search_page(request: Request, q: str = ""):
+        s = store()
+        res = search_for(s, q[:300], 50) if q.strip() else None
+        return templates.TemplateResponse(request, "search.html", ctx(request, s, q=q, res=res, snippet_html=lambda x: Markup(srch.snippet_html(x))))
 
     @app.get("/about", response_class=HTMLResponse)
     def about(request: Request):
@@ -319,20 +451,135 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
             return JSONResponse({"ok": True, "message": "Saved. Other pages show it the next time you open them."})
         return RedirectResponse("/settings?saved=1", status_code=303)
 
-    @app.get("/board", response_class=HTMLResponse)
-    def board(request: Request, project: str | None = None, track: str = "", assignee: str = ""):
+    def new_form_page(request: Request, st: Store, v: dict | None = None, errors: dict | None = None, status: int = 200) -> HTMLResponse:
+        v = newform.clean(v or {})
+        v["type"], v["priority"], v["size"] = v["type"] or "feature", v["priority"] or "p2", v["size"] or "s"
+        opt = newform.options(st)
+        v["owner"] = v["owner"] or opt.default_owner
+        return templates.TemplateResponse(request, "new.html", ctx(request, st, v=v, opt=opt, errors=errors or {}), status_code=status)
+
+    @app.get("/new", response_class=HTMLResponse)
+    def new_ticket_page(request: Request, project: str = "", type: str = "", priority: str = "", size: str = "", track: str = "", sprint: str = ""):
+        """The New ticket form (DESK-0189). The query may pre-fill project, type, priority, size, track and sprint."""
+        return new_form_page(request, store(), {"project": project, "type": type, "priority": priority, "size": size, "track": track, "sprint": sprint})
+
+    @app.post("/new")
+    def post_new_ticket(request: Request, token: str = Form(""), project: str = Form(""), title: str = Form(""), type: str = Form(""), priority: str = Form(""),
+                        size: str = Form(""), owner: str = Form(""), assignee: str = Form(""), associated: list[str] = Form([]), track: str = Form(""),
+                        sprint: str = Form(""), context: str = Form(""), outcome: str = Form(""), acceptance: str = Form(""), steps: str = Form("")):
+        """Create a ticket from the form. Nothing is written unless every check passes. With `Accept: application/json` the reply is
+        `{ok, id, url, message}` or `{error, errors, token}` (a fresh one-time key); a plain form post redirects to the new ticket or draws the form again."""
+        js = "application/json" in request.headers.get("accept", "")
         s = store()
-        ts = [t for t in s.tickets() if not project or t.project == project]
-        achips = assignee_chips(ts)
-        if assignee:
-            ts = [t for t in ts if ops.assignee_of(t).lower() == assignee.lower()]
-        chips = trk.track_chips(ts)
-        if track:
-            ts = [t for t in ts if trk.track_of(t) and trk.track_slug(trk.track_of(t)) == track]
-        cols = [(st, by_project([t for t in ts if t.status == st])) for st in STATUSES]
-        return templates.TemplateResponse(request, "board.html", ctx(request, s, cols=cols, project=project, projects=sorted(s.projects()), s=s,
-                                                           chips=chips, track=track, chip_base="/board", chip_extra="&".join(x for x in (f"project={project}" if project else "", f"assignee={quote(assignee)}" if assignee else "") if x),
-                                                           achips=achips, assignee=assignee, abase="/board", aextra=f"project={project}" if project else "", events_url="/events", events_since=ev.tickets_stamp(s)))
+        v = {"project": project, "title": title, "type": type, "priority": priority, "size": size, "owner": owner, "assignee": assignee, "associated": associated,
+             "track": track, "sprint": sprint, "context": context, "outcome": outcome, "acceptance": acceptance, "steps": steps}
+        if not tokens.valid(token):
+            msg = "That form was already sent, so no second ticket was made. Open Today to find it, or reload this page for a fresh form."
+            return JSONResponse({"error": msg, "errors": {"form": msg}, "token": tokens.issue()}, status_code=409) if js else new_form_page(request, s, v, {"form": msg}, 409)
+        errors = newform.check(s, v)
+        if not errors:
+            me = acting(request)
+            try:
+                t = newform.create(s, v, me.as_ or me.name)
+            except ValueError as e:
+                errors = getattr(e, "errors", None) or {"form": str(e)}
+        if errors:
+            if js:
+                return JSONResponse({"error": " ".join(errors.values()), "errors": errors, "token": token}, status_code=422)
+            return new_form_page(request, s, v, errors, 422)
+        tokens.use(token)
+        title_text = str(t.meta.get("title") or "")
+        if js:
+            return JSONResponse({"ok": True, "id": t.id, "url": f"/ticket/{t.id}?done=new&at={dt.datetime.now().strftime('%H:%M')}", "message": f"Created {t.id}: {title_text}."})
+        return RedirectResponse(f"/ticket/{t.id}?done=new&at={dt.datetime.now().strftime('%H:%M')}", status_code=303)
+
+    def board_url(**kw) -> str:
+        q = "&".join(f"{k}={quote(','.join(v) if isinstance(v, list) else str(v), safe=',:*')}" for k, v in kw.items() if v)
+        return "/board" + ("?" + q if q else "")
+
+    def board_sel(project, assignee, track, sprint) -> dict:
+        return {"project": bf.split(project), "assignee": bf.split(assignee), "track": bf.split(track), "sprint": bf.split(sprint)}
+
+    @app.get("/board", response_class=HTMLResponse)
+    def board(request: Request, project: list[str] = Query([]), track: list[str] = Query([]), assignee: list[str] = Query([]), sprint: list[str] = Query([]),
+              by: str = "track", open: str = "", g: str = "", company: str = ""):
+        """The broad-context board (DESK-0084): projects, then tracks or sprints with counts and the top priority, then (when opened) the
+        tickets. `open` lists the projects drawn open, `g` the groups as `project:slug` (`*` for all). The four dropdowns (DESK-0034)
+        hold their values in the address; a filter narrows the board and opens what is left, since asking for it means wanting to see
+        the tickets."""
+        s = store()
+        by = by if by in bv.BY else "track"
+        sel = board_sel(project, assignee, track, sprint)
+        every = s.tickets()
+        ts = bf.apply(every, sel)
+        of = compmod.by_project(s)
+        names = {compmod.slug(n): n for n in of.values()}
+        if not company:  # an address that opens a project or a group (an old link, a reload) opens its company too
+            keys = [x.split(":")[0] for x in bf.split(open) + bf.split(g) if x not in (bv.WIDE, "-")]
+            company = compmod.slug(of[keys[0]]) if keys and keys[0] in of else (compmod.ALL if bv.WIDE in bf.split(open) + bf.split(g) else "")
+        if company and company != compmod.ALL and company not in names:
+            company = ""  # a company that no longer exists: back to the top
+        level = "project" if company else "company"
+        if level == "company":  # DESK-0183: the board opens at companies and shows nothing else; the filters narrow their counts
+            rows, comps = [], bv.companies(s, bv.build(s, ts, by))
+        else:
+            ts = ts if company == compmod.ALL else [t for t in ts if of.get(t.project) == names[company]]
+            rows, comps = bv.build(s, ts, by, open, g, expand_all=any(sel.values())), []
+        opts = bf.options(s, every, sel, peoplemod.load(s.home))
+        by_extra = {"by": by} if by != "track" else {}
+        here = {**by_extra, **({"company": company} if company else {})}  # what every link and form carries so the drill survives a filter
+        keep = {**sel, **here}
+        links = {"track": board_url(**{**keep, "by": ""}), "sprint": board_url(**{**keep, "by": "sprint"}), "expand": board_url(**keep, open="*", g="*"),
+                 "collapse": board_url(**keep, open="-"), "all_projects": board_url(**{**sel, "project": [], **here}),
+                 "top": board_url(**sel, **by_extra), "company": board_url(**keep), "clear_all": board_url(**here)}
+        for c in comps:
+            c.href = board_url(**sel, **by_extra, company=c.slug)
+        crumb = ("All companies" if company == compmod.ALL else compmod.title(names[company])) if company else ""
+        mine = peoplemod.load(s.home).get(s.owner)
+        clear = {f: board_url(**{**sel, f: [], **here}) for f in bf.FACETS}
+        return templates.TemplateResponse(request, "board.html", ctx(request, s, rows=rows, comps=comps, level=level, company=company, crumb=crumb, by=by, links=links, s=s, sel=sel, opts=opts,
+                                                           tokens=bf.tokens(sel, opts, here),
+                                                           show={f: any(g for _h, g in opts[f]) for f in bf.FACETS}, hidden=here, fhidden={**sel, **here}, clear=clear, filter_q=bf.query({**sel, "project": []}), total=len(ts), open_n=sum(1 for t in ts if t.is_open),
+                                                           mine_url=board_url(assignee=[mine.key if mine else s.owner], **here), events_url="/events", events_since=ev.tickets_stamp(s)))
+
+    @app.get("/board/group", response_class=HTMLResponse)
+    def board_group(request: Request, project: str, slug: str, by: str = "track", track: list[str] = Query([]), assignee: list[str] = Query([]), sprint: list[str] = Query([])):
+        """The status columns of one group, for the board to load when a group is opened."""
+        s = store()
+        by = by if by in bv.BY else "track"
+        sel = board_sel([], assignee, track, sprint)
+        ts = [t for t in bf.apply(s.tickets(), sel) if t.project == project and trk.track_slug(bv.group_name(t, by) if bv.group_name(t, by) not in (bv.UNTRACKED, bv.NO_SPRINT) else "") == slug]
+        return templates.TemplateResponse(request, "_bcols_frag.html", ctx(request, s, tickets=sorted(ts, key=lambda t: t.id), s=s, project=project, slug=slug, by=by, filter_q=bf.query(sel)))
+
+    @app.get("/board/column", response_class=HTMLResponse)
+    def board_column(request: Request, project: str, slug: str, col: str, offset: int = bv.FIRST_CARDS, by: str = "track", frag: int = 0,
+                     track: list[str] = Query([]), assignee: list[str] = Query([]), sprint: list[str] = Query([])):
+        """The cards of one column after the first ones ("N more"): a fragment for the board to fill in place (`frag=1`), a page otherwise."""
+        s = store()
+        by = by if by in bv.BY else "track"
+        sel = board_sel([], assignee, track, sprint)
+        ts = [t for t in bf.apply(s.tickets(), sel) if t.project == project and trk.track_slug(bv.group_name(t, by) if bv.group_name(t, by) not in (bv.UNTRACKED, bv.NO_SPRINT) else "") == slug]
+        items = bv.column_items(ts, col)[max(offset, 0):]
+        if frag:
+            return templates.TemplateResponse(request, "_bmore.html", ctx(request, s, items=items, s=s))
+        label = "Finished" if col == "finished" else words.screen(col, shown["style"])
+        return templates.TemplateResponse(request, "board_more.html", ctx(request, s, items=items, s=s, project=project, label=label, offset=offset,
+                                                                  group=bv.group_name(ts[0], by) if ts else slug))
+
+    @app.get("/sprint", response_class=HTMLResponse)
+    def sprint_index(request: Request):
+        s = store()
+        defs = {x.slug: x for x in sprintmod.load(s.home)}
+        return templates.TemplateResponse(request, "sprints.html", ctx(request, s, rows=sprintmod.all_sprints(s), defs=defs, s=s))
+
+    @app.get("/sprint/{slug}", response_class=HTMLResponse)
+    def sprint_page(request: Request, slug: str):
+        """One sprint, its tickets in score order, with the burn-down numbers. A name used by two projects shows one group per project."""
+        s = store()
+        gs = sprintmod.groups(s, slug)
+        if not gs:
+            return HTMLResponse("<p>No such sprint</p>", status_code=404)
+        return templates.TemplateResponse(request, "sprint.html", ctx(request, s, groups=gs, slug=slug, title=gs[0].sprint.name if gs[0].sprint else slug, s=s, events_url="/events", events_since=ev.tickets_stamp(s)))
 
     @app.get("/projects", response_class=HTMLResponse)
     def projects(request: Request, p: str = "", t: str = "", k: str = "", assignee: str = ""):
@@ -384,7 +631,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         summary = re.sub(r"\s+", " ", re.sub(r"[`*_>#\[\]]", "", body.split("\n\n")[0]))[:200] if body else ""
         acc = t.acceptance()
         facts = [f"{t.meta.get('type')}", f"{t.meta.get('priority')}", f"owner {t.meta.get('owner')}"] + ([f"{sum(1 for ok, _ in acc if ok)} of {len(acc)} accepted"] if acc else [])
-        text = (f'<div class="hc-top"><b class="hc-id">{e(t.id)}</b> <span class="chip {"ball" if t.status == "review" else "red" if t.status == "blocked" else ""}">{e(screen(t.status))} · {e(t.status)}</span> '
+        text = (f'<div class="hc-top"><b class="hc-id">{e(t.id)}</b> <span class="chip {"ball" if t.status == "review" else "red" if t.status == "blocked" else ""}">{e(words.screen(t.status, styles.load(s.home)["name"]))}</span> '
                 f'<span class="chip">{e(t.project)}</span></div><p class="hc-title">{e(str(t.meta.get("title") or ""))}</p>'
                 + (f'<p class="hc-body">{e(summary)}</p>' if summary else "") + f'<p class="hc-facts">{e(" · ".join(facts))}</p>')
         cf = censor_for(s)
@@ -434,7 +681,14 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         mermaid = any(has_mermaid(t.section(name)) for name in t.sections)
         return templates.TemplateResponse(request, "ticket.html", ctx(request, s, t=t, deps=deps, stale=s.is_stale(t), error=error, s=s,
                                                              formerly=s.formerly(t), mermaid=mermaid, mentions=docsmod.mentioned_in(list(by_id.values()), ticket_id=t.id),
-                                                             owning=docsmod.owning_docs(s, t), source_doc=source_doc(s, t), acc_lines=[(i + 1, c.text) for i, c in enumerate(parse_checks(t.section("Acceptance")))], dod=dod_view(s, t), reply_ask=reply_ask(s, t), doc_links=doc_links(s, t), **nav_view(s, t), events_url=f"/events/{t.id}", events_since=ev.ticket_stamp(s, t.id)))
+                                                             owning=docsmod.owning_docs(s, t), source_doc=source_doc(s, t), acc_lines=[(i + 1, c.text) for i, c in enumerate(parse_checks(t.section("Acceptance")))], dod=dod_view(s, t), reply_ask=reply_ask(s, t), doc_links=doc_links(s, t), **assign_view(s, t), **nav_view(s, t), events_url=f"/events/{t.id}", events_since=ev.ticket_stamp(s, t.id)))
+
+    def assign_view(s: Store, t) -> dict:
+        """The assignee dropdown: people in their groups, and the stored value as a key (an old spelling such as `jre` selects `code:jre`)."""
+        pe = peoplemod.load(s.home)
+        cur = ops.assignee_of(t)
+        found = pe.get(cur) if cur else None
+        return {"assign_groups": pe.groups(), "cur_assignee": found.key if found else cur, "cur_known": bool(found) or not cur}
 
     def nav_view(s: Store, t) -> dict:
         """Previous and Next for this ticket in the walk this person chose (scope and order, kept in .desk/settings.toml)."""
@@ -490,6 +744,11 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
                 _, body = split_profile(target.read_text(encoding="utf-8"))
                 it["body"] = body
                 it["edit_url"] = docsmod.vscode_url(target)
+        d["n_checks"] = sum(1 for it in d["items"] for ln in (it.get("body") or "").splitlines() if _CHECK_LINE.match(ln))
+        names = [str(it["label"]) for it in d["items"]]
+        d["line"] = (names[0] if len(names) == 1 else ", ".join(names[:-1]) + " and " + names[-1]) if names else "no modules"
+        if d["kind"] != "project":
+            d["line"] += " checklist" + ("s" if len(names) > 1 else "")
         return d
 
     def doc_links(s: Store, t) -> dict:
@@ -651,8 +910,137 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
                                  "summary_html": summary_html(t.section("Acceptance")), "stamp": str(ev.ticket_stamp(s, t.id))})
         return _back(ticket_id, ok="check", anchor=_SECTION_ANCHOR.get(section, ""))
 
+    @app.post("/ticket/{ticket_id}/assign")
+    def post_assign(request: Request, ticket_id: str, to: str = Form(""), token: str = Form("")):
+        """The assignee dropdown on the ticket page: saves in place and records who assigned it and when (assigned_by, assigned_at)."""
+        js = wants_json(request)
+        if not tokens.use(token):
+            return refused("That form was already sent; reload the page.", 409) if js else _spent(ticket_id)
+        s = store()
+        try:
+            t = s.get(ticket_id)
+            pe = peoplemod.load(s.home)
+            if to.strip() and pe.get(to) is None and to.strip() != ops.assignee_of(t):
+                raise ValueError(f"{to.strip()} is not in people.yaml. Pick someone from the list, or add them with `drew people init` and an edit.")
+            s.sync_before()
+            if to.strip():
+                ops.assign(s, t, to, actor=acting(request).display())
+            else:
+                ops.unassign(s, t, actor=s.owner)
+            s.sync_after(f"desk: assign {t.id}")
+            t = s.get(ticket_id)
+        except (KeyError, RuleError, ValueError) as e:
+            return refused(e) if js else _back(ticket_id, str(e), anchor="assignee")
+        who_now = pe.display(ops.assignee_of(t)) if ops.assignee_of(t) else ""
+        if js:
+            return JSONResponse({"ok": True, "message": f"Assigned to {who_now}." if who_now else "Back to not assigned.", "stamp": str(ev.ticket_stamp(s, t.id))})
+        return _back(ticket_id, ok="assign", anchor="assignee")
+
+    @app.post("/ticket/{ticket_id}/refine")
+    def post_refine(request: Request, ticket_id: str, line: str = Form(""), review_by: str = Form(""), reason: str = Form(""), token: str = Form("")):
+        """Refine the requirements (DESK-0145): a dated Acceptance line; review_by may move with a reason."""
+        js = wants_json(request)
+        if not tokens.use(token):
+            return refused("That form was already sent; reload the page.", 409) if js else _spent(ticket_id)
+        s = store()
+        try:
+            s.sync_before()
+            t = ops.refine(s, s.get(ticket_id), line, actor=s.owner, review_by=review_by.strip() or None, reason=reason)
+            s.sync_after(f"desk: refine {t.id}")
+        except (KeyError, RuleError, ValueError) as e:
+            return refused(e) if js else _back(ticket_id, str(e), anchor="acceptance")
+        if js:
+            return JSONResponse({"ok": True, "message": "Refinement added to Acceptance." + (f" Review-by is now {t.meta['review_by']}." if review_by.strip() else ""), "stamp": str(ev.ticket_stamp(s, t.id))})
+        return _back(ticket_id, None, anchor="acceptance")
+
+    @app.post("/ticket/{ticket_id}/split")
+    def post_split(request: Request, ticket_id: str, title: str = Form(""), size: str = Form("s"), due: str = Form(""), details: str = Form(""), token: str = Form("")):
+        """A change of scope (DESK-0145): a new ticket linked both ways, and the completion decision asked on this one."""
+        js = wants_json(request)
+        if not tokens.use(token):
+            return refused("That form was already sent; reload the page.", 409) if js else _spent(ticket_id)
+        s = store()
+        try:
+            s.sync_before()
+            new = ops.split(s, s.get(ticket_id), title, size=size, due=due.strip() or None, details=details, actor=s.owner)
+            s.sync_after(f"desk: split {ticket_id} -> {new.id}")
+        except (KeyError, RuleError, ValueError) as e:
+            return refused(e) if js else _back(ticket_id, str(e), anchor="acceptance")
+        if js:
+            return JSONResponse({"ok": True, "message": f"Split into {new.id}. This ticket now lists it under blocks and asks for the completion decision.", "new": new.id, "stamp": str(ev.ticket_stamp(s, ticket_id))})
+        return RedirectResponse(f"/ticket/{new.id}", status_code=303)
+
+    @app.post("/ticket/{ticket_id}/outcome")
+    def post_outcome(request: Request, ticket_id: str, text: str = Form(""), token: str = Form("")):
+        """The only way the UI changes an Outcome. After the ticket is thrown it is refused with a pointer to Split (DESK-0145)."""
+        js = wants_json(request)
+        if not tokens.use(token):
+            return refused("That form was already sent; reload the page.", 409) if js else _spent(ticket_id)
+        s = store()
+        try:
+            t = ops.edit_outcome(s, s.get(ticket_id), text, actor=s.owner)
+        except (KeyError, RuleError, ValueError) as e:
+            return refused(e, 409) if js else _back(ticket_id, str(e), anchor="acceptance")
+        if js:
+            return JSONResponse({"ok": True, "message": "Outcome saved.", "stamp": str(ev.ticket_stamp(s, t.id))})
+        return _back(ticket_id, None, anchor="acceptance")
+
     posted: OrderedDict[str, tuple[str, int, "int | None"]] = OrderedDict()  # a post's key -> (ticket id, comment index, Acceptance line it put evidence on)
     post_lock = threading.Lock()
+
+    def comment_as(request: Request, s: Store, t, text: str, who: str, kind: str):
+        """Write a comment as the person behind the request. A name sent in the old `who` field is honoured for callers that are not the
+        page (a script), but is recorded as claimed, not confirmed (DESK-0144); the page itself has no author field."""
+        me = acting(request)
+        claimed = " ".join((who or "").split())
+        if claimed and claimed.lower() not in (me.name.lower(), me.display().lower()):
+            token = idmod.CURRENT.set(idmod.Actor(claimed, "person", me.instance, "ui", "claimed-in-request", False))
+            try:
+                return ops.comment(s, t, text, actor=claimed, kind=kind)
+            finally:
+                idmod.CURRENT.reset(token)
+        return ops.comment(s, t, text, actor=me.display(), kind=kind)
+
+    @app.get("/whoami", response_class=HTMLResponse)
+    def whoami_page(request: Request):
+        s = store()
+        return templates.TemplateResponse(request, "whoami.html", ctx(request, s, os_user=idmod.os_user(), people=peoplemod.load(s.home).list, s=s))
+
+    @app.post("/whoami")
+    def post_whoami(request: Request, pick: str = Form(""), new_name: str = Form(""), new_kind: str = Form("person"), token: str = Form("")):
+        """First run: say who this machine's user is, once. Written into people.yaml (os_users) and remembered in a cookie."""
+        if not tokens.use(token):
+            return _spent("")
+        s = store()
+        user = idmod.os_user()
+        try:
+            if new_name.strip():
+                key = re.sub(r"[^a-z0-9]+", "-", new_name.strip().lower()).strip("-")
+                peoplemod.add_person(s.home, key, new_name, new_kind, os_user=user)
+                pick = key
+            else:
+                peoplemod.link_os_user(s.home, pick, user)
+        except (KeyError, ValueError) as e:
+            return HTMLResponse(f"<p>{html.escape(str(e).strip(chr(39)))}</p><p><a href=\"/whoami\">Back</a></p>", status_code=422)
+        r = RedirectResponse("/", status_code=303)
+        r.set_cookie("desk_who", pick, max_age=31536000, samesite="lax")
+        return r
+
+    @app.post("/act-as")
+    def post_act_as(request: Request, person: str = Form(""), back: str = Form("/"), token: str = Form("")):
+        """The store owner may act as someone else; the record then reads `james (as chaz)`. Anyone else is refused."""
+        if not tokens.use(token):
+            return _spent("")
+        s = store()
+        me = acting(request)
+        if not (me.confirmed and me.name == s.owner):
+            return HTMLResponse("<p>Only the owner, once Desk knows who they are, can act as someone else.</p>", status_code=403)
+        r = RedirectResponse(back if back.startswith("/") and not back.startswith("//") else "/", status_code=303)
+        if person and peoplemod.load(s.home).get(person):
+            r.set_cookie("desk_act_as", peoplemod.load(s.home).get(person).key, samesite="lax")
+        else:
+            r.delete_cookie("desk_act_as")
+        return r
 
     @app.post("/ticket/{ticket_id}/comment")
     def post_comment(request: Request, ticket_id: str, text: str = Form(""), who: str = Form(""), token: str = Form(""),
@@ -669,7 +1057,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
             try:
                 t = s.get(ticket_id)
                 s.sync_before()
-                res = ops.comment(s, t, text, actor=who or s.owner, kind=kind)
+                res = comment_as(request, s, t, text, who, kind)
                 if res.added:
                     s.sync_after(f"desk: comment {t.id}")
             except (KeyError, RuleError, ValueError) as e:
@@ -709,8 +1097,8 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
                     rels = [f"assets/{t.id}/{n}" for n in names]
                     body = text.strip() + "".join(f" ![{Path(n).stem}]({r})" for n, r in zip(names, rels)) + (f" (Evidence for line {pick + 1})" if pick is not None else "")
                     s.sync_before()
-                    who_ = who or s.owner
-                    res = ops.comment(s, t, body, actor=who_, kind=kind)
+                    who_ = who or acting(request).display()
+                    res = comment_as(request, s, t, body, who, kind)
                     duplicate = not res.added
                     if pick is not None:
                         ops.add_evidence(s, t.id, "Acceptance", pick, rels)
@@ -850,4 +1238,5 @@ def main() -> None:
     Store.background_flush = True  # commit on a timer after the idle time, and now if something was left pending
     Store(home).flush()
     Store(home).schedule_flush()
-    uvicorn.run(create_app(home), host="127.0.0.1", port=port, log_level="warning")
+    # timeout_graceful_shutdown: Ctrl+C waits at most this long for open connections (event streams) before it cuts them (DESK-0169)
+    uvicorn.run(create_app(home), host="127.0.0.1", port=port, log_level="warning", timeout_graceful_shutdown=1)

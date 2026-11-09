@@ -14,6 +14,7 @@ SECTIONS = [
     "Outcome",
     "Acceptance",
     "How to validate",  # written before the work starts: the steps that confirm the Outcome once the work is claimed done
+    "Commands",  # the exact commands that check it, one per bullet in backticks; a worker adds the ones it ran (DESK-0177, rule 45)
     "Tests",  # the automated test that proves it, or the exact steps a person performs and what they must see (all failures become tests)
     "Prompt",  # what an agent pastes to execute the ticket
     "Docs to update",
@@ -49,6 +50,14 @@ VALIDATE_HINTS = {
     "intake": "The intake folder to open and what it must contain.",
     "release": "The version to install or fetch and the command that shows it.",
 }
+# What a section holds while nobody has written anything of their own into it (DESK-0175): the page hides it until they do.
+SEED_COMMANDS = "- none yet (a worker adds the exact commands it ran)"
+SEED_TESTS = "The How to validate lines, performed by a person, are the test until an automated one exists."
+SECTION_DEFAULTS = {
+    "Tests": SEED_TESTS,
+    "Docs to update": "- per the project's doc-ownership map",
+    "Out of scope": "- Anything not named in Acceptance.",
+}
 _ONE_COMMENT = re.compile(r"^\s*<!--.*-->\s*$")
 
 
@@ -81,9 +90,9 @@ REQUIRED = ["id", "title", "project", "type", "status", "priority", "size", "own
 
 # Canonical frontmatter order on write.
 META_ORDER = [
-    "id", "title", "project", "type", "status", "priority", "size", "owner", "assignee", "assigned_at", "handoff", "branch",
-    "depends_on", "blocks", "related", "cloned_from", "docs_to_update", "dod", "tags", "effort_hours",
-    "confidence", "review_by", "smallest_step", "blocked_on", "blocked_from", "source", "evidence", "track",
+    "id", "title", "project", "type", "status", "priority", "size", "creator", "owner", "assignee", "associated", "assigned_at", "assigned_by", "handoff", "branch",
+    "depends_on", "blocks", "related", "cloned_from", "split_from", "docs_to_update", "dod", "tags", "effort_hours",
+    "confidence", "review_by", "smallest_step", "blocked_on", "blocked_from", "source", "evidence", "track", "sprint",
     "created", "updated", "done_at",
 ]
 # Optional list-of-ids fields: every id must exist (errors) or should (warnings).
@@ -134,7 +143,7 @@ def check_states(text: str) -> list[tuple[int, str]]:
     return out
 
 
-SEVERITIES = ("must fix", "should", "nit")  # shown Must fix, Should, Nit
+SEVERITIES = ("must fix", "should", "nit")  # shown Must fix, Should fix, Minor (James, 2026-11-08: "Nit" is not human-readable)
 DEFAULT_SEVERITY = "must fix"
 MIN_REASON = 3  # non-space characters
 
@@ -292,6 +301,11 @@ class Ticket:
     def validate_steps(self) -> str:
         return validate_steps(self.section("How to validate"))
 
+    def is_default(self, name: str) -> bool:
+        """True while the section is empty (hint comments and blank lines do not count) or still holds its seeded default text."""
+        text = validate_steps(self.sections.get(name) or "")
+        return not text or text == SECTION_DEFAULTS.get(name)
+
     def tests_text(self) -> str:
         """The written words of the Tests section: a hint comment and blank lines do not count."""
         return validate_steps(self.section("Tests"))
@@ -382,5 +396,6 @@ def new_ticket(ticket_id: str, title: str, project: str, type_: str = "feature",
     t = Ticket(meta=meta, sections={s: "" for s in SECTIONS})
     hint = VALIDATE_HINTS.get(canon_type(type_), VALIDATE_HINTS["feature"])
     t.sections["How to validate"] = f"<!-- Write this before the work starts. {hint} -->" + chr(10)
+    t.sections["Commands"] = SEED_COMMANDS + chr(10)
     t.sections["Tests"] = "<!-- Name the automated test (file and what it protects), or the steps a person performs and what they must see. -->" + chr(10)
     return t

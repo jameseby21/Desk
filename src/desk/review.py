@@ -222,8 +222,16 @@ def compute(store: Store, review: Ticket, today: dt.date | None = None) -> dict:
         "comments_open": len(cm.query(store, author=owner, unanswered=True)),
         "seeded": sorted(t.id for t in tickets.values() if t.is_open and t.id != review.id and is_seed(t)),
         "comments_owner": owner,
+        "splits": sorted(t.id for t in tickets.values() if t.meta.get("split_from") and monday <= _created(t) < monday + dt.timedelta(days=7)),
     }
     return {"items": items, "initial": initial, "kpi": kpi, "added": added, "checked": newly_checked, "resolved": resolved}
+
+
+def _created(t: Ticket) -> dt.date:
+    try:
+        return dt.date.fromisoformat(str(t.meta.get("created"))[:10])
+    except ValueError:
+        return dt.date.min
 
 
 def kpi_text(k: dict) -> str:
@@ -237,6 +245,7 @@ def kpi_text(k: dict) -> str:
         f"- Median days in review: {med}",
         f"- Oldest waiting: {old}",
         *([f"- Comments still open: {k['comments_open']} ({k['comments_owner']})"] if "comments_open" in k else []),
+        *([f"- Splits made this week: {len(k['splits'])} ({', '.join(k['splits'])})"] if k.get("splits") else []),
         *([f"- Tests still the seed (open tickets): {len(k['seeded'])}" + (": " + ", ".join(k["seeded"][:15]) + (f" and {len(k['seeded']) - 15} more" if len(k["seeded"]) > 15 else "") if k["seeded"] else "")] if "seeded" in k else []),
     ])
 

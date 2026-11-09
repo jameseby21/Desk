@@ -178,5 +178,5 @@ def test_repo_relative_link_renders_and_multi_source(repo_store):
     assert 'href="/doc/jeby%20Real%20Estate/docs/ARCH.md#layers"' in page
     assert 'href="/doc/jeby%20Real%20Estate/docs/ARCH.md#lot"' in page and 'href="/doc/jeby%20Real%20Estate/docs/README.md"' in page
     _, warnings = validate_store(repo_store)
-    mine = [w for w in warnings if w.startswith(t.id)]
+    mine = [w for w in warnings if w.startswith(t.id) and "no assignee" not in w]
     assert len(mine) == 1 and "docs/NOWHERE.md" in mine[0] and "tried: docs/NOWHERE.md, jeby Real Estate/docs/NOWHERE.md" in mine[0]

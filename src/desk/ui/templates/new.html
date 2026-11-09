@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% block title %}Desk · New ticket{% endblock %}
+{% macro err(name) -%}<span class="ferr" id="err-{{ name }}" role="alert">{{ errors.get(name, '') }}</span>{%- endmacro %}
+{% macro people_select(name, chosen, blank, multiple=False) -%}
+<select name="{{ name }}" id="f-{{ name }}"{% if multiple %} multiple size="5"{% endif %}>
+  {% if blank %}<option value="">{{ blank }}</option>{% endif %}
+  {% for label, ps in opt.groups %}<optgroup label="{{ label }}">{% for p in ps %}<option value="{{ p.key }}"{% if p.key in chosen %} selected{% endif %}>{{ p.name }}{% if p.role %} · {{ p.role }}{% endif %}</option>{% endfor %}</optgroup>{% endfor %}
+</select>
+{%- endmacro %}
+{% block body %}
+<div class="newform-wrap">
+<h1 style="margin:0 0 4px">New ticket</h1>
+<p class="muted" style="margin:0 0 14px">Fill in what you know. Desk gives it the next number, writes the file and opens it. You can add the rest on the ticket page.</p>
+{% if errors %}<div class="notice" role="alert" id="form-error">{% if errors.get('form') %}{{ errors['form'] }}{% else %}Not saved yet. Fix the lines marked below, then save again.{% endif %}</div>{% else %}<div class="notice" role="alert" id="form-error" hidden></div>{% endif %}
+<form id="newform" class="newform" method="post" action="/new" data-progress="Sending,Saving,Done" novalidate>
+  <input type="hidden" name="token" value="{{ token() }}">
+  <div class="nf-grid">
+    <label class="nf-wide">Title <span class="muted">(start with what you are asking: Approve, Choose, Fix, Add)</span>
+      <input type="text" name="title" id="f-title" value="{{ v.title }}" placeholder="Approve the logo for the Algo page" maxlength="200" autocomplete="off">{{ err('title') }}</label>
+    <label>Project
+      <select name="project" id="f-project"><option value="">Pick a project</option>{% for key, title in opt.projects %}<option value="{{ key }}"{% if v.project == key %} selected{% endif %}>{{ title }}{% if title != key %} ({{ key }}){% endif %}</option>{% endfor %}</select>{{ err('project') }}</label>
+    <label>Type
+      <select name="type" id="f-type">{% for t, help in opt.types %}<option value="{{ t }}"{% if v.type == t %} selected{% endif %}>{{ t }}{% if help %}: {{ help }}{% endif %}</option>{% endfor %}</select>{{ err('type') }}</label>
+    <label>Priority
+      <select name="priority" id="f-priority">{% for p in opt.priorities %}<option value="{{ p }}"{% if v.priority == p %} selected{% endif %}>{{ p }}{% if p == 'p0' %}: drop everything{% elif p == 'p1' %}: this week{% elif p == 'p2' %}: normal{% else %}: whenever{% endif %}</option>{% endfor %}</select>{{ err('priority') }}</label>
+    <label>Size
+      <select name="size" id="f-size">{% for z in opt.sizes %}<option value="{{ z }}"{% if v.size == z %} selected{% endif %}>{{ z }}{% if z == 'xs' %}: under an hour{% elif z == 's' %}: one short session{% elif z == 'm' %}: one long session{% else %}: split it first{% endif %}</option>{% endfor %}</select>{{ err('size') }}</label>
+    <label>Owner <span class="muted">(who is accountable)</span>{{ people_select('owner', [v.owner], '') }}{{ err('owner') }}</label>
+    <label>Assignee <span class="muted">(who does it)</span>{{ people_select('assignee', [v.assignee], 'Not assigned yet') }}{{ err('assignee') }}</label>
+    <label class="nf-wide">Associated <span class="muted">(others who should hear about it; hold Ctrl or Cmd to pick more than one)</span>{{ people_select('associated', v.associated, '', True) }}{{ err('associated') }}</label>
+    <label>Track <span class="muted">(optional)</span>
+      <input type="text" name="track" id="f-track" value="{{ v.track }}" list="tracks" autocomplete="off"><datalist id="tracks">{% for tr in opt.tracks %}<option value="{{ tr }}">{% endfor %}</datalist>{{ err('track') }}</label>
+    <label>Sprint <span class="muted">(optional)</span>
+      <select name="sprint" id="f-sprint"><option value="">No sprint</option>{% for sp in opt.sprints %}<option value="{{ sp }}"{% if v.sprint == sp %} selected{% endif %}>{{ sp }}</option>{% endfor %}</select>{{ err('sprint') }}</label>
+    <label class="nf-wide">Context <span class="muted">(why this ticket exists, in a sentence or two)</span>
+      <textarea name="context" id="f-context" rows="3">{{ v.context }}</textarea>{{ err('context') }}</label>
+    <label class="nf-wide">Outcome <span class="muted">(what is true when it is done)</span>
+      <textarea name="outcome" id="f-outcome" rows="3">{{ v.outcome }}</textarea>{{ err('outcome') }}</label>
+    <label class="nf-wide">Acceptance <span class="muted">(one line each; something a person can check)</span>
+      <textarea name="acceptance" id="f-acceptance" rows="4" placeholder="The button opens the form&#10;Saving writes the file">{{ v.acceptance }}</textarea>{{ err('acceptance') }}</label>
+    <label class="nf-wide">How to validate <span class="muted">(one line each; what a person does and what they should see)</span>
+      <textarea name="steps" id="f-steps" rows="3" placeholder="Open /board and look for the New ticket button">{{ v.steps }}</textarea>{{ err('steps') }}</label>
+  </div>
+  <p class="row nf-actions"><button class="btn ball" type="submit" id="nf-save">Save ticket</button><a class="btn" href="/">Cancel</a><span class="dp-slot"></span></p>
+</form>
+</div>
+<script src="/static/newform.js" defer></script>
+{% endblock %}

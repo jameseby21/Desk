@@ -52,13 +52,13 @@ def test_board_and_projects_filter_chips(store):
     ops.assign(store, a, "chaz")
     ops.assign(store, b, "codex")
     c = TestClient(create_app(store.home))
-    page = c.get("/board").text
-    assert "assignee=chaz" in page and "assignee=codex" in page and "Alpha thing" in page and "Beta thing" in page
-    page = c.get("/board?assignee=chaz").text
-    assert "Alpha thing" in page and "Beta thing" not in page
+    page = c.get("/board?open=*&g=*").text  # the board opens at projects (DESK-0084); `*` opens everything
+    assert 'name="assignee" value="chaz"' in page and 'name="assignee" value="codex"' in page and "Alpha thing" in page and "Beta thing" in page  # the dropdown offers both (DESK-0034)
+    page = c.get("/board?company=unsorted&assignee=chaz").text  # DESK-0183: inside a company the filter opens what is left
+    assert "Alpha thing" in page and "Beta thing" not in page and 'value="chaz" checked' in page
     page = c.get("/projects?assignee=codex").text
     assert "Beta thing" in page or "1 open" in page
-    assert "assignee=chaz" in page
+    assert "assignee=chaz" in page  # the Projects page keeps its own assignee chips
     only = c.get("/projects?assignee=codex&p=jre").text
     assert "Alpha thing" not in only
     shown = c.get(f"/ticket/{a.id}").text
