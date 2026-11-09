@@ -318,10 +318,18 @@ class Store:
         if ticket.path is None:
             ticket.path = self.path_for(ticket)
         self.tickets_dir.mkdir(parents=True, exist_ok=True)
+        try:  # the version on disk, so the activity log can say what this save changed (DESK-0162)
+            before = Ticket.load(ticket.path) if ticket.path.is_file() else None
+        except Exception:  # an unreadable old version is logged as a fresh start, never a refused save
+            before = None
         path = ticket.write()
-        from . import identity  # every write records who made it (DESK-0144)
+        from . import activity, identity  # every write records who made it (DESK-0144) and what it changed (DESK-0162)
 
         identity.record_write(self.home, ticket.id)
+        try:
+            activity.record_save(self, before, ticket)
+        except OSError:
+            pass  # the log is a record, never a reason to refuse a save
         return path
 
     # -- derived -----------------------------------------------------------
