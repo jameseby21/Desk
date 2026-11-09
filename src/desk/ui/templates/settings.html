@@ -3,10 +3,19 @@
 {% block body %}
 <h1>Settings</h1>
 {% if saved %}<p role="status" class="chip ball">Saved</p>{% endif %}
+<section class="store-info" style="max-width:70ch;margin:0 0 18px">
+  <span class="label">This store</span>
+  <dl class="docmeta">
+    <dt>Folder</dt><dd><code>{{ home }}</code></dd>
+    <dt>Owner</dt><dd>{{ owner }}</dd>
+    <dt>You are</dt><dd>{{ me.display() }} <span class="muted">({{ me.short() }})</span></dd>
+    <dt>Build</dt><dd>{{ build }}</dd>
+  </dl>
+</section>
 <form method="post" action="/settings" class="radios post-once" data-inplace="stay" data-progress="Sending,Saving,Done">
   <fieldset style="border:1px solid var(--line);border-radius:14px;max-width:70ch">
     <legend class="label">Style</legend>
-    {% for n, d in (("plain", "Plain: the Desk ball, no mascots"), ("dogs", "Dogs: a dog in empty states"), ("cat", "Cat: Soot in empty states")) %}
+    {% for n, d in (("plain", "Plain: plain words (Ready, In progress), the Desk ball, no mascots"), ("dogs", "Dogs: dog words (Thrown, Fetching) and a dog in empty states"), ("cat", "Cat: Soot in empty states")) %}
     <label><input type="radio" name="name" value="{{ n }}"{% if style.name == n %} checked{% endif %}>{{ d }}</label>
     {% endfor %}
   </fieldset>

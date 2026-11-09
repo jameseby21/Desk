@@ -35,14 +35,17 @@ def tickets_stamp(store) -> int:
     return max([_mt(store.tickets_dir)] + [_mt(p) for p in store.ticket_paths()])
 
 
-async def stream(stamp, since: int | None = None, poll: float = POLL_SECONDS, timeout: float = 0):
+async def stream(stamp, since: int | None = None, poll: float = POLL_SECONDS, timeout: float = 0, stopping=None):
     """Yield SSE text: a `change` event whenever stamp() differs from the last one seen.
     `since` is the stamp the page was rendered at, so a change between render and connect is not missed.
-    `timeout` (seconds, 0 = until the client leaves) lets tests and probes end the stream."""
+    `timeout` (seconds, 0 = until the client leaves) lets tests and probes end the stream. `stopping()` turning true (the server is shutting
+    down, DESK-0169) ends it at the next look: an open stream would otherwise keep the server from ever stopping on Ctrl+C."""
     yield "retry: 3000\n\n"
     last = since if since is not None else stamp()
     start = beat = time.monotonic()
     while True:
+        if stopping is not None and stopping():
+            return
         cur = stamp()
         if cur != last:
             last = cur
@@ -53,4 +56,4 @@ async def stream(stamp, since: int | None = None, poll: float = POLL_SECONDS, ti
         if now - beat >= HEARTBEAT_SECONDS:
             beat = now
             yield ": ping\n\n"
-        await asyncio.sleep(poll)
+        await asyncio.sleep(min(poll, 0.5) if stopping is not None else poll)

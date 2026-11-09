@@ -59,7 +59,17 @@
     return this;
   };
   Progress.prototype.done = function (sentence) { return this.finish("ok", this.steps[this.steps.length - 1], sentence); };
-  Progress.prototype.fail = function (sentence) { return this.finish("bad", "Stopped", sentence); };
+  /* A failure says what went wrong in plain words and, when `detail` is given, offers a Copy error button holding the technical line
+     (method, address, status, what the server said) so a bug can be filed from it (DESK-0205). */
+  Progress.prototype.fail = function (sentence, detail) {
+    this.finish("bad", "Stopped", sentence);
+    var old = this.root.querySelector("button.copy-error"); if (old) old.remove();
+    if (detail) {
+      var b = mk("button", "btn small copy copy-error", "Copy error"); b.type = "button"; b.setAttribute("data-copy", detail);
+      b.setAttribute("aria-label", "Copy the error text to report it"); this.root.appendChild(b);
+    }
+    return this;
+  };
   Progress.prototype.dispose = function () { this.stop(); clearTimeout(this.fade); if (this.root.parentNode) this.root.parentNode.removeChild(this.root); };
 
   function start(host, o) { return new Progress(host, o); }
@@ -90,7 +100,7 @@
       }
       x.onload = function () {
         var j = {}; try { j = JSON.parse(x.responseText); } catch (e) { j = {}; }
-        resolve({ ok: x.status >= 200 && x.status < 300, status: x.status, j: j });
+        resolve({ ok: x.status >= 200 && x.status < 300, status: x.status, j: j, text: x.responseText || "", url: url, method: "POST" });
       };
       x.onerror = function () { reject(new Error("network")); };
       x.ontimeout = function () { reject(new Error("timeout")); };
@@ -102,8 +112,16 @@
   function failText(x, err, kept) {
     var keep = kept ? " " + kept : " Nothing was changed.";
     if (err) return (err.message === "timeout" ? "Desk did not answer in time." : "Could not reach Desk. Is drew-ui still running?") + keep + " Try again.";
-    if (x.j && x.j.error) return x.j.error + (x.status === 409 ? "" : keep);
-    return "Desk hit an error and did not finish." + keep + " Try again; if it repeats, file the error page as a bug.";
+    if (x.j && x.j.error) return x.j.error + (x.status === 409 || x.status >= 500 ? "" : keep);
+    var why = x.j && typeof x.j.detail === "string" ? ": " + x.j.detail : "";
+    return "Desk hit an error and did not finish (HTTP " + x.status + why + ")." + keep + " Try again; if it repeats, use Copy error and file it as a bug.";
+  }
+
+  /* The technical line behind a failure, for the Copy error button: what was sent, what came back, and on which page. */
+  function failDetail(x, err) {
+    var at = " (page " + location.pathname + ")";
+    if (err || !x) return "POST " + (x && x.url || location.pathname) + " got no answer: " + (err && err.message || "unknown") + at;
+    return x.method + " " + x.url + " -> " + x.status + " " + String(x.text || "").replace(/\s+/g, " ").slice(0, 500) + at;
   }
 
   /* Reload the part of the page that holds the ticket without moving the viewport: fetch the same address, swap <main>'s contents,
@@ -153,9 +171,9 @@
     var p = start(slotFor(sub || f.querySelector("button") || f), { steps: stepsOf(f) });
     function end() { f.removeAttribute("data-busy"); btns.forEach(function (b) { b.disabled = false; }); }
     function token(j) { var t = f.querySelector("[name=token]"); if (t && j && j.token) t.value = j.token; }
-    post(f.action, fd, { progress: p, timeoutMs: 30000 }).then(function (x) {
+    post(f.getAttribute("action"), fd, { progress: p, timeoutMs: 30000 }).then(function (x) {
       token(x.j);
-      if (!x.ok) { p.fail(failText(x)); return end(); }
+      if (!x.ok) { p.fail(failText(x), failDetail(x)); return end(); }
       if (window.DeskLive) window.DeskLive.mine(x.j.stamp);
       var msg = x.j.message || "Done.";
       if (mode === "refresh") {
@@ -172,8 +190,8 @@
         var file = f.querySelector("input[type=file]"); if (file) file.value = "";
       }
       p.done(msg); end();
-    }, function (err) { p.fail(failText(null, err)); end(); });
+    }, function (err) { p.fail(failText(null, err), failDetail(null, err)); end(); });
   }, true);
 
-  window.DeskProgress = { start: start, post: post, slotFor: slotFor, floater: floater, stepsOf: stepsOf, failText: failText, softRefresh: softRefresh, reload: reload };
+  window.DeskProgress = { start: start, post: post, slotFor: slotFor, floater: floater, stepsOf: stepsOf, failText: failText, failDetail: failDetail, softRefresh: softRefresh, reload: reload };
 })();
