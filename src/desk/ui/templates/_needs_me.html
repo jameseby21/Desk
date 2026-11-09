@@ -1,3 +1,4 @@
+{% macro part(i) -%}{% if family is defined and family %}{% set po = family.label(i.ticket) %}{% if po %}<span class="nm-part">{{ po }}</span>{% endif %}{% endif %}{%- endmacro %}
 {% macro why(i) -%}{% if i.overdue and i.why.endswith(' overdue') %}{{ i.why[:-8] }} <span class="overdue">overdue</span>{% else %}{{ i.why }}{% endif %}{%- endmacro %}
 {% macro block(nm, style, all_open_href, n_open, back) -%}
 {% set asks = nm|selectattr('group', 'equalto', 'ask')|list %}{% set changes = nm|selectattr('group', 'equalto', 'change')|list %}
@@ -13,13 +14,13 @@
   {% if asks %}<span class="label">Asks for you</span>
   {% for i in asks %}<div class="nm-row" data-ticket="{{ i.id }}">
     <span><span class="nm-ask">{{ i.chip }}</span>{% if i.emergency %}<span class="nm-emerg">Emergency</span>{% endif %}</span>
-    <span class="nm-title"><a href="/ticket/{{ i.id }}" class="tid" data-status="{{ i.ticket.status }}">{{ i.id }} &middot; {{ i.ticket.meta.get('title') }}</a><span class="nm-why">{{ why(i) }}</span></span>
+    <span class="nm-title"><a href="/ticket/{{ i.id }}" class="tid" data-status="{{ i.ticket.status }}">{{ i.id }} &middot; {{ i.ticket.meta.get('title') }}</a>{{ part(i) }}<span class="nm-why">{{ why(i) }}</span></span>
     <a class="rowb" href="/ticket/{{ i.id }}#decision">{{ i.act }}</a>
   </div>{% endfor %}{% endif %}
   {% if changes %}<span class="label">Changed since you last acted</span>
   {% for i in changes %}<div class="nm-row" data-ticket="{{ i.id }}">
     <span><span class="nm-chg">Changed</span>{% if i.emergency %}<span class="nm-emerg">Emergency</span>{% endif %}</span>
-    <span class="nm-title"><a href="/ticket/{{ i.id }}" class="tid" data-status="{{ i.ticket.status }}">{{ i.id }} &middot; {{ i.ticket.meta.get('title') }}</a><span class="nm-why">{{ why(i) }}</span></span>
+    <span class="nm-title"><a href="/ticket/{{ i.id }}" class="tid" data-status="{{ i.ticket.status }}">{{ i.id }} &middot; {{ i.ticket.meta.get('title') }}</a>{{ part(i) }}<span class="nm-why">{{ why(i) }}</span></span>
     <span class="nm-btns"><form class="post-once" method="post" action="/needs-me/seen" data-progress="Sending,Saving,Done"><input type="hidden" name="token" value="{{ token() }}"><input type="hidden" name="ids" value="{{ i.id }}"><input type="hidden" name="next" value="{{ back }}"><button class="ghostb" type="submit">Mark seen</button></form><a class="rowb" href="/ticket/{{ i.id }}">Open</a></span>
   </div>{% endfor %}{% endif %}
   {% if not nm %}<div class="nm-empty"><b>{{ empty_head }}</b><span class="nm-note">{{ empty_body }}</span></div>{% endif %}

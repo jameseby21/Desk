@@ -12,7 +12,7 @@ import json
 import re
 from dataclasses import dataclass, field
 
-from . import asks, comments as cm, people as peoplemod
+from . import asks, comments as cm, people as peoplemod, subtickets
 from .store import Store
 from .ticket import CLOSED, Ticket
 
@@ -29,10 +29,11 @@ class Line:
     changes: list[str] = field(default_factory=list)
     ask: str = ""
     by: str = ""
+    part: str = ""  # DESK-0208: `part of DESK-0183: <title>` for a subticket
 
     def text(self) -> str:
         t = self.ticket
-        parts = [t.id, str(t.meta.get("title") or ""), t.status, "; ".join(self.changes)]
+        parts = [t.id, str(t.meta.get("title") or "")] + ([self.part] if self.part else []) + [t.status, "; ".join(self.changes)]
         if self.ask:
             parts.append(f"ask: {self.ask}" + (f" by {self.by}" if self.by else ""))
         return "- " + " · ".join(parts)
@@ -121,7 +122,9 @@ def collect(store: Store, actor: str, since: dt.datetime, entries: list | None =
     for e in entries if entries is not None else cm.entries(store):
         by_ticket.setdefault(e.ticket_id, []).append(e)
     lines = []
-    for t in store.tickets():
+    every = store.tickets()
+    fam = subtickets.Family(every)
+    for t in every:
         mine = by_ticket.get(t.id, [])
         changes: list[str] = []
         is_mine = pe.resolve(str(t.meta.get("assignee") or "")) == key or str(t.meta.get("owner") or "").lower() == key.lower()
@@ -156,7 +159,7 @@ def collect(store: Store, actor: str, since: dt.datetime, entries: list | None =
             changes.append("new, names " + (person.name if person else actor))
         if changes:
             ask, by = _ask_for(t, key, pe)
-            lines.append(Line(t, list(dict.fromkeys(changes)), ask, by))
+            lines.append(Line(t, list(dict.fromkeys(changes)), ask, by, fam.label(t)))
     lines.sort(key=lambda ln: ln.ticket.id)
     return lines
 
@@ -180,5 +183,6 @@ def actors(store: Store) -> list[str]:
 
 def as_json(store: Store, actor: str, lines: list[Line], since: dt.datetime, how: str) -> dict:
     return {"actor": actor, "since": since.isoformat(), "how": how, "tickets": [
-        {"id": ln.ticket.id, "title": str(ln.ticket.meta.get("title") or ""), "status": ln.ticket.status, "changes": ln.changes, "ask": ln.ask, "by": ln.by} for ln in lines],
+        {"id": ln.ticket.id, "title": str(ln.ticket.meta.get("title") or ""), "status": ln.ticket.status, "changes": ln.changes, "ask": ln.ask, "by": ln.by,
+         "part_of": ln.part} for ln in lines],
         "text": render(store, actor, lines, since, how) if lines else ""}

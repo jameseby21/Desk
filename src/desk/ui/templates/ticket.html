@@ -9,6 +9,7 @@
 {%- endmacro %}
 {% block body %}
 <p style="font-size:14px"><a href="/">Today</a> › <a href="/board?project={{ t.project }}">{{ titles.get(t.project, t.project) }}</a> › <code>{{ t.id }}</code>{% if formerly %} <span class="muted">(formerly {{ formerly }})</span>{% endif %}</p>
+{% if part %}<p class="part-of" id="part-of">Part of <a href="/ticket/{{ part.id }}">{{ part.id }}: {{ part.meta.get('title') }}</a> <span class="muted">· {{ screen(part.status) }}</span></p>{% elif part_id == t.id %}<p class="part-of missing" id="part-of">This ticket names itself as its main ticket. Clear <code>parent:</code> or name the main ticket.</p>{% elif part_id %}<p class="part-of missing" id="part-of">Part of {{ part_id }}, which Desk cannot find. Check the id in <code>parent:</code>.</p>{% endif %}
 {% if error %}<div class="error">{{ error }}</div>{% endif %}
 {% if rejected %}<div class="rejected-note flagged" id="rejected-note"><span class="who"><span class="flag">&#10005; Rejected</span><span>{{ rejected.who }}{% if rejected.when %} &middot; {{ rejected.when }}{% endif %}</span></span><span class="reason" title="{{ rejected.reason }}">{{ rejected.reason }}</span></div>{% endif %}
 <nav class="tnav" id="tnav" aria-label="Ticket navigation">
@@ -71,6 +72,15 @@
     {% for name in ['Context','Outcome'] %}{% if t.section(name) %}
     <div class="card section"><span class="label">{{ name }}</span>{{ shaped(t.section(name)) }}</div>
     {% endif %}{% endfor %}
+
+    {% if subs %}{# DESK-0208: the pieces of this ticket that others do, each tracked and assigned on its own, kept off the board. With none, the
+       New subticket button sits in the facts on the right, so a page without subtickets is no taller than before. #}
+    <div class="card section subtasks" id="subtasks">
+      <div class="row sub-head"><span class="label">{{ roll.text if roll else 'Subtasks' }}</span>{% if t.is_open %}<a class="btn small" id="new-sub" href="/new?parent={{ t.id }}">New subticket</a>{% endif %}</div>
+      {% if subs %}<ul class="sublist">{% for k in subs %}<li class="sub-row{% if k.status in ('done', 'rejected') %} closed{% endif %}"><a class="sub-title" href="/ticket/{{ k.id }}"><code>{{ k.id }}</code> {{ k.meta.get('title') }}</a><span class="sub-facts"><span class="chip{% if k.status == 'blocked' %} red{% elif k.status == 'review' %} ball{% endif %}">{{ screen(k.status) }}</span><span>{% if k.meta.get('assignee') %}{{ who(k.meta.get('assignee')) }}{% else %}not assigned yet{% endif %}</span><span>{% if k.meta.get('review_by') %}review by {{ k.meta.get('review_by') }}{% else %}no review date{% endif %}</span></span></li>{% endfor %}</ul>
+      {% endif %}
+    </div>
+    {% endif %}
 
     <div class="card section" id="acceptance">
       <div class="row" style="justify-content:space-between"><span class="label">Acceptance (this ticket's outcome)</span></div>
@@ -260,6 +270,7 @@
         {% if t.meta.get('assignee') %}<div class="muted" style="font-size:12.5px">{% if (t.meta.get('assigned_by') or '').startswith('rule:') %}assigned by rule <b>{{ t.meta.get('assigned_by')[5:] }}</b> until a person changes it{% elif t.meta.get('assigned_by') %}assigned by {{ who(t.meta.get('assigned_by')) }}{% endif %}{% if t.meta.get('assigned_at') %} · since {{ t.meta.get('assigned_at') }}{% endif %}</div>
         {% if t.meta.get('handoff') %}Hand-off: {% if t.meta.get('handoff').startswith('http') %}<a href="{{ t.meta.get('handoff') }}" rel="noopener">{{ t.meta.get('handoff') }}</a>{% else %}<code>{{ t.meta.get('handoff') }}</code> (Drive doc id){% endif %}{% else %}<span class="chip red">no hand-off record linked</span>{% endif %}<br><span class="muted" style="font-size:12.5px">Done means: {{ assign_dod }}</span>{% else %}<div class="muted" style="font-size:12.5px">Blank means James has not scanned this ticket yet.</div>{% endif %}
       </div>
+      {% if not part_id and not subs %}<div id="subtasks-none"><span class="label">Subtasks</span><div>None yet.{% if t.is_open %} <a class="btn small" id="new-sub" href="/new?parent={{ t.id }}" title="A piece of this ticket that someone else does, such as an icon or an input: tracked and assigned on its own, kept off the board, counted on this ticket">New subticket</a>{% endif %}</div></div>{% endif %}
       {% if t.meta.get('cloned_from') %}<div><span class="label">Cloned from</span><div><a href="/ticket/{{ t.meta.get('cloned_from') }}"><code>{{ t.meta.get('cloned_from') }}</code></a></div></div>{% endif %}
       {% if t.meta.get('blocks') %}<div><span class="label">Blocks</span><div>{% for d in t.meta.get('blocks') %}<a href="/ticket/{{ d }}"><code>{{ d }}</code></a> {% endfor %}</div></div>{% endif %}
       {% if t.meta.get('related') %}<div><span class="label">Related</span><div>{% for d in t.meta.get('related') %}<a href="/ticket/{{ d }}"><code>{{ d }}</code></a> {% endfor %}</div></div>{% endif %}

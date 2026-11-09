@@ -59,7 +59,7 @@
         html += '<div class="pal-group">' + esc(g.project) + ' <span class="muted">' + g.count + '</span></div>';
         g.hits.forEach(function (h) {
           html += '<a class="pal-item" role="option" href="/ticket/' + esc(h.id) + '"><span class="chip">' + esc(h.id) + '</span> <span class="chip">' + esc(h.status_label || h.status) + '</span> <span class="chip">' + esc(h.priority) + '</span>' +
-            '<span class="pal-title">' + esc(h.title) + (h.fuzzy ? ' <span class="muted">close match</span>' : '') + '</span>' + (h.snippet ? '<span class="pal-snip muted">' + mark(h.snippet) + '</span>' : "") + '</a>';
+            '<span class="pal-title">' + esc(h.title) + (h.fuzzy ? ' <span class="muted">close match</span>' : '') + '</span>' + (h.part_of ? '<span class="pal-part muted">' + esc(h.part_of) + '</span>' : "") + (h.snippet ? '<span class="pal-snip muted">' + mark(h.snippet) + '</span>' : "") + '</a>';
         });
       });
       list.innerHTML = html || '<div class="muted pal-none">No ticket matches. Check the spelling or drop a filter.</div>';

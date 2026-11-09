@@ -20,7 +20,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from .. import timing
-from .. import deadlines, newform, notify, asks, boardfilter as bf, boardview as bv, commands, companies as compmod, identity as idmod, ladder, sprints as sprintmod, todayview as tv, people as peoplemod, projectfilter as pf, search as srch, nav as navmod, needs_me as nmod, buildstamp as bs, comments as cm, docs as docsmod, ops, profanity, review as rv, style as styles, tracks as trk, version as ver
+from .. import deadlines, newform, notify, asks, boardfilter as bf, boardview as bv, commands, companies as compmod, identity as idmod, ladder, sprints as sprintmod, todayview as tv, people as peoplemod, projectfilter as pf, search as srch, nav as navmod, needs_me as nmod, buildstamp as bs, comments as cm, docs as docsmod, ops, profanity, review as rv, style as styles, subtickets as subt, tracks as trk, version as ver
 from ..config import find_home
 from ..rules import RuleError
 from ..store import Store, id_parts, split_profile
@@ -364,11 +364,13 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
     def today(request: Request, cap: str = "normal", track: str = "", sprint: str = "", company: str = "", tag: str = "", type: str = ""):
         s = store()
         ts = s.tickets()
-        chips = trk.track_chips(ts)
-        schips = sprint_chips(ts)
-        gchips, ychips, ttype = tag_chips(ts), type_chips(ts), type.strip().lower()  # DESK-0207: Tag and Type narrow Today too
+        fam = subt.Family(ts)  # DESK-0208: the rows below list subtickets (labelled with their main ticket); the counts leave them out
+        mains = fam.mains(ts)
+        chips = trk.track_chips(mains)
+        schips = sprint_chips(mains)
+        gchips, ychips, ttype = tag_chips(mains), type_chips(mains), type.strip().lower()  # DESK-0207: Tag and Type narrow Today too
         of = compmod.by_project(s)  # DESK-0183: every card says company > project; the Company dropdown narrows the page
-        cchips = company_chips(ts, of)
+        cchips = company_chips(mains, of)
         if company:
             ts = [t for t in ts if compmod.slug(of.get(t.project) or compmod.of(s, t.project)) == company]
         if track:
@@ -394,10 +396,11 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
                                        f"company={quote(company)}" if company else "", f"tag={quote(tag)}" if tag else "",
                                        f"type={quote(ttype)}" if ttype else "") if x)
         keep_q = "&".join(x for x in (f"cap={cap}" if cap != "normal" else "", board_q) if x)
-        view = tv.build(s, ts)
+        counted = fam.mains(ts)
+        view = tv.build(s, ts, counted=counted)
         now = dt.date.today()
-        return templates.TemplateResponse(request, "today.html", ctx(request, s, asked=asked, nm=nm, empty_head=head, empty_body=body, back="/" + ("?" + keep_q if keep_q else ""),
-                                                             all_open_href="/board" + ("?" + board_q if board_q else ""), n_open=sum(1 for t in ts if t.is_open), v=view, stale=sorted(stale, key=tv.queue_key), decided=by_project(decided),
+        return templates.TemplateResponse(request, "today.html", ctx(request, s, asked=asked, nm=nm, empty_head=head, empty_body=body, back="/" + ("?" + keep_q if keep_q else ""), family=fam,
+                                                             all_open_href="/board" + ("?" + board_q if board_q else ""), n_open=sum(1 for t in counted if t.is_open), v=view, stale=sorted(stale, key=tv.queue_key), decided=by_project(decided),
                                                              cap=cap, s=s, combos=combos, review_line=review_line, long_today=f"{now.strftime('%A, %B')} {now.day}",
                                                              chips=chips, track=track, schips=schips, sprint=sprint, cchips=cchips, company=company,
                                                              gchips=gchips, tag=tag, ychips=ychips, ttype=ttype, board_q=board_q,
@@ -484,23 +487,40 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         v["type"], v["priority"], v["size"] = v["type"] or "feature", v["priority"] or "p2", v["size"] or "s"
         opt = newform.options(st)
         v["owner"] = v["owner"] or opt.default_owner
-        return templates.TemplateResponse(request, "new.html", ctx(request, st, v=v, opt=opt, errors=errors or {}), status_code=status)
+        part_title = ""
+        if v["parent"]:
+            try:
+                part_title = str(st.get(v["parent"]).meta.get("title") or "")
+            except KeyError:
+                part_title = ""
+        return templates.TemplateResponse(request, "new.html", ctx(request, st, v=v, opt=opt, errors=errors or {}, part_title=part_title), status_code=status)
 
     @app.get("/new", response_class=HTMLResponse)
-    def new_ticket_page(request: Request, project: str = "", type: str = "", priority: str = "", size: str = "", track: str = "", sprint: str = ""):
-        """The New ticket form (DESK-0189). The query may pre-fill project, type, priority, size, track and sprint."""
-        return new_form_page(request, store(), {"project": project, "type": type, "priority": priority, "size": size, "track": track, "sprint": sprint})
+    def new_ticket_page(request: Request, project: str = "", type: str = "", priority: str = "", size: str = "", track: str = "", sprint: str = "", parent: str = ""):
+        """The New ticket form (DESK-0189). The query may pre-fill project, type, priority, size, track, sprint and Part of. A main ticket's
+        New subticket button sends `parent` (DESK-0208): the form then starts in that ticket's project, as a task at its priority."""
+        s = store()
+        v = {"project": project, "type": type, "priority": priority, "size": size, "track": track, "sprint": sprint, "parent": parent}
+        if parent.strip():
+            try:
+                main = s.get(parent.strip())
+                v = {**v, "parent": main.id, "project": project or main.project, "type": type or "task", "priority": priority or str(main.meta.get("priority") or "")}
+            except KeyError:
+                pass
+        return new_form_page(request, s, v)
 
     @app.post("/new")
     def post_new_ticket(request: Request, token: str = Form(""), project: str = Form(""), title: str = Form(""), type: str = Form(""), priority: str = Form(""),
                         size: str = Form(""), owner: str = Form(""), assignee: str = Form(""), associated: list[str] = Form([]), track: str = Form(""),
-                        sprint: str = Form(""), deadline: str = Form(""), deadline_kind: str = Form(""), context: str = Form(""), outcome: str = Form(""), acceptance: str = Form(""), steps: str = Form("")):
+                        sprint: str = Form(""), deadline: str = Form(""), deadline_kind: str = Form(""), context: str = Form(""), outcome: str = Form(""), acceptance: str = Form(""), steps: str = Form(""),
+                        parent: str = Form("")):
         """Create a ticket from the form. Nothing is written unless every check passes. With `Accept: application/json` the reply is
         `{ok, id, url, message}` or `{error, errors, token}` (a fresh one-time key); a plain form post redirects to the new ticket or draws the form again."""
         js = "application/json" in request.headers.get("accept", "")
         s = store()
         v = {"project": project, "title": title, "type": type, "priority": priority, "size": size, "owner": owner, "assignee": assignee, "associated": associated,
-             "track": track, "sprint": sprint, "deadline": deadline, "deadline_kind": deadline_kind, "context": context, "outcome": outcome, "acceptance": acceptance, "steps": steps}
+             "track": track, "sprint": sprint, "deadline": deadline, "deadline_kind": deadline_kind, "context": context, "outcome": outcome, "acceptance": acceptance, "steps": steps,
+             "parent": parent}
         if not tokens.valid(token):
             msg = "That form was already sent, so no second ticket was made. Open Today to find it, or reload this page for a fresh form."
             return JSONResponse({"error": msg, "errors": {"form": msg}, "token": tokens.issue()}, status_code=409) if js else new_form_page(request, s, v, {"form": msg}, 409)
@@ -540,6 +560,8 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         by = by if by in bv.BY else "track"
         sel = board_sel(project, assignee, track, sprint, tag, type)
         every = s.tickets()
+        fam = subt.Family(every)
+        every = fam.mains(every)  # DESK-0208: main tickets only; each card carries the progress of its subtickets
         ts = bf.apply(every, sel)
         of = compmod.by_project(s)
         names = {compmod.slug(n): n for n in of.values()}
@@ -572,7 +594,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         crumb = ("All companies" if company == compmod.ALL else compmod.title(names[company])) if company else ""
         mine = peoplemod.load(s.home).get(s.owner)
         clear = {f: board_url(**{**sel, f: [], **here}) for f in bf.FACETS}
-        return templates.TemplateResponse(request, "board.html", ctx(request, s, rows=rows, comps=comps, level=level, company=company, crumb=crumb, by=by, links=links, s=s, sel=sel, opts=opts,
+        return templates.TemplateResponse(request, "board.html", ctx(request, s, rows=rows, comps=comps, level=level, company=company, crumb=crumb, by=by, links=links, s=s, sel=sel, opts=opts, family=fam,
                                                            tokens=bf.tokens(sel, opts, here),
                                                            show={f: any(g for _h, g in opts[f]) for f in bf.FACETS}, hidden=here, fhidden={**sel, **here}, clear=clear, filter_q=bf.query({**sel, "project": []}, **nm_extra), total=len(ts), open_n=sum(1 for t in ts if t.is_open),
                                                            mine_url=board_url(assignee=[mine.key if mine else s.owner], **here), needs=needs, nm_items=nm_items, nm_count=len(nm_items),
@@ -586,9 +608,11 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         s = store()
         by = by if by in bv.BY else "track"
         sel = board_sel([], assignee, track, sprint, tag, type)
-        ts = [t for t in bf.apply(s.tickets(), sel) if t.project == project and trk.track_slug(bv.group_name(t, by) if bv.group_name(t, by) not in (bv.UNTRACKED, bv.NO_SPRINT) else "") == slug]
+        all_t = s.tickets()
+        fam = subt.Family(all_t)  # DESK-0208: main tickets only
+        ts = [t for t in bf.apply(fam.mains(all_t), sel) if t.project == project and trk.track_slug(bv.group_name(t, by) if bv.group_name(t, by) not in (bv.UNTRACKED, bv.NO_SPRINT) else "") == slug]
         ts, nm_items, nm_extra = needs_only(s, ts, needs)
-        return templates.TemplateResponse(request, "_bcols_frag.html", ctx(request, s, tickets=sorted(ts, key=lambda t: t.id), s=s, project=project, slug=slug, by=by,
+        return templates.TemplateResponse(request, "_bcols_frag.html", ctx(request, s, tickets=sorted(ts, key=lambda t: t.id), s=s, project=project, slug=slug, by=by, family=fam,
                                                                     filter_q=bf.query(sel, **nm_extra), needs=nm_extra.get("needs", ""), nm_items=nm_items))
 
     @app.get("/board/column", response_class=HTMLResponse)
@@ -599,13 +623,15 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         s = store()
         by = by if by in bv.BY else "track"
         sel = board_sel([], assignee, track, sprint, tag, type)
-        ts = [t for t in bf.apply(s.tickets(), sel) if t.project == project and trk.track_slug(bv.group_name(t, by) if bv.group_name(t, by) not in (bv.UNTRACKED, bv.NO_SPRINT) else "") == slug]
+        all_t = s.tickets()
+        fam = subt.Family(all_t)  # DESK-0208: main tickets only
+        ts = [t for t in bf.apply(fam.mains(all_t), sel) if t.project == project and trk.track_slug(bv.group_name(t, by) if bv.group_name(t, by) not in (bv.UNTRACKED, bv.NO_SPRINT) else "") == slug]
         ts, nm_items, nm_extra = needs_only(s, ts, needs)
         items = bv.column_items(ts, col)[max(offset, 0):]
         if frag:
-            return templates.TemplateResponse(request, "_bmore.html", ctx(request, s, items=items, s=s, needs=nm_extra.get("needs", ""), nm_items=nm_items))
+            return templates.TemplateResponse(request, "_bmore.html", ctx(request, s, items=items, s=s, needs=nm_extra.get("needs", ""), nm_items=nm_items, family=fam))
         label = "Finished" if col == "finished" else words.screen(col, shown["style"])
-        return templates.TemplateResponse(request, "board_more.html", ctx(request, s, items=items, s=s, project=project, label=label, offset=offset,
+        return templates.TemplateResponse(request, "board_more.html", ctx(request, s, items=items, s=s, project=project, label=label, offset=offset, family=fam,
                                                                   group=bv.group_name(ts[0], by) if ts else slug, needs=nm_extra.get("needs", ""), nm_items=nm_items))
 
     def needs_only(s: Store, ts: list, needs: str) -> tuple[list, dict, dict]:
@@ -639,7 +665,9 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         s = store()
         fx = pf.Facets(s, peoplemod.load(s.home))
         sel = fx.selection(assignee, tag, type, company)
-        kept, opts = fx.apply(s.tickets(), sel)
+        all_t = s.tickets()
+        fam = subt.Family(all_t)
+        kept, opts = fx.apply(fam.mains(all_t), sel)  # DESK-0208: main tickets only, so the counts equal the rows drawn
         filtering = any(sel.values())
         rows = trk.hierarchy(s, kept)
         if filtering:
@@ -657,7 +685,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
                 peek_html = peek_panel(s, s.get(k))
             except KeyError:
                 pass
-        return templates.TemplateResponse(request, "projects.html", ctx(request, s, rows=rows, sel_p=p, sel_t=t, sel_k=k.upper(), peek_html=peek_html, s=s,
+        return templates.TemplateResponse(request, "projects.html", ctx(request, s, rows=rows, sel_p=p, sel_t=t, sel_k=k.upper(), peek_html=peek_html, s=s, family=fam,
                                                               facets=pf.FACETS, opts=opts, picked={f: [fx.label(f, v) for v in sel[f]] for f in pf.NAMES},
                                                               fhidden={**sel, **here}, clear={f: url(**{**sel, f: [], **here}) for f in pf.NAMES},
                                                               clear_all=url(**here), filtering=filtering, total_n=len(fx.projects), fq_amp=fq + "&" if fq else "",
@@ -745,6 +773,8 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         for d in t.meta.get("depends_on") or []:
             dep = by_id.get(str(d))
             deps.append((str(d), dep.status if dep else "missing"))
+        fam = subt.Family(list(by_id.values()))  # DESK-0208: Part of on a subticket; the Subtasks list and New subticket on a main ticket
+        family_view = {"part": fam.parent(t), "part_id": subt.parent_of(t), "subs": fam.subs(t), "roll": fam.rollup(t)}
         mermaid = any(has_mermaid(t.section(name)) for name in t.sections)
         rejected, flagged = rejected_note(t), False
         if rejected or t.failed_checks():
@@ -756,7 +786,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         return templates.TemplateResponse(request, "ticket.html", ctx(request, s, t=t, deps=deps, rejected=rejected, flag_empty=None if flagged else (empty_head, empty_body), stale=s.is_stale(t), error=error, s=s,
                                                              formerly=s.formerly(t), mermaid=mermaid, mentions=docsmod.mentioned_in(list(by_id.values()), ticket_id=t.id),
                                                              owning=docsmod.owning_docs(s, t), source_doc=source_doc(s, t), acc_lines=[(i + 1, c.text) for i, c in enumerate(parse_checks(t.section("Acceptance")))], dod=dod_view(s, t), reply_ask=reply_ask(s, t), doc_links=doc_links(s, t), **assign_view(s, t), **nav_view(s, t), events_url=f"/events/{t.id}", events_since=ev.ticket_stamp(s, t.id),
-                                                             tl=tlmod.view(s, t)))
+                                                             tl=tlmod.view(s, t), **family_view))
 
     def assign_view(s: Store, t) -> dict:
         """The assignee dropdown: people in their groups, and the stored value as a key (an old spelling such as `jre` selects `code:jre`)."""

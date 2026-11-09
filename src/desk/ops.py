@@ -60,12 +60,40 @@ def _acted(store: Store, t: Ticket, actor: str | None) -> None:
     needs_me.record_action(store, t, actor)
 
 
-def new(store: Store, title: str, project: str, type_: str = "feature", **kw) -> Ticket:
+def new(store: Store, title: str, project: str, type_: str = "feature", parent: str = "", **kw) -> Ticket:
     if project not in store.projects() and store.projects():
         raise RuleError(f"Unknown project `{project}`. Add projects/{project}.md first.")
     t = store.create(title, project, type_, **kw)
+    if parent:  # DESK-0208: written before the first save, so `drew validate` and the activity log see a subticket from the start
+        t.meta["parent"] = parent
     store.save(t)
     return t
+
+
+def main_for_sub(store: Store, parent_id: str) -> Ticket:
+    """The main ticket a new subticket will be part of, or a RuleError in plain words: it must exist, be open, and not be a subticket
+    itself (one level is enough). Shared by `drew sub` and the New ticket form's Part of field (DESK-0208)."""
+    from . import subtickets
+
+    pid = " ".join(str(parent_id or "").split()).upper()
+    try:
+        main = store.get(pid)
+    except KeyError:
+        raise RuleError(f"There is no ticket {pid} to be part of. Check the id (drew list shows them).") from None
+    up = subtickets.parent_of(main)
+    if up:
+        raise RuleError(f"{main.id} is itself part of {up}. One level is enough: make the new ticket part of {up}.")
+    if not main.is_open:
+        raise RuleError(f"{main.id} is {main.status}, so it takes no new subtickets. Make a new ticket instead.")
+    return main
+
+
+def sub(store: Store, parent_id: str, title: str, project: str | None = None, type_: str = "task", **kw) -> Ticket:
+    """`drew sub` (DESK-0208): a subticket of `parent_id`, written by `new` like any ticket. It lands in the main ticket's project and
+    takes its priority unless others are named."""
+    main = main_for_sub(store, parent_id)
+    kw["priority"] = kw.get("priority") or str(main.meta.get("priority") or "p2")
+    return new(store, title, project or main.project, type_, parent=main.id, **kw)
 
 
 def claim(store: Store, t: Ticket, owner: str | None = None) -> Ticket:

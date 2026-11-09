@@ -19,6 +19,8 @@
       <input type="text" name="title" id="f-title" value="{{ v.title }}" placeholder="Approve the logo for the Algo page" maxlength="200" autocomplete="off">{{ err('title') }}</label>
     <label>Project
       <select name="project" id="f-project"><option value="">Pick a project</option>{% for key, title in opt.projects %}<option value="{{ key }}"{% if v.project == key %} selected{% endif %}>{{ title }}{% if title != key %} ({{ key }}){% endif %}</option>{% endfor %}</select>{{ err('project') }}</label>
+    <label>Part of <span class="muted">(optional: the main ticket this is a piece of)</span>
+      <input type="text" name="parent" id="f-parent" value="{{ v.parent }}" placeholder="DESK-0183" autocomplete="off" spellcheck="false">{% if part_title %}<span class="part-line" id="part-hint">Part of {{ v.parent }}: {{ part_title }}. It stays off the board; the main ticket counts it.</span>{% endif %}{{ err('parent') }}</label>
     <label>Type
       <select name="type" id="f-type">{% for t, help in opt.types %}<option value="{{ t }}"{% if v.type == t %} selected{% endif %}>{{ t }}{% if help %}: {{ help }}{% endif %}</option>{% endfor %}</select>{{ err('type') }}</label>
     <label>Priority

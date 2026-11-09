@@ -475,3 +475,22 @@ header .search-open kbd{position:absolute;right:10px;top:50%;transform:translate
 .mask[data-ready]{color:transparent;user-select:none}
 .mask[data-ready].shown{color:inherit;background:transparent;user-select:text}
 @media (prefers-color-scheme:dark){.mask{background:#5A2A2D}}
+/* DESK-0208 subtickets: "Part of" on a subticket, the Subtasks list on a main ticket, the roll-up on its board card and Projects row,
+   and the "part of <ID>: <title>" label wherever a person's own list shows a subticket. Nothing under 12 px; long titles wrap. */
+.part-of{margin:-4px 0 10px;font-size:14px;overflow-wrap:anywhere}
+.part-of a{font-weight:600}
+.part-of.missing{color:var(--red)}
+.subtasks .sub-head{justify-content:space-between;gap:8px}
+.subtasks .sub-head .label{font-size:12px}
+.sublist{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-direction:column;gap:6px}
+.sub-row{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 12px;padding:8px 0;border-top:1px solid var(--line)}
+.sub-row.closed .sub-title{color:var(--muted);text-decoration:line-through}
+.sub-title{flex:1 1 220px;min-width:0;font-weight:600;text-decoration:none;color:inherit;overflow-wrap:anywhere}
+.sub-facts{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;font-size:13px;color:var(--muted)}
+.cc-sub{margin:2px 0 6px;font-size:12.5px;line-height:1.4;overflow-wrap:anywhere}
+.cc-sub b{font-weight:600}
+.cc-next{display:block;color:var(--muted)}
+.sub-roll{font:12px var(--font-mono);color:var(--muted);white-space:nowrap}
+.tr-part,.nm-part{display:block;font:400 12.5px/1.4 var(--font-body);color:var(--muted);white-space:normal;overflow-wrap:anywhere}
+.part-line{display:block;font-size:13px;color:var(--muted);margin-top:2px;overflow-wrap:anywhere}
+.pal-part{flex-basis:100%;font-size:12.5px}

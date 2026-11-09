@@ -6,8 +6,9 @@ incrementally: a ticket is re-read only when its file's (mtime, size) changed. A
 scored by similarity, which is the typo tolerance.
 
 Grammar (any order, free words and filters mixed; `field:"two words"`, `a,b` is either, a leading `-` negates):
-  project: status: type: tag: ask: owner: assignee: track: sprint: priority: is:stale|open|closed  before:DATE  after:DATE
-`before:` and `after:` compare the ticket's `updated` date."""
+  project: status: type: tag: ask: owner: assignee: track: sprint: priority: parent: is:stale|open|closed  before:DATE  after:DATE
+`before:` and `after:` compare the ticket's `updated` date. `parent:DESK-0183` finds that main ticket's subtickets, and a subticket's hit
+carries `part_of` ("part of DESK-0183: <title>", DESK-0208)."""
 
 from __future__ import annotations
 
@@ -20,9 +21,10 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from .subtickets import LABEL_TITLE, parent_of
 from .ticket import CLOSED, PRIORITIES, Ticket
 
-FIELDS = ("project", "status", "type", "tag", "ask", "owner", "assignee", "track", "sprint", "priority", "is", "before", "after")
+FIELDS = ("project", "status", "type", "tag", "ask", "owner", "assignee", "track", "sprint", "priority", "parent", "is", "before", "after")
 BODY_CHARS = 2000
 CANDIDATES = 500
 PER_GROUP = 12
@@ -73,6 +75,7 @@ class Hit:
     assignee: str
     snippet: str
     fuzzy: bool = False
+    part_of: str = ""  # DESK-0208: `part of DESK-0183: <title>` when the hit is a subticket
 
     def as_json(self) -> dict:
         return dict(self.__dict__)
@@ -107,11 +110,11 @@ def row_for(t: Ticket, sig: str = "") -> dict:
             "priority": str(m.get("priority") or "p3"), "owner": str(m.get("owner") or "").lower(),
             "assignee": " ".join(str(m.get("assignee") or "").split()).lower(), "track": str(m.get("track") or "").lower(),
             "sprint": str(m.get("sprint") or "").lower(), "tags": " " + " ".join(x.lower() for x in t.tags) + " ",
-            "ask": ask_value(t), "updated": str(m.get("updated") or "")[:10], "sig": sig,
+            "ask": ask_value(t), "updated": str(m.get("updated") or "")[:10], "sig": sig, "parent": parent_of(t),
             "body": (" ".join(body.split()))[:BODY_CHARS]}
 
 
-COLS = ["id", "title", "project", "status", "type", "priority", "owner", "assignee", "track", "sprint", "tags", "ask", "updated", "sig"]  # body lives in the fts table only
+COLS = ["id", "title", "project", "status", "type", "priority", "owner", "assignee", "track", "sprint", "tags", "ask", "updated", "sig", "parent"]  # body lives in the fts table only
 
 
 class Index:
@@ -132,16 +135,16 @@ class Index:
     def _schema(self) -> None:
         with self.lock:
             ver = self.db.execute("PRAGMA user_version").fetchone()[0]
-            if ver != 4:
+            if ver != 5:  # 5: the parent column (DESK-0208); an older index is rebuilt from the files
                 self.db.executescript("DROP TABLE IF EXISTS docs; DROP TABLE IF EXISTS fts; DROP TABLE IF EXISTS vwords; DROP TABLE IF EXISTS vfts;")
             self.db.executescript(
                 "CREATE TABLE IF NOT EXISTS docs (rowid INTEGER PRIMARY KEY, id TEXT UNIQUE, title TEXT, project TEXT, status TEXT, type TEXT,"
-                " priority TEXT, owner TEXT, assignee TEXT, track TEXT, sprint TEXT, tags TEXT, ask TEXT, updated TEXT, sig TEXT, pri INTEGER);"
+                " priority TEXT, owner TEXT, assignee TEXT, track TEXT, sprint TEXT, tags TEXT, ask TEXT, updated TEXT, sig TEXT, parent TEXT, pri INTEGER);"
                 "CREATE INDEX IF NOT EXISTS docs_pri ON docs (pri);"
                 "CREATE VIRTUAL TABLE IF NOT EXISTS fts USING fts5(id, title, body, tokenize='trigram');"
                 "CREATE TABLE IF NOT EXISTS vwords (word TEXT PRIMARY KEY);"
                 "CREATE VIRTUAL TABLE IF NOT EXISTS vfts USING fts5(word, tokenize='trigram');"
-                "PRAGMA user_version = 4;")
+                "PRAGMA user_version = 5;")
 
     # -- writing ---------------------------------------------------------------------
     def upsert(self, rows: list[dict]) -> None:
@@ -152,7 +155,7 @@ class Index:
                     self.db.execute("DELETE FROM fts WHERE rowid = ?", (old[0],))
                     self.db.execute("DELETE FROM docs WHERE rowid = ?", (old[0],))
                 pri = (4 if r["status"] in CLOSED else 0) + (PRIORITIES.index(r["priority"]) if r["priority"] in PRIORITIES else 3)  # 0 = open p0 ... 7 = closed p3
-                cur = self.db.execute(f"INSERT INTO docs ({','.join(COLS)}, pri) VALUES ({','.join('?' * (len(COLS) + 1))})", [r[c] for c in COLS] + [pri])
+                cur = self.db.execute(f"INSERT INTO docs ({','.join(COLS)}, pri) VALUES ({','.join('?' * (len(COLS) + 1))})", [r.get(c, "") for c in COLS] + [pri])
                 self.db.execute("INSERT INTO fts (rowid, id, title, body) VALUES (?,?,?,?)", (cur.lastrowid, r["id"], r["title"], r["body"]))
                 for w in set(re.findall(r"[a-z0-9]{4,}", r["title"].lower())):  # the words typos are corrected against
                     if self.db.execute("INSERT OR IGNORE INTO vwords (word) VALUES (?)", (w,)).rowcount:
@@ -234,6 +237,8 @@ class Index:
                     parts.append("d.updated > ?"); pargs.append(v[:10])
                 elif key == "tag":
                     parts.append("d.tags LIKE ?"); pargs.append(f"% {lv} %")
+                elif key == "parent":
+                    parts.append("d.parent = ?"); pargs.append(v.strip().upper())
                 elif key in ("project", "status", "type", "priority", "owner", "assignee", "track", "sprint", "ask"):
                     if key in ("track", "sprint"):  # a name: match inside it, so `track:first` finds "First real use"
                         parts.append(f"d.{key} LIKE ?"); pargs.append(f"%{lv}%")
@@ -336,8 +341,23 @@ class Index:
             if len(hits) < limit:
                 hits.append(Hit(r["id"], r["title"], r["project"], r["status"], r["priority"], r["type"], r["assignee"], self._snip(r["rowid"], match, was_fuzzy) if shown < SNIPPETS else "", was_fuzzy))
                 shown += 1
+        self._label_parts([h for hs in by.values() for h in hs], {r["id"]: r["parent"] for r, _ in rows if r["parent"]})
         order = sorted(by, key=lambda p: (-counts[p], p))  # biggest group first
         return Result(q, len(rows), [(p, counts[p], by[p]) for p in order], fuzzy, capped=len(rows) >= CANDIDATES)
+
+    def _label_parts(self, hits: list[Hit], parents: dict[str, str]) -> None:
+        """Give each shown subticket its `part of <ID>: <title>` label: one lookup for the main tickets of the hits shown."""
+        want = sorted({parents[h.id] for h in hits if h.id in parents})
+        if not want:
+            return
+        with self.lock:
+            titles = {r[0]: " ".join(str(r[1] or "").split()) for r in
+                      self.db.execute(f"SELECT id, title FROM docs WHERE id IN ({','.join('?' * len(want))})", want)}
+        for h in hits:
+            pid = parents.get(h.id)
+            if pid and pid in titles:
+                title = titles[pid]
+                h.part_of = f"part of {pid}: {title[:LABEL_TITLE]}{'…' if len(title) > LABEL_TITLE else ''}"
 
 
 def _norm_id_fragment(term: str) -> str:

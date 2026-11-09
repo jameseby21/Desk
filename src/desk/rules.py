@@ -6,7 +6,7 @@ import datetime as dt
 import re
 from typing import TYPE_CHECKING
 
-from . import commands, deadlines, ladder, people
+from . import commands, deadlines, ladder, people, subtickets
 from .store import id_parts
 from .ticket import CLOSED, ID_LISTS_LOOSE, ID_LISTS_STRICT, PRIORITIES, REQUIRED, LEGACY_TYPES, SIZES, STATUSES, TYPES, Ticket, canon_type, parse_checks, validate_steps
 
@@ -140,6 +140,13 @@ def validate_ticket(t: Ticket, store: "Store", known_ids: set[str] | None = None
                 warnings.append(f"{where}: {field_} `{rel}` does not exist")
     if m.get("cloned_from") and str(m["cloned_from"]) not in ids:
         warnings.append(f"{where}: cloned_from `{m['cloned_from']}` does not exist")
+    if m.get("parent") not in (None, ""):  # DESK-0208: a subticket names its main ticket
+        if not isinstance(m["parent"], str):
+            errors.append(f"{where}: parent must be one ticket id, such as DESK-0183")
+        elif subtickets.parent_of(t) == t.id.upper():
+            errors.append(f"{where}: parent is the ticket itself; a subticket names its main ticket")
+        elif subtickets.parent_of(t) not in ids:
+            errors.append(f"{where}: parent `{m['parent']}` does not exist")
 
     status = m["status"]
     if status == "review" and not t.section("Report"):
@@ -205,6 +212,9 @@ def validate_store(store: "Store") -> tuple[list[str], list[str]]:
                 d = by_id.get(str(dep))
                 if d and d.status != "done":
                     errors.append(f"{t.id}: is done but depends on {dep} which is {d.status}")
+    e, w = subtickets.chain_errors(tickets)  # DESK-0208: a loop is an error; a second level, or a main ticket done with a subticket open, a warning
+    errors += e
+    warnings += w
     from . import sprints as sprintmod
 
     known_sprints = sprintmod.names(store)
@@ -303,3 +313,7 @@ def check_transition(t: Ticket, new: str, store: "Store", *, actor: str | None =
             d = by_id.get(str(dep))
             if d is None or d.status != "done":
                 raise RuleError(f"{t.id} cannot be done: depends on {dep} which is {d.status if d else 'missing'}")
+        opened = subtickets.open_subs(list(by_id.values()), t)  # DESK-0208: the done rule
+        if opened:
+            pe = people.load(store.home)
+            raise RuleError(subtickets.refusal(t, opened, who=lambda k: pe.display(k) if pe.get(k) else k))

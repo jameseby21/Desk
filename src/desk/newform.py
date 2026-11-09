@@ -9,13 +9,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from . import assign_rules, deadlines, people as peoplemod, sprints as sprintmod, tracks as trk
+from . import assign_rules, deadlines, ops, people as peoplemod, sprints as sprintmod, tracks as trk
 from .rules import RuleError
 from .store import Store
 from .ticket import PRIORITIES, SIZES, TYPE_HELP, TYPES, Ticket
 
 # What the form posts. Every key is optional on the wire; `check` says which ones a ticket cannot do without.
-KEYS = ("project", "title", "type", "priority", "size", "owner", "assignee", "associated", "track", "sprint", "deadline", "deadline_kind", "context", "outcome", "acceptance", "steps")
+KEYS = ("project", "title", "type", "priority", "size", "owner", "assignee", "associated", "track", "sprint", "deadline", "deadline_kind", "context", "outcome", "acceptance", "steps",
+        "parent")  # DESK-0208: Part of, the main ticket a subticket belongs to
 SAY = {
     "project": "Pick the project this ticket belongs to.",
     "title": "Give the ticket a title, a few words with the ask first (Approve, Choose, Fix, Add).",
@@ -104,6 +105,11 @@ def check(store: Store, values: dict) -> dict[str, str]:
         errors["deadline_kind"] = "Kind of deadline is hard, soft or sprint."
     if not lines(v["acceptance"]):
         errors["acceptance"] = SAY["acceptance"]
+    if v["parent"]:
+        try:
+            ops.main_for_sub(store, v["parent"])
+        except RuleError as e:
+            errors["parent"] = str(e)
     return errors
 
 
@@ -123,6 +129,8 @@ def build(store: Store, values: dict, creator: str) -> Ticket:
     if v["deadline"]:
         t.meta["deadline"] = deadlines.parse_arg(v["deadline"]).isoformat()
         t.meta["deadline_kind"] = v["deadline_kind"] or "hard"
+    if v["parent"]:
+        t.meta["parent"] = ops.main_for_sub(store, v["parent"]).id
     if v["context"]:
         t.sections["Context"] = v["context"] + "\n"
     if v["outcome"]:

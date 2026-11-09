@@ -77,6 +77,25 @@ def cmd_new(args):
     print(t.path)
 
 
+def cmd_sub(args):
+    """DESK-0208: a subticket of a main ticket, through the same writer as `drew new`."""
+    from . import subtickets
+
+    s = _store(args)
+    s.sync_before()
+    dod = [x.strip() for x in (args.dod or "core").split(",") if x.strip()]
+    try:
+        t = ops.sub(s, args.parent, args.title, project=args.project, type_=args.type, priority=args.priority, size=args.size, owner=args.owner, dod=dod,
+                    source=args.source or "", assignee=args.assignee)
+    except (RuleError, ValueError) as e:
+        _die(str(e))
+    if not args.assignee:
+        _fill_from_rules(s, t)
+    s.sync_after(f"desk: sub {t.id} of {t.meta['parent']}")
+    print(t.path)
+    print(f"{t.id} is {subtickets.label_for(s.get(t.meta['parent']))}")
+
+
 def _fill_from_rules(s: Store, t) -> None:
     """DESK-0168: a new ticket with no assignee gets one when assign.yaml (or the built-in table) names exactly one person."""
     from . import assign_rules
@@ -93,12 +112,13 @@ def _fill_from_rules(s: Store, t) -> None:
 
 
 def cmd_list(args):
-    from . import people
+    from . import people, subtickets
 
     from . import sprints
 
     s = _store(args)
     who = people.load(s.home)
+    fam = subtickets.Family(s.tickets())  # DESK-0208: a subticket is listed like any ticket, its title followed by the main ticket it is part of
     rows = []
     due = None
     if args.due is not None:
@@ -129,8 +149,9 @@ def cmd_list(args):
             continue
         if not args.all and not t.is_open and not args.status:
             continue
+        part = fam.label(t)
         rows.append([_id_label(s, t), t.project, t.meta.get("type", ""), t.status + (" (stale)" if stale else ""), t.meta.get("priority", ""),
-                     t.meta.get("size", ""), str(t.meta.get("owner", "")), who.display(ops.assignee_of(t)), str(t.meta.get("title", ""))[:60]])
+                     t.meta.get("size", ""), str(t.meta.get("owner", "")), who.display(ops.assignee_of(t)), str(t.meta.get("title", ""))[:60] + (f" ({part})" if part else "")])
     if not rows:
         print("No tickets match.")
         return
@@ -274,13 +295,17 @@ def cmd_needs_me(args):
         for i in skipped:
             print(f"{i}: no change to mark seen (asks stay until you answer them)")
         return
+    from . import subtickets
+
     items = nm.build(s, who)
+    fam = subtickets.Family(s.tickets())  # DESK-0208: a subticket on the list says which main ticket it is part of
     if args.json:
         print(json.dumps([{"ticket": i.id, "title": str(i.ticket.meta.get("title") or ""), "group": i.group, "kind": i.kind, "why": i.why,
-                           "emergency": i.emergency} for i in items], indent=2, ensure_ascii=False))
+                           "emergency": i.emergency, "part_of": fam.label(i.ticket)} for i in items], indent=2, ensure_ascii=False))
         return
     for i in items:
-        print(f"{i.chip:<13} {i.id}  {i.ticket.meta.get('title')}{'  [EMERGENCY]' if i.emergency else ''}\n    {i.why}")
+        part = fam.label(i.ticket)
+        print(f"{i.chip:<13} {i.id}  {i.ticket.meta.get('title')}{f' ({part})' if part else ''}{'  [EMERGENCY]' if i.emergency else ''}\n    {i.why}")
     print(nm.summary(items) if items else nm.empty_words(styles.load(s.home)["name"])[0])
 
 
@@ -1262,6 +1287,20 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--deadline-kind", default="hard", choices=deadlines.KINDS, help="with --deadline: hard (default), soft or sprint")
     actor(sp)
     sp.set_defaults(fn=cmd_new)
+
+    sp = sub.add_parser("sub", help="a subticket: a piece of a main ticket (an icon from Chaz, an input from James), tracked and assigned like any ticket but kept off the boards; the main ticket's card shows its progress")
+    sp.add_argument("parent", help="the main ticket's id, for example DESK-0183")
+    sp.add_argument("title")
+    sp.add_argument("--assignee", help="who does it: chaz, james, main, a project key, or any name (blank: assign.yaml may fill it)")
+    sp.add_argument("--project", help="the project it belongs to (default: the main ticket's project; any project is allowed)")
+    sp.add_argument("--type", default="task", choices=TYPES, help="default task")
+    sp.add_argument("--priority", choices=PRIORITIES, help="default: the main ticket's priority")
+    sp.add_argument("--size", default="s", choices=SIZES)
+    sp.add_argument("--owner", default="main")
+    sp.add_argument("--dod", help="comma-separated Definition of Done modules (default core)")
+    sp.add_argument("--source", help="path#section into intake/")
+    actor(sp)
+    sp.set_defaults(fn=cmd_sub)
 
     sp = sub.add_parser("list", help="table of tickets (open ones unless --all or --status)")
     sp.add_argument("--project")
