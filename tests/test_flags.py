@@ -11,7 +11,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from browser_harness import browser, drive
-from desk import ops, style as styles
+from desk import ops, style as styles, words
 from desk.ui.app import STATIC, create_app
 
 WORD = "fucking"
@@ -34,6 +34,15 @@ def _page(store, tid, style="plain"):
     styles.save(store.home, style, "drew")
     html = TestClient(create_app(store.home)).get(f"/ticket/{tid}").text
     return re.sub(r'((?:name="token" value|data-token)=")[^"]*', r"X", html)  # one-time keys differ on every request
+
+
+def _states_as_plain(html, style):
+    """Each style has its own word per state (DESK-0037: Dogs say Sniffed, Thrown, Fetching); F5 is about the flag component, so those
+    words are read as the Plain ones before pages of two styles are compared."""
+    for st, word in words.TABLES[style].items():
+        if word != words.PLAIN[st]:
+            html = re.sub(rf"\b{re.escape(word)}\b", words.PLAIN[st], html)
+    return html
 
 
 def test_masked_word_is_a_span_that_carries_the_word_only_encoded(store):
@@ -73,14 +82,15 @@ def test_rejected_ticket_note_sits_above_the_header_and_the_body_is_unchanged(st
 
 
 def test_the_three_styles_differ_only_in_the_empty_state(store):
-    """Protects F5: every flagged page is byte-identical in Plain, Dogs and Cat; a page with nothing flagged differs by the one node."""
+    """Protects F5: every flagged page is byte-identical in Plain, Dogs and Cat (once each style's own state words, DESK-0037, are read
+    as Plain); a page with nothing flagged differs by the one node."""
     t, rej = _flagged(store)
     clean = ops.new(store, "Clean", "jre")
     for tid in (t.id, rej.id):
-        pages = {s: _page(store, tid, s) for s in ("plain", "dogs", "cat")}
+        pages = {s: _states_as_plain(_page(store, tid, s), s) for s in ("plain", "dogs", "cat")}
         assert pages["plain"] == pages["dogs"] == pages["cat"]
         assert "Nothing flagged" not in pages["plain"]
-    pages = {s: _page(store, clean.id, s) for s in ("plain", "dogs", "cat")}
+    pages = {s: _states_as_plain(_page(store, clean.id, s), s) for s in ("plain", "dogs", "cat")}
     node = re.compile(r'<span class="flag-empty" title="[^"]*">[^<]*</span>')
     assert len({node.search(p).group(0) for p in pages.values()}) == 3
     assert "Nothing flagged" in pages["plain"] and "Nothing to growl at" in pages["dogs"] and "Nothing hissed at" in pages["cat"]
