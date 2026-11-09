@@ -16,6 +16,7 @@
   <nav><a href="/">Today</a><a href="/board">Board</a><a href="/projects">Projects</a></nav>
   <form class="search-open" action="/search" method="get" role="search" data-progress="none"><input type="search" name="q" id="search-open" placeholder="Find a ticket or project" aria-label="Find a ticket or project" autocomplete="off"><kbd title="Press / to search from any page">/</kbd></form>
   {% if can_act_as %}<form class="actas" method="post" action="/act-as" data-progress="none"><input type="hidden" name="token" value="{{ token() }}"><input type="hidden" name="back" value="{{ request.url.path }}"><label>Act as <select name="person" onchange="this.form.submit()" aria-label="Act as"><option value="">myself ({{ me.name }})</option>{% for p in act_people %}<option value="{{ p.key }}"{% if me.as_ == p.key %} selected{% endif %}>{{ p.name }}</option>{% endfor %}</select></label><noscript><button class="btn small" type="submit">Go</button></noscript></form>{% endif %}
+  <span class="notify-ctl" role="group" aria-label="Popup notifications"><button type="button" class="btn small" id="notify-allow" aria-pressed="false">Notify me</button><button type="button" class="btn small" id="notify-mute" aria-pressed="false">Mute</button></span>
   <a class="user" href="/settings" title="You are {{ me.display() }}. Settings, and the store this Desk reads."><span class="uinit">{{ (me.name or '?')[0]|upper }}</span>{{ me.display() }}</a>
 </header>
 {% if unnamed %}<div class="notice" role="status">Desk does not know who you are on this machine yet, so it records you as {{ owner }} (claimed). <a href="/whoami">Say who you are, once</a>.</div>{% endif %}
@@ -28,6 +29,7 @@
 <script src="/static/progress.js"></script>
 <script src="/static/hovercard.js" defer></script>
 <script src="/static/search.js" defer></script>
+<script src="/static/notify.js" defer></script>
 <script>
 /* A page that saves in place (check boxes, comments) tells the auto-refresh the file stamp of its own write, so it does not reload itself. */
 window.DeskLive = { own: "0", mine: function (stamp) { if (stamp && BigInt(stamp) > BigInt(this.own)) this.own = String(stamp); } };

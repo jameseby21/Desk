@@ -20,7 +20,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from .. import timing
-from .. import newform, asks, boardfilter as bf, boardview as bv, commands, companies as compmod, identity as idmod, ladder, sprints as sprintmod, todayview as tv, people as peoplemod, search as srch, nav as navmod, buildstamp as bs, comments as cm, docs as docsmod, ops, profanity, review as rv, style as styles, tracks as trk, version as ver
+from .. import newform, notify, asks, boardfilter as bf, boardview as bv, commands, companies as compmod, identity as idmod, ladder, sprints as sprintmod, todayview as tv, people as peoplemod, search as srch, nav as navmod, buildstamp as bs, comments as cm, docs as docsmod, ops, profanity, review as rv, style as styles, tracks as trk, version as ver
 from ..config import find_home
 from ..rules import RuleError
 from ..store import Store, id_parts, split_profile
@@ -392,6 +392,16 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         """Server-sent events for the Today, board and projects pages: the tickets directory's latest mtime."""
         s = store()
         return sse(lambda: ev.tickets_stamp(s), since, timeout)
+
+    feed = app.state.feed = notify.Feed()
+
+    @app.get("/notify/changes")
+    def notify_changes(request: Request, since: str = ""):
+        """Popup notifications (DESK-0192): the ticket changes after `since` that the person looking should hear about, each with who made
+        it and what changed. Without `since` it only says where the feed is now. Nothing is stored or sent anywhere."""
+        me = acting(request)
+        out = feed.since(store(), int(since) if since.isdigit() else None, me.as_ or me.name, me.name)
+        return JSONResponse(out, headers={"Cache-Control": "no-store"})
 
     search_ix: dict = {}  # one index per store path, kept for the life of the process
 

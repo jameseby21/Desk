@@ -381,3 +381,13 @@ header .search-open kbd{position:absolute;right:10px;top:50%;transform:translate
 .nf-actions{margin-top:16px}
 @media (min-width:700px){.nf-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.nf-grid .nf-wide{grid-column:1 / -1}}
 @media (prefers-color-scheme:dark){.ferr{color:#FF8C92}}
+
+/* Popup notifications (DESK-0192): a quiet stack at the bottom right (full width on a phone); nothing under 12 px. */
+.notify-ctl{display:inline-flex;gap:6px;margin-left:auto}
+.notify-ctl+.user{margin-left:0}
+.toasts{position:fixed;right:12px;bottom:12px;z-index:50;display:flex;flex-direction:column;gap:6px;width:min(360px,calc(100vw - 24px))}
+.toast{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px;background:var(--card);color:var(--ink);border:1.5px solid var(--ink);border-radius:12px;padding:8px 10px;font-size:13px;line-height:1.35;box-shadow:0 2px 8px rgba(0,0,0,.18)}
+.toast a{font-weight:600;flex:1 1 100%;overflow-wrap:anywhere}
+.toast-what{flex:1 1 auto;color:var(--muted);font-size:13px}
+.toast-x{font:600 12.5px/1 inherit;font-family:inherit;min-height:28px;padding:0 10px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer}
+.toast.fold{border-style:dashed;color:var(--muted);justify-content:space-between}
