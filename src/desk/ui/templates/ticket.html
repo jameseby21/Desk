@@ -34,6 +34,36 @@
 </div>
 <h1 style="margin-top:10px">{{ t.meta.get('title') }}</h1>
 <p class="muted" style="margin-top:0">{{ t.meta.get('priority') }} · size {{ t.meta.get('size') }} · owner {{ who(t.meta.get('owner')) }} · created {{ t.meta.get('created') }} · updated {{ t.meta.get('updated') }}{% if t.meta.get('done_at') %} · done {{ t.meta.get('done_at') }}{% endif %}{% if t.meta.get('branch') %} · <code>{{ t.meta.get('branch') }}</code>{% endif %}</p>
+{% if tl is defined and tl %}{# DESK-0171: the latest change on one line, then every event; a plain default until Chaz's design (DESK-0170) #}
+<section class="tl" id="timeline" aria-label="Timeline of this ticket">
+  {% set L = tl.latest %}
+  <p class="tl-latest" id="tl-latest"{% if L %} title="{{ L.actor_name }} ({{ L.kind_label }}) · {{ L.what }} · {{ L.when }}"{% endif %}>
+    <span class="tl-cap">Latest change</span>
+    {% if L %}<i class="tl-dot" style="background:{{ L.colours.kind }}"></i><b class="tl-who">{{ L.actor_name }}</b><span class="tl-kind">{{ L.kind_label }}</span><span class="tl-what">{{ L.what }}</span><span class="tl-when">{{ L.when }}</span>{% else %}<span class="tl-what muted">No changes recorded yet.</span>{% endif %}
+  </p>
+  {% if tl.rows %}
+  <details class="tl-all" id="tl-all">
+    <summary>Expand all events ({{ tl.rows|length }})</summary>
+    <div class="tl-tools">
+      <label class="tl-by">Colour by <select id="tl-by" aria-label="Colour the events by">{% for f in tl.facets %}<option value="{{ f.dim }}"{% if f.dim == 'kind' %} selected{% endif %}>{{ f.label }}</option>{% endfor %}</select></label>
+      {% for f in tl.facets %}<details class="tl-f" data-dim="{{ f.dim }}"><summary>{{ f.label }} <span class="tl-on" data-of="{{ f.dim }}"></span></summary>
+        <div class="tl-opts">{% for v, lab, n, col in f.values %}<label><input type="checkbox" value="{{ v }}" data-dim="{{ f.dim }}"><i class="tl-dot" style="background:{{ col }}"></i><span>{{ lab }}</span> <span class="tl-count">{{ n }}</span></label>{% endfor %}</div>
+      </details>{% endfor %}
+      <button type="button" class="btn small" id="tl-clear" hidden>Clear filters</button>
+    </div>
+    <p class="tl-shown" id="tl-shown" aria-live="polite">Showing all {{ tl.rows|length }} events, newest first.</p>
+    <div class="tl-legend" id="tl-legend" aria-label="What the colours mean">{% for f in tl.facets if f.dim == 'kind' %}{% for v, lab, n, col in f.values %}<span><i class="tl-dot" style="background:{{ col }}"></i>{{ lab }} {{ n }}</span>{% endfor %}{% endfor %}</div>
+    <ol class="tl-list" id="tl-list">
+      {% for r in tl.rows %}<li class="tl-ev"{% for d in r.dims %} data-{{ d }}="{{ r.dims[d] }}" data-c-{{ d }}="{{ r.colours[d] }}" data-l-{{ d }}="{{ r.labels[d] }}"{% endfor %}>
+        <i class="tl-mark" style="background:{{ r.colours.kind }}"></i>
+        <div class="tl-body"><div class="tl-head"><b>{{ r.actor_name }}</b> <span class="tl-kind">{{ r.kind_label }}</span> <span class="muted">{{ r.source_label }} · {{ r.when }}</span></div><div class="tl-what">{{ r.what }}</div></div>
+      </li>{% endfor %}
+    </ol>
+  </details>
+  {% endif %}
+</section>
+<script src="/static/timeline.js" defer></script>
+{% endif %}
 
 <div class="cols">
   <div>

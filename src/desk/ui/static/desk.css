@@ -394,3 +394,34 @@ header .search-open kbd{position:absolute;right:10px;top:50%;transform:translate
 .toast-what{flex:1 1 auto;color:var(--muted);font-size:13px}
 .toast-x{font:600 12.5px/1 inherit;font-family:inherit;min-height:28px;padding:0 10px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer}
 .toast.fold{border-style:dashed;color:var(--muted);justify-content:space-between}
+
+/* Ticket timeline (DESK-0171): a plain default layout until Chaz's design (DESK-0170). Text never below 12 px. */
+.tl{margin:6px 0 16px;min-width:0}
+.tl-latest{display:flex;align-items:center;gap:8px;margin:0;padding:8px 12px;background:var(--card);border:1px solid var(--line);border-radius:10px;font-size:14px;white-space:nowrap;overflow:hidden;min-width:0}
+.tl-latest>*{flex:none}
+.tl-latest .tl-what{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.tl-latest .tl-when{color:var(--muted);font-size:13px}
+.tl-cap{font:500 12px/1.3 var(--font-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.tl-dot{display:inline-block;width:10px;height:10px;border-radius:50%;border:1px solid rgba(0,0,0,.25);vertical-align:middle;margin-right:4px;flex:none}
+.tl-kind{font:500 12px/1 var(--font-mono);padding:3px 6px;border:1px solid var(--line);border-radius:6px;color:var(--muted);white-space:nowrap}
+.tl-all{margin-top:8px}
+.tl-all>summary{cursor:pointer;font-weight:600;font-size:14px}
+.tl-tools{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-start;margin:10px 0}
+.tl-by{font-size:14px;display:flex;flex-direction:row;align-items:center;gap:6px}
+.tl-by select{font-size:14px;max-width:100%;padding:4px 8px}
+.tl-f{font-size:14px;border:1px solid var(--line);border-radius:8px;background:var(--card);padding:4px 8px;max-width:100%}
+.tl-f>summary{cursor:pointer}
+.tl-on{color:var(--muted);font-size:12px}
+.tl-opts{display:flex;flex-direction:column;gap:2px;margin-top:6px;max-height:260px;overflow:auto}
+.tl-opts label{display:flex;flex-direction:row;align-items:center;gap:6px;min-height:32px;font-size:14px;overflow-wrap:anywhere;cursor:pointer}
+.tl-count{color:var(--muted);font:500 12px var(--font-mono)}
+.tl-shown{font-size:14px;margin:6px 0}
+.tl-legend{display:flex;flex-wrap:wrap;gap:6px 12px;font-size:13px;margin-bottom:8px}
+.tl-list{list-style:none;margin:0;padding:0 0 0 14px;border-left:2px solid var(--line)}
+.tl-ev{display:flex;gap:8px;align-items:flex-start;padding:6px 0;min-width:0}
+.tl-ev[hidden]{display:none}
+.tl-mark{flex:none;width:14px;height:14px;border-radius:50%;margin-left:-22px;margin-top:4px;border:2px solid var(--paper)}
+.tl-body{min-width:0;flex:1}
+.tl-head{font-size:14px;overflow-wrap:anywhere}
+.tl-ev .tl-what{font-size:14px;overflow-wrap:anywhere}
+@media (max-width:600px){.tl-latest .tl-cap{display:none}.tl-latest{gap:6px;padding:8px 10px}}
