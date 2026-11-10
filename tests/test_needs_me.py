@@ -197,6 +197,24 @@ def test_an_ask_needs_me_draws_is_not_drawn_again_under_needs_you(store):
     assert needs_me.shown_ids(needs_me.build(store, now=NOW)) == set(drawn)
 
 
+def test_a_ticket_needs_me_draws_is_not_drawn_again_under_in_hand_or_waiting_for_review(store):
+    """Protects: the 2026-11-10 verifier found "once on Today" held only between Needs me and Needs you: a changed ticket in progress
+    was drawn again under In hand and a review ask again under Waiting for review. Every row Needs me draws is left out of all three
+    sections below it; the sections' counts ("3 in hand", "All 5") still count the ticket, because it is still in hand or in review."""
+    *_, changed, _viewed, _answered = _fixture(store)  # in progress, changed by Lily: a Needs me "Changed" row
+    built = ops.new(store, "Built thing", "desk", "feature", owner="main", size="m")
+    built.meta["status"] = "review"
+    built.set_section("Report", "done")
+    store.save(built)  # in review, only James may approve: a Needs me "Approve" ask
+    page = TestClient(create_app(store.home)).get("/").text
+    nm_block = page.split('id="needs-me"')[1].split("</section>")[0]
+    below = page.split('id="needs-you"')[1]
+    for i in (changed.id, built.id):
+        assert f'data-ticket="{i}"' in nm_block, i
+        assert f'href="/ticket/{i}"' not in below, i
+    assert "<b>3</b> in hand" in page  # the counts line still counts the changed ticket among the three in hand
+
+
 # -- a real browser at phone width: the 12 px floor ----------------------------------------------------------------------------------
 import pytest  # noqa: E402
 from browser_harness import browser, drive  # noqa: E402
@@ -209,7 +227,10 @@ def test_needs_me_tags_and_board_cards_fit_a_390_px_phone_with_nothing_under_12_
     11 px. Today (Needs me block included), a ticket page with tags and the board with a card open: every element's computed font
     size is 12 px or more and nothing scrolls sideways at 390 px (James's floor, 2026-11-08)."""
     ask = _decision(store, "Choose the colour of the thing with a long title that wraps on a phone", review_by="2026-10-30", tags=["look", "emergency"])
-    t = ops.new(store, "Tagged and in progress", "desk", "feature", owner="main")
+    ask.set_section("Acceptance", "- [ ] The colour is chosen and written down\n- [ ] The thing is painted\n")  # the Acceptance table draws its heading row (2026-11-10 verifier: it was 11 px)
+    store.save(ask)
+    (store.projects_dir / "long.md").write_text("# A project whose title runs long enough to be cut off at the edge of a phone\n", encoding="utf-8")
+    t = ops.new(store, "Tagged and in progress", "long", "feature", owner="main")  # 2026-11-10 verifier: a long place name ran past the right edge at 390 px
     t.meta["status"] = "in_progress"
     t.meta["tags"] = ["look", "repeatable-process"]
     store.save(t)

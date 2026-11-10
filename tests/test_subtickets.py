@@ -159,7 +159,7 @@ def test_today_counts_leave_subtickets_out_but_its_rows_list_them_labelled(store
     assert "All open (2)" in page
     assert re.search(r'<option value="desk-ui-v1"[^>]*>Desk UI v1 \(2\)</option>', page)  # the Track dropdown counts main tickets
     hand = page.split('id="in-hand"')[1].split("</section>")[0]
-    assert INPUT in hand and f'<span class="tr-part">{label}</span>' in hand  # In hand lists the subticket James holds
+    assert m.id in hand and INPUT not in hand  # In hand lists the main ticket; the subticket James holds is drawn once, under Needs me (2026-11-10 verifier)
     nm = page.split('id="needs-me"')[1].split("</section>")[0]
     assert INPUT in nm and f'<span class="nm-part">{label}</span>' in nm  # Needs me: James's own input is an ask
 

@@ -43,20 +43,27 @@ def ask_label(t: Ticket, owner: str) -> str:
     return ""
 
 
-def build(store: Store, tickets: list[Ticket], counted: list[Ticket] | None = None) -> dict:
+def build(store: Store, tickets: list[Ticket], counted: list[Ticket] | None = None, drawn: set[str] | None = None) -> dict:
     """The rows list every ticket given, subtickets included; the "Also open" counts use `counted` when given (DESK-0208: main tickets only).
-    Every row list is in score order (DESK-0135); the Immediate Action Required row alone keeps its hard-deadline order (DESK-0193)."""
+    Every row list is in score order (DESK-0135); the Immediate Action Required row alone keeps its hard-deadline order (DESK-0193).
+    `drawn` is the ids the Needs me block above these sections already draws (DESK-0149, 2026-11-10 review): none of them is drawn
+    again under Needs you, In hand or Waiting for review, so a ticket appears once on Today. `hand` and `pile` keep them, because
+    the counts line ("3 in hand", "All 5") says how many tickets are in that state, not how many rows are drawn."""
     from . import priority
 
     owner = store.owner
     key = priority.scores(store).key
+    drawn = drawn or set()
     needs = sorted([t for t in tickets if t.status in ASK_OPEN and ask_label(t, owner)], key=key)
     need_ids = {t.id for t in needs}
     hand = sorted([t for t in tickets if t.status in HAND and t.id not in need_ids], key=key)
     pile = sorted([t for t in tickets if t.status == "review" and t.id not in need_ids], key=key)
+    hand_rows = [t for t in hand if t.id not in drawn]
+    pile_rows = [t for t in pile if t.id not in drawn]
     counts = {st: sum(1 for t in (tickets if counted is None else counted) if t.status == st) for st in OTHER}
     imm = deadlines.immediate(tickets)  # DESK-0193: the row above everything else on Today
     return {"imm": imm, "imm_shown": imm[:deadlines.SHOWN], "imm_more": imm[deadlines.SHOWN:], "imm_missed": any(deadlines.days_left(t) < 0 for t in imm),
             "days_text": lambda t: deadlines.words(deadlines.days_left(t)), "missed": lambda t: deadlines.days_left(t) < 0, "window": deadlines.WINDOW_DAYS,
-            "needs": needs, "hand": hand, "hand_shown": hand[:HAND_ROWS], "hand_more": hand[HAND_ROWS:], "pile": pile, "pile_shown": pile[:PREVIEW],
+            "needs": [t for t in needs if t.id not in drawn], "hand": hand, "hand_shown": hand_rows[:HAND_ROWS], "hand_more": hand_rows[HAND_ROWS:],
+            "pile": pile, "pile_shown": pile_rows[:PREVIEW],
             "other_counts": counts, "ask_label": lambda t: ask_label(t, owner), "due_text": due_text}
