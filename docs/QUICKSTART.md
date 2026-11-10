@@ -30,11 +30,26 @@ drew-ui
 ```
 Open http://127.0.0.1:8765. You should see the Today page with "Today's walk", the navigation (Today, Board, Projects, About, Settings) and, in the footer, `Desk <version> · <commit>`.
 
+The first time, a banner says Desk does not know who you are on this machine. Follow "Say who you are, once" (`/whoami`), pick yourself, and it is written to `people.yaml` and never asked again; until then your changes are recorded as the store owner, marked claimed. `drew whoami` shows how the command line would be recorded.
+
 Make a first ticket (a project profile must exist first):
 ```
 echo "# First" > "$DESK_HOME/projects/first.md"
 drew new --project first --type chore "Try Desk"
 drew list
+```
+
+## Refreshing Desk (stop, install, start)
+After new Desk code is merged or checked out, one command does all three steps:
+```
+drew refresh                 # from the repo's working folder
+drew refresh --ref main      # or from a branch, tag or commit of it
+```
+It stops the UI on port 8765 (by PID), installs with `uv tool install --force`, starts `drew-ui` and prints `drew --version`. On Windows the install runs in a separate process after the command exits (about 30 seconds); read `desk-refresh.log` in your temp folder, or run `drew doctor`. `Ctrl+C` in the `drew-ui` terminal also stops the server (within 2 seconds). Manual fallback, in any PowerShell window:
+```powershell
+Get-NetTCPConnection -LocalPort 8765 -State Listen | ForEach-Object { Stop-Process -Id $_.OwningProcess -Force }   # or: drew stop
+uv tool install --force "<path to the Desk repo>"
+drew-ui
 ```
 
 ## Verify
@@ -44,6 +59,8 @@ drew validate
 drew doctor
 ```
 Expected: the tests pass, `validate` prints no errors and exits 0, and `doctor` lists the installed version and commit, the repo path, the tool and store paths and exits 0 when the installed copy matches the repo.
+
+After the first run, `drew needs-me` is the shortest way to see what is waiting on you (or open Today: Needs me is the first block).
 
 ## If it fails
 | You see | It means | Do |

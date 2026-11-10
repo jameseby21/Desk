@@ -11,7 +11,7 @@ import tempfile
 import zipfile
 from pathlib import Path
 
-from . import review
+from . import identity, review
 from .rules import RuleError, check_transition
 from .secretscan import looks_secret, refusal as secret_refusal
 from .store import Store, join_profile, split_profile
@@ -24,12 +24,15 @@ _KEY = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 _SAFE_NAME = re.compile(r"[^A-Za-z0-9._-]+")
 
 
-def _stamp(actor: str, what: str, at_time: bool = False) -> str:
-    when = dt.datetime.now().strftime("%Y-%m-%d %H:%M") if at_time else today()
+def _stamp(actor: str, what: str, at_time: bool = False, now: dt.datetime | None = None) -> str:
+    when = (now or dt.datetime.now()).strftime("%Y-%m-%d %H:%M") if at_time else today()
     return f"- {when} · {actor} · {what}"
 
 
-DUPLICATE_WINDOW = dt.timedelta(minutes=10)
+DUPLICATE_WINDOW = dt.timedelta(minutes=10)  # byte-for-byte repeats (case and spacing aside) by one author
+NEAR_WINDOW = dt.timedelta(seconds=60)  # near repeats: punctuation, brackets, a trailing counter or a typo or two (DESK-0142)
+DUP_NOTICE = "That comment is already on the ticket"
+NEAR_NOTICE = "That is almost the same as a comment you just posted, so it was ignored; the earlier one is highlighted"
 _COMMENT_LINE = re.compile(r"^- (\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}) · (.+?) · (.*)$")
 
 
@@ -46,15 +49,51 @@ def move(store: Store, t: Ticket, new: str, *, actor: str | None = None, reason:
     if note:
         t.append_line("Comments", _stamp(actor or "desk", note))
     store.save(t)
+    _acted(store, t, actor)
     return t
 
 
-def new(store: Store, title: str, project: str, type_: str = "feature", **kw) -> Ticket:
+def _acted(store: Store, t: Ticket, actor: str | None) -> None:
+    """The store's owner just acted on `t`: Needs me (DESK-0149) compares later changes against this moment."""
+    from . import needs_me
+
+    needs_me.record_action(store, t, actor)
+
+
+def new(store: Store, title: str, project: str, type_: str = "feature", parent: str = "", **kw) -> Ticket:
     if project not in store.projects() and store.projects():
         raise RuleError(f"Unknown project `{project}`. Add projects/{project}.md first.")
     t = store.create(title, project, type_, **kw)
+    if parent:  # DESK-0208: written before the first save, so `drew validate` and the activity log see a subticket from the start
+        t.meta["parent"] = parent
     store.save(t)
     return t
+
+
+def main_for_sub(store: Store, parent_id: str) -> Ticket:
+    """The main ticket a new subticket will be part of, or a RuleError in plain words: it must exist, be open, and not be a subticket
+    itself (one level is enough). Shared by `drew sub` and the New ticket form's Part of field (DESK-0208)."""
+    from . import subtickets
+
+    pid = " ".join(str(parent_id or "").split()).upper()
+    try:
+        main = store.get(pid)
+    except KeyError:
+        raise RuleError(f"There is no ticket {pid} to be part of. Check the id (drew list shows them).") from None
+    up = subtickets.parent_of(main)
+    if up:
+        raise RuleError(f"{main.id} is itself part of {up}. One level is enough: make the new ticket part of {up}.")
+    if not main.is_open:
+        raise RuleError(f"{main.id} is {main.status}, so it takes no new subtickets. Make a new ticket instead.")
+    return main
+
+
+def sub(store: Store, parent_id: str, title: str, project: str | None = None, type_: str = "task", **kw) -> Ticket:
+    """`drew sub` (DESK-0208): a subticket of `parent_id`, written by `new` like any ticket. It lands in the main ticket's project and
+    takes its priority unless others are named."""
+    main = main_for_sub(store, parent_id)
+    kw["priority"] = kw.get("priority") or str(main.meta.get("priority") or "p2")
+    return new(store, title, project or main.project, type_, parent=main.id, **kw)
 
 
 def claim(store: Store, t: Ticket, owner: str | None = None) -> Ticket:
@@ -148,6 +187,7 @@ def toggle_check(store: Store, ticket_id: str, section: str, index: int, checked
     parts[c.first:c.last + 1] = render_check(c)
     t.sections[section] = "\n".join(parts)
     store.save(t)
+    _acted(store, t, actor)
     return t
 
 
@@ -161,12 +201,110 @@ def assign(store: Store, t: Ticket, to: str, note: str = "", handoff: str = "", 
     to = " ".join((to or "").split())
     if not to:
         raise RuleError("assign needs a name: --to <name>")
+    from . import people  # a display name (Patch, Big D) is stored as its key (main, bigd)
+
+    to = people.load(store.home).resolve(to)
     t.meta["assignee"] = to
     t.meta["assigned_at"] = dt.datetime.now().replace(microsecond=0).isoformat()
+    t.meta["assigned_by"] = actor or "desk"  # a person's name here ends "assigned by rule <name>" (DESK-0168)
     if handoff.strip():
         t.meta["handoff"] = handoff.strip()
     note = " ".join((note or "").split())
     t.append_line("Comments", _stamp(actor or "desk", f"assigned to {to}" + (f": {note}" if note else "")))
+    store.save(t)
+    return t
+
+
+def unassign(store: Store, t: Ticket, actor: str | None = None) -> Ticket:
+    """Back to blank: the ticket is "not yet scanned" again. Clears assignee, assigned_at and assigned_by and notes it in Comments."""
+    old = assignee_of(t)
+    for k in ("assignee", "assigned_at", "assigned_by"):
+        t.meta.pop(k, None)
+    if old:
+        t.append_line("Comments", _stamp(actor or "desk", f"unassigned (was {old})"))
+    store.save(t)
+    return t
+
+
+# ---- refine and split (DESK-0145) ------------------------------------------------------------
+
+def refine(store: Store, t: Ticket, line: str, actor: str | None = None, review_by: str | None = None, reason: str = "") -> Ticket:
+    """A refinement of the requirements, tracked: a dated Acceptance line `- [ ] 2026-11-08 refinement: ...` and a Comments line. A refinement
+    may cost time, so `review_by` may move, but only with a reason, and the slip is written down. A change of scope is not a refinement:
+    that goes through `split`."""
+    line = " ".join((line or "").split())
+    if not line:
+        raise RuleError("A refinement needs words: what is being made clearer, in a line.")
+    if t.status in ("done", "rejected"):
+        raise RuleError(f"{t.id} is {t.status}; a closed ticket is not refined. Open a new ticket.")
+    t.append_line("Acceptance", f"- [ ] {today()} refinement: {line}")
+    note = f"refinement: {line}"
+    if review_by:
+        try:
+            new = dt.date.fromisoformat(review_by[:10]).isoformat()
+        except ValueError:
+            raise RuleError(f"`{review_by}` is not a date (use YYYY-MM-DD).") from None
+        why = " ".join((reason or "").split())
+        if not why:
+            raise RuleError("Moving review_by needs a reason: say why the refinement costs time.")
+        old = str(t.meta.get("review_by") or "none")[:10]
+        t.meta["review_by"] = new
+        note += f" (review_by moved from {old} to {new}: {why})"
+    t.append_line("Comments", _stamp(actor or "desk", note, at_time=True))
+    store.save(t)
+    return t
+
+
+def split(store: Store, t: Ticket, title: str, size: str = "s", due: str | None = None, details: str = "", outcome: str = "",
+          acceptance: "list[str] | None" = None, actor: str | None = None) -> Ticket:
+    """A change of scope does not edit the ticket: it becomes a new ticket with its details and timeline, linked both ways (the new ticket
+    depends_on the old one, the old one lists it under blocks), and the old ticket carries a prompt for the completion decision: done as scoped, or closed in
+    favour of the new one. Returns the new ticket."""
+    title = " ".join((title or "").split())
+    if not title:
+        raise RuleError("A split needs a title for the new ticket.")
+    if size not in ("xs", "s", "m"):
+        raise RuleError("The new ticket's size is xs, s or m (a larger one is split again before it starts).")
+    if t.status in ("done", "rejected"):
+        raise RuleError(f"{t.id} is {t.status}; a closed ticket is not split. Open a new ticket.")
+    if due:
+        try:
+            due = dt.date.fromisoformat(due[:10]).isoformat()
+        except ValueError:
+            raise RuleError(f"`{due}` is not a date (use YYYY-MM-DD).") from None
+    m = t.meta
+    new = store.create(title, t.project, str(m.get("type", "feature")), priority=str(m.get("priority", "p2")), size=size,
+                       owner=actor or str(m.get("owner") or "main"), dod=list(m.get("dod") or ["core"]), source=str(m.get("source") or ""))
+    for k in ("tags", "assignee", "track", "sprint"):
+        if m.get(k) not in (None, "", []):
+            new.meta[k] = m[k]
+    new.meta["split_from"] = t.id
+    new.meta["depends_on"] = [t.id]
+    if due:
+        new.meta["review_by"] = due
+    new.set_section("Context", f"Split from {t.id} on {today()}: scope that did not belong in its Outcome. It depends on {t.id}, which lists it under blocks." + ("\n\n" + details.strip() if details.strip() else ""))
+    new.set_section("Outcome", outcome.strip() or "(state the outcome of this part of the scope)")
+    new.set_section("Acceptance", "\n".join(f"- [ ] {a.strip()}" for a in (acceptance or []) if a.strip()) or "- [ ] (write the acceptance before it is thrown)")
+    store.save(new)
+    blocks = [str(x) for x in (t.meta.get("blocks") or [])]
+    if new.id not in blocks:
+        t.meta["blocks"] = blocks + [new.id]
+    t.append_line("Comments", _stamp(actor or "desk", f"scope split out to {new.id}: {title}" + (f" (due {due})" if due else ""), at_time=True))
+    t.append_line("Decision", _stamp("desk", f"split to {new.id}: completion decision needed. Close this ticket as scoped (it blocks {new.id}), or close it in favour of {new.id} (drew reject {t.id} with a reason)"))
+    store.save(t)
+    return new
+
+
+def edit_outcome(store: Store, t: Ticket, text: str, actor: str | None = None) -> Ticket:
+    """The Outcome is the ticket's promise. It can be rewritten freely until the ticket is thrown (inbox, triage); after that a different
+    Outcome is a change of scope and goes through `split`."""
+    text = (text or "").strip()
+    if t.status not in ("inbox", "triage"):
+        if " ".join(text.split()) == " ".join(t.section("Outcome").split()):
+            return t
+        raise RuleError(f"{t.id} is {t.status}: its Outcome is the promise made, so changing it is a change of scope. Use Split to make a new ticket with the details and a timeline, and decide how to complete this one.")
+    t.set_section("Outcome", text)
+    t.append_line("Comments", _stamp(actor or "desk", "outcome rewritten before the ticket was thrown", at_time=True))
     store.save(t)
     return t
 
@@ -201,6 +339,7 @@ def unblock(store: Store, t: Ticket, actor: str | None = None, to: str | None = 
     t.meta.pop("blocked_from", None)
     t.append_line("Comments", _stamp(actor or "desk", f"unblocked → {target}"))
     store.save(t)
+    _acted(store, t, actor)
     return t
 
 
@@ -211,10 +350,17 @@ def reject(store: Store, t: Ticket, reason: str, actor: str | None = None) -> Ti
 
 
 class CommentResult:
-    """What `comment` did: `added` is False when an identical recent comment made it a duplicate."""
+    """What `comment` did: `added` is False when an identical or nearly identical recent comment made it a duplicate. `existing` is the
+    index (in `comment_lines`) of the comment already there, `near` says it was a variant and not a repeat."""
 
-    def __init__(self, ticket: Ticket, added: bool):
-        self.ticket, self.added = ticket, added
+    def __init__(self, ticket: Ticket, added: bool, existing: int | None = None, near: bool = False):
+        self.ticket, self.added, self.existing, self.near = ticket, added, existing, near
+
+    @property
+    def message(self) -> str:
+        if self.added:
+            return ""
+        return NEAR_NOTICE if self.near else DUP_NOTICE
 
     @property
     def id(self) -> str:
@@ -230,26 +376,90 @@ _KIND_TAIL = re.compile(r"\s*<!-- kind: (Question|Suggestion|Concern|FYI) -->\s*
 
 
 def split_comment_kind(rest: str) -> tuple[str | None, str]:
-    """(kind or None, the words) for what follows `<when> · <who> · ` on a comment line. Comments written before kinds have none."""
+    """(kind or None, the words) for what follows `<when> · <who> · ` on a comment line. Comments written before kinds have none.
+    The hidden `<!-- by ... -->` identity tag (DESK-0144) is not part of the words."""
     m = _KIND_TAIL.search(rest)
-    return (m.group(1), rest[:m.start()]) if m else (None, rest)
+    kind, words = (m.group(1), rest[:m.start()]) if m else (None, rest)
+    return kind, identity.parse_tag(words)[1]
+
+
+def comment_identity(rest: str) -> dict:
+    """The parsed identity tag of a comment line's tail ({} for a comment written before identities were kept)."""
+    m = _KIND_TAIL.search(rest)
+    return identity.parse_tag(rest[:m.start()] if m else rest)[0]
+
+
+def _squash(text: str) -> str:
+    """The comment with punctuation and brackets turned to spaces, case folded, spaces collapsed: `Dup test # 2 ()` is `dup test 2`."""
+    return " ".join(re.sub(r"[^\w\s]|_", " ", text.casefold()).split())
+
+
+def norm_comment(text: str) -> tuple[str, str]:
+    """(normalized, normalized without its trailing counter). `Dup test # 2 ()` gives (`dup test 2`, `dup test`)."""
+    full = _squash(text)
+    return full, re.sub(r"(?:\s+\d+)+$", "", full)
+
+
+def _distance(a: str, b: str, limit: int) -> int:
+    """Edit distance between a and b, or limit + 1 as soon as it is certain to be more."""
+    if abs(len(a) - len(b)) > limit:
+        return limit + 1
+    prev = list(range(len(b) + 1))
+    for i, ca in enumerate(a, 1):
+        cur = [i]
+        for j, cb in enumerate(b, 1):
+            cur.append(min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (ca != cb)))
+        if min(cur) > limit:
+            return limit + 1
+        prev = cur
+    return prev[-1]
+
+
+def near_same(a: str, b: str) -> bool:
+    """True when two comments are the same after normalizing, or differ by at most 2 edits (1 under 8 characters, none under 5, so
+    `ok` and `no` stay two comments). The trailing counter is ignored: `Dup test #3` is `Dup test #2` again."""
+    (fa, ca), (fb, cb) = norm_comment(a), norm_comment(b)
+    if not fa or not fb:
+        return False
+    for x, y in ((fa, fb), (ca, cb)):
+        k = 2 if min(len(x), len(y)) >= 8 else 1 if min(len(x), len(y)) >= 5 else 0
+        if x and y and _distance(x, y, k) <= k:
+            return True
+    return False
+
+
+def _lines(t: Ticket):
+    """(index in comment_lines, when, author, text) for each comment line of the ticket."""
+    for i, line in enumerate(comment_lines(t)):
+        m = _COMMENT_LINE.match(line)
+        if m:
+            try:
+                yield i, dt.datetime.fromisoformat(f"{m.group(1)}T{m.group(2)}"), m.group(3), split_comment_kind(m.group(4))[1]
+            except ValueError:
+                continue
+
+
+def find_duplicate(t: Ticket, actor: str, text: str, now: dt.datetime | None = None) -> tuple[int, bool] | None:
+    """(index of the comment already there, whether it is only a near repeat) when this person, or one named the same way (`james`,
+    `James`, `james1`, `james_`), posted the same words within 10 minutes or nearly the same words within 60 seconds; else None.
+    The kind does not matter."""
+    from .people import same_person
+
+    now = now or dt.datetime.now()
+    near = None
+    for i, when, who, body in _lines(t):
+        if not same_person(who, actor):
+            continue
+        age = abs(now - when)
+        if age <= DUPLICATE_WINDOW and _norm(body) == _norm(text):
+            return i, False
+        if near is None and age <= NEAR_WINDOW and near_same(body, text):
+            near = i
+    return (near, True) if near is not None else None
 
 
 def is_duplicate_comment(t: Ticket, actor: str, text: str, now: dt.datetime | None = None) -> bool:
-    """True when the same author posted the same (whitespace and case normalized) text within 10 minutes; the kind does not matter."""
-    now = now or dt.datetime.now()
-    want = (_norm(actor), _norm(text))
-    for line in t.section("Comments").splitlines():
-        m = _COMMENT_LINE.match(line)
-        if not m:
-            continue
-        try:
-            when = dt.datetime.fromisoformat(f"{m.group(1)}T{m.group(2)}")
-        except ValueError:
-            continue
-        if (_norm(m.group(3)), _norm(split_comment_kind(m.group(4))[1])) == want and abs(now - when) <= DUPLICATE_WINDOW:
-            return True
-    return False
+    return find_duplicate(t, actor, text, now) is not None
 
 
 def canon_kind(kind: str | None) -> str:
@@ -262,16 +472,25 @@ def canon_kind(kind: str | None) -> str:
     raise ValueError(f"A comment is one of: {', '.join(COMMENT_KINDS[:-1])} or {COMMENT_KINDS[-1]}.")
 
 
-def comment(store: Store, t: Ticket, text: str, actor: str | None = None, kind: str | None = None) -> CommentResult:
+def comment(store: Store, t: Ticket, text: str, actor: str | None = None, kind: str | None = None, now: dt.datetime | None = None) -> CommentResult:
     """Append a dated comment. It always has a kind (Question unless said otherwise), kept at the end of the line as `<!-- kind: X -->`."""
     kind = canon_kind(kind)
     if not text.strip():
         raise RuleError("An empty comment says nothing.")
     who = actor or "desk"
-    if is_duplicate_comment(t, who, text):
-        return CommentResult(t, False)
-    t.append_line("Comments", _stamp(who, f"{text.strip()} <!-- kind: {kind} -->", at_time=True))
+    dup = find_duplicate(t, who, text, now)  # DESK-0142: the same or nearly the same words by the same person, just posted
+    if dup:
+        return CommentResult(t, False, existing=dup[0], near=dup[1])
+    ident = identity.CURRENT.get()
+    tag = f" {ident.tag()}" if ident is not None else ""  # who really wrote it: kind, source, how it was established, instance
+    t.append_line("Comments", _stamp(who, f"{text.strip()}{tag} <!-- kind: {kind} -->", at_time=True, now=now))
+    if who.lower() == store.owner.lower():
+        from . import repeats  # DESK-0158: the owner asking for the same thing twice in a week makes the ticket p0 with the tag emergency
+
+        if repeats.repeated_ask(t, store.owner):
+            repeats.escalate(store, t)
     store.save(t)
+    _acted(store, t, who)
     return CommentResult(t, True)
 
 

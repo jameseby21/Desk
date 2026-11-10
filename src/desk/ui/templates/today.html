@@ -1,38 +1,58 @@
 {% extends "base.html" %}
-{% from "_card.html" import card %}
-{% from "_chips.html" import bar %}
+{% from "_row.html" import row, dropdown with context %}
 {% from "_mascot.html" import empty %}
+{% from "_needs_me.html" import block as needs_block with context %}
 {% block title %}Desk · Today{% endblock %}
+{% macro imm_row(t) -%}
+<a class="imm-row trow{% if v.missed(t) %} late{% endif %}" href="/ticket/{{ t.id }}">
+  <span class="tr-lead imm-when">{{ v.days_text(t) }}</span>
+  <span class="tr-title">{{ t.meta.get('title') }}</span>
+  <span class="tr-id">{{ who(t.meta.get('owner')) }} · {% set pl = placeof(t) %}{{ pl[0] }} › {{ pl[1] }}</span>
+</a>
+{%- endmacro %}
 {% block body %}
-<div class="row" style="justify-content:space-between;align-items:flex-end">
+<div class="row t-head">
   <div>
-    <span class="label">{{ today }}</span>
-    <h1>Today's walk</h1>
-    <p class="muted" style="margin:0;max-width:60ch">
-      {% if cap == 'rough' %}A rough week. Chewed-back tickets are hidden and each card shows its smallest step. That still counts.
-      {% elif cap == 'good' %}A good week. Everything that is ready is on the walk.
-      {% else %}A normal week. Next steps only, and a review date on everything you hold.{% endif %}
-    </p>
+    <h1 style="margin:0">{{ long_today }}</h1>
+    <p class="muted" style="margin:2px 0 0">Asks first · <b>{{ v.hand|length }}</b> in hand · {{ v.pile|length }} waiting for review{% if cap == 'rough' %} · a rough week: {{ screen('stale')|lower }} hidden, smallest steps shown{% endif %}</p>
   </div>
-  <div class="row cap">
-    <span class="label">How's the week?</span>
-    <a href="/?cap=good" class="{% if cap=='good' %}on{% endif %}">Good</a>
-    <a href="/?cap=normal" class="{% if cap=='normal' %}on{% endif %}">Normal</a>
-    <a href="/?cap=rough" class="{% if cap=='rough' %}on rough{% endif %}">Rough</a>
+  <div class="row t-controls">
+    <a class="btn ball" href="/new" id="new-ticket">New ticket</a>
+    {{ dropdown("Company", "company", cchips, company, "/", fhidden) }}
+    {{ dropdown("Track", "track", chips, track, "/", fhidden) }}
+    {{ dropdown("Sprint", "sprint", schips, sprint, "/", fhidden) }}
+    {{ dropdown("Tag", "tag", gchips, tag, "/", fhidden) }}
+    {{ dropdown("Type", "type", ychips, ttype, "/", fhidden) }}
+    <div class="row cap" role="group" aria-label="How is the week">
+      <a href="/?cap=good{% if board_q %}&amp;{{ board_q }}{% endif %}" class="{% if cap=='good' %}on{% endif %}">Good</a>
+      <a href="/?cap=normal{% if board_q %}&amp;{{ board_q }}{% endif %}" class="{% if cap=='normal' %}on{% endif %}">Normal</a>
+      <a href="/?cap=rough{% if board_q %}&amp;{{ board_q }}{% endif %}" class="{% if cap=='rough' %}on rough{% endif %}">Rough</a>
+    </div>
   </div>
 </div>
+{% if review_line %}<p class="muted" style="margin:10px 0 0"><span class="label">Ticket review</span> <a href="/ticket/{{ review_line[0].id }}">{{ review_line[0].meta.get('title') }}</a> · {{ review_line[1] }} waiting</p>{% endif %}
 
-{{ bar(chips, track, chip_base, chip_extra) }}
-{% if review_line %}
-<p style="margin:14px 0 0"><span class="label">Ticket review</span> <a href="/ticket/{{ review_line[0].id }}">{{ review_line[0].meta.get('title') }}</a> · {{ review_line[1] }} waiting</p>
-{% endif %}
+<section id="immediate" class="t-sec imm{% if v.imm_missed %} imm-missed{% endif %}" aria-label="Immediate Action Required">
+  {% if v.imm %}
+  <h2>Immediate Action Required <small>{% if v.imm_missed %}A hard deadline has passed{% else %}Hard deadlines in the next {{ v.window }} days, soonest first{% endif %}</small></h2>
+  <div class="rows">{% for t in v.imm_shown %}{{ imm_row(t) }}{% endfor %}</div>
+  {% if v.imm_more %}<details class="fold"><summary>{{ v.imm_more|length }} more · <b>Show</b></summary><div class="rows">{% for t in v.imm_more %}{{ imm_row(t) }}{% endfor %}</div></details>{% endif %}
+  {% else %}<p class="muted imm-empty">Nothing has a hard deadline in the next {{ v.window }} days.</p>{% endif %}
+</section>
 
-<div class="card asked" id="asked" style="margin:14px 0 0">
-  <span class="label">{{ owner|capitalize }} asked</span>
-  {% if asked %}<b>{{ asked|length }} waiting for an answer</b> <span class="muted">(your comments with no later reply from patch and no later change to the ticket)</span>
-  <ul class="mentions">{% for c in asked[:8] %}<li><a class="tid" href="/ticket/{{ c.ticket_id }}#comments">{{ c.ticket_id }}</a> <span class="muted">{{ c.when.strftime('%b %d %H:%M') }}</span> {{ c.text[:140] }}{% if c.text|length > 140 %}…{% endif %}</li>{% endfor %}{% if asked|length > 8 %}<li class="muted">and {{ asked|length - 8 }} more: <code>drew comments --author {{ owner }} --unanswered</code></li>{% endif %}</ul>
-  {% else %}<span class="muted">Nothing waiting for an answer.</span>{% endif %}
-</div>
+{{ needs_block(nm, style, all_open_href, n_open, back, nm_shown, all_open_href + ('&' if '?' in all_open_href else '?') + 'needs=1') }}
+
+<section class="t-sec" id="needs-you">
+  <h2>{{ heading('needs') }} <small>Answer these and the rest can move</small></h2>
+  {% if v.needs %}<div class="rows">{% for t in v.needs %}{{ row(t, 'ask:' ~ v.ask_label(t), v.due_text(t)) }}{% endfor %}</div>
+  {% else %}{{ empty(style, "Nothing is waiting on you.") }}{% endif %}
+  <div class="card asked" id="asked">
+    <span class="label">{{ owner|capitalize }} asked</span>
+    {% if asked %}<b>{{ asked|length }} waiting for an answer</b> <span class="muted">(your comments with no later reply from patch and no later change to the ticket)</span>
+    <ul class="mentions">{% for c in asked[:8] %}<li><a class="tid" href="/ticket/{{ c.ticket_id }}#comments">{{ c.ticket_id }}</a> <span class="muted">{{ c.when.strftime('%b %d %H:%M') }}</span> {{ c.text[:140] }}{% if c.text|length > 140 %}…{% endif %}</li>{% endfor %}{% if asked|length > 8 %}<li class="muted">and {{ asked|length - 8 }} more: <code>drew comments --author {{ owner }} --unanswered</code></li>{% endif %}</ul>
+    {% else %}<span class="muted">Nothing waiting for an answer.</span>{% endif %}
+  </div>
+</section>
 
 {% if combos %}
 <div class="card hold" style="margin:18px 0 0">
@@ -41,27 +61,31 @@
 </div>
 {% endif %}
 
-<h2>In your mouth <small>Claimed or being fetched. One ball per person or agent.</small></h2>
-{% if mouth %}<div class="grid">{% for t in mouth %}{{ card(t, s, hold=True) }}{% endfor %}</div>
-{% else %}{{ empty(style, "Nothing is being fetched right now.") }}{% endif %}
+<section class="t-sec" id="in-hand">
+  <h2>{{ heading('hand') }} <small>Being worked on now, one each</small></h2>
+  {% if v.hand %}<div class="rows">{% for t in v.hand_shown %}{{ row(t, who(t.meta.get('assignee') or t.meta.get('owner')), '', t.meta.get('smallest_step') if cap == 'rough' else '') }}{% endfor %}</div>
+  {% if v.hand_more %}<details class="fold"><summary>and {{ v.hand_more|length }} more · <b>Show</b></summary><div class="rows">{% for t in v.hand_more %}{{ row(t, who(t.meta.get('assignee') or t.meta.get('owner')), '', t.meta.get('smallest_step') if cap == 'rough' else '') }}{% endfor %}</div></details>{% endif %}
+  {% else %}{{ empty(style, "Nothing is being worked on right now.") }}{% endif %}
+</section>
 
-<h2>Dropped at your feet <small>Proof attached, or a decision to make. Nothing moves until you say so, in so many words.</small></h2>
-{% if feet %}<div class="grid">{% for t in feet %}{{ card(t, s) }}{% endfor %}</div>
-{% else %}{{ empty(style, "Nothing is waiting on you.") }}{% endif %}
+<section class="t-sec" id="waiting">
+  <h2>{{ heading('waiting') }} <small>Proof attached, in queue order</small>{% if v.pile %}<a class="all" href="/search?q=status%3Areview">All {{ v.pile|length }} &rarr;</a>{% endif %}</h2>
+  {% if v.pile %}<div class="rows">{% for t in v.pile_shown %}{{ row(t, t.project, '', t.meta.get('smallest_step') if cap == 'rough' else '') }}{% endfor %}</div>
+  {% else %}{{ empty(style, "No proof is waiting for review.") }}{% endif %}
+</section>
 
-<h2>Other balls in play <small>Thrown, stuck, sent back or approved and waiting for a merge.</small></h2>
-{% if others %}<div class="grid">{% for t in others %}{{ card(t, s) }}{% endfor %}</div>
-{% else %}{{ empty(style, "The queue is empty.") }}{% endif %}
-
-{% if stale %}
-<h2>Chewed back <small>Untouched past the stale window. Keep each with a reason, or let it go with one.</small></h2>
-<div class="grid">{% for t in stale %}{{ card(t, s) }}{% endfor %}</div>
-{% endif %}
-
-<h2>Decided this week</h2>
-{% if decided %}
-<table><tr><th>Ticket</th><th>Status</th><th>Decision</th></tr>
-{% for t in decided %}<tr><td><a href="/ticket/{{ t.id }}">{{ t.id }}</a> · {{ t.meta.get('title') }}</td><td>{{ screen(t.status) }}</td><td style="font-size:13px">{{ (t.section('Decision').splitlines() or [''])[-1] }}</td></tr>{% endfor %}
-</table>
-{% else %}{{ empty(style, "No decisions recorded in the last seven days.") }}{% endif %}
+<section class="t-sec t-rest">
+  {% set oc = v.other_counts %}
+  <p class="muted" style="margin:0">Also open, not shown here:
+    {% for st, label in (('ready', 'ready'), ('inbox', 'in inbox'), ('triage', 'in triage'), ('blocked', 'blocked'), ('approved', 'approved, waiting for merge')) %}{% if oc[st] %}<a href="/search?q=status%3A{{ st }}">{{ oc[st] }} {{ label }}</a> · {% endif %}{% endfor %}<a href="/board">the board</a></p>
+  {% if stale %}<details class="fold"><summary>{{ screen('stale') }} · {{ stale|length }} untouched past the stale window · <b>Show</b></summary>
+    <p class="muted">Keep each with a reason, or let it go with one.</p><div class="rows">{% for t in stale[:8] %}{{ row(t, t.project) }}{% endfor %}</div>{% if stale|length > 8 %}<p class="muted"><a href="/search?q=is%3Astale">All {{ stale|length }} &rarr;</a></p>{% endif %}</details>{% endif %}
+  <details class="fold"><summary>Decided this week · {{ decided|length }} · <b>Show</b></summary>
+  {% if decided %}
+  <table><tr><th>Ticket</th><th>Status</th><th>Decision</th></tr>
+  {% for t in decided %}<tr><td><a href="/ticket/{{ t.id }}">{{ t.id }}</a> · {{ t.meta.get('title') }}</td><td>{{ screen(t.status) }}</td><td style="font-size:13px">{{ (t.section('Decision').splitlines() or [''])[-1] }}</td></tr>{% endfor %}
+  </table>
+  {% else %}{{ empty(style, "No decisions recorded in the last seven days.") }}{% endif %}
+  </details>
+</section>
 {% endblock %}

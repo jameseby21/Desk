@@ -40,7 +40,7 @@
   /* A post ends in one of two visible ways: Posted (the comment is on the page, highlighted for 2 s, the box is empty), or a failure
      sentence with the draft and screenshots untouched and the button reading Try again. No answer within data-timeout-ms (10 s) is a
      failure, and because the key is unchanged, Try again returns the comment if Desk did store it after all. */
-  function fail(msg) { if (prog) prog.fail(msg || FAILED); lock(false); idle = "Try again"; btn.textContent = idle; say(msg || FAILED, "bad"); }
+  function fail(msg, detail) { if (prog) prog.fail(msg || FAILED, detail); lock(false); idle = "Try again"; btn.textContent = idle; say(msg || FAILED, "bad"); }
   function send() {
     if (busy) return;  // the first click did it; more clicks while it is out do nothing
     if (!ta.value.trim() && !shots.length) { say("Write something first.", "bad"); ta.focus(); return; }
@@ -48,10 +48,10 @@
     shots.forEach(function (s) { fd.append("evidence", s.name); });
     lock(true); say(posting);
     prog = P.start(slot, { steps: P.stepsOf(form), msgEl: document.createElement("span") });  // the sentence is the status line; the bar is this component's
-    P.post(form.action, fd, { progress: prog, timeoutMs: ms })
+    P.post(form.getAttribute("action"), fd, { progress: prog, timeoutMs: ms })
       .then(function (x) {
         if (x.j.token) key.value = x.j.token;  // a refused key (out of date) comes with a fresh one
-        if (!x.ok) { fail(x.j.error ? "Couldn't post: " + x.j.error + " Your text is still here." : FAILED); return; }
+        if (!x.ok) { fail(x.j.error ? "Couldn't post: " + x.j.error + " Your text is still here." : FAILED, P.failDetail(x)); return; }
         prog.done(); lock(false); idle = "Post"; btn.textContent = idle;
         list.innerHTML = x.j.html;
         if (x.j.check_html) {  // the post also put evidence on an Acceptance line
@@ -62,13 +62,20 @@
         var item = list.querySelectorAll("li")[x.j.index];
         if (item) { item.classList.add("fresh"); setTimeout(function () { item.classList.remove("fresh"); }, 2000); }
         ta.value = ""; shots = []; drawShots(); tell("");
-        say(x.j.duplicate ? "That comment is already on the ticket." : "Posted", "ok");
+        say(x.j.duplicate ? (x.j.message || "That comment is already on the ticket") + "." : "Posted", "ok");
       })
-      .catch(function () { fail(FAILED); });
+      .catch(function (err) { fail(FAILED, P.failDetail(null, err)); });
   }
   /* Ctrl Enter (Cmd Enter on a Mac) posts through the same single-shot path as the button. Plain Enter is a new line. */
   form.addEventListener("keydown", function (e) {
     if (e.key === "Enter" && (e.ctrlKey || e.metaKey) && /^(TEXTAREA|INPUT)$/.test((e.target.tagName || ""))) { e.preventDefault(); send(); }
   });
   form.addEventListener("submit", function (e) { e.preventDefault(); e.stopImmediatePropagation(); send(); }, true);
+})();
+/* The composer sits in a fold (DESK-0139): a link to it (#composer, #add-comment) or an error opens it. */
+(function () {
+  var d = document.getElementById("add-comment");
+  if (!d) return;
+  function open() { if (/^#(composer|add-comment|comment-text)$/.test(location.hash)) d.open = true; }
+  open(); window.addEventListener("hashchange", open);
 })();

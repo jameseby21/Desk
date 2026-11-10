@@ -139,9 +139,13 @@ def pct(done: int, total: int) -> int:
 
 
 def hierarchy(store: Store, tickets: list[Ticket]) -> list[dict]:
+    """Project > track > ticket, every level in score order (DESK-0136): a project's or track's `score` is the priority rollup of its
+    open tickets (the max ranks; sum and mean shown), `repeat_done` counts its done repeatable-process solutions (DESK-0214)."""
+    from . import priority
     from .review import ask_of
     from .ticket import STATUSES
 
+    sc = priority.scores(store)
     rows = []
     for key in store.projects():
         mine = [t for t in tickets if t.project == key]
@@ -150,19 +154,23 @@ def hierarchy(store: Store, tickets: list[Ticket]) -> list[dict]:
         for t in mine:
             by_track.setdefault(track_of(t), []).append(t)
         tracks = []
-        for name, ts in sorted(by_track.items(), key=lambda kv: (kv[0] == "", kv[0].lower())):
+        for name, ts in by_track.items():
             info = track_info(store, key, name) if name else {}
             done = len([t for t in ts if t.status == "done"])
             tracks.append({
                 "name": name or UNTRACKED, "slug": track_slug(name), "kind": info.get("kind", ""), "goal": info.get("goal", ""),
                 "starts": info.get("starts", ""), "ends": info.get("ends", ""),
                 "total": len(ts), "done": done, "open": len([t for t in ts if t.is_open]), "pct": pct(done, len(ts)),
-                "tickets": [{"t": t, "ask": ask_of(t)} for t in sorted(ts, key=lambda x: x.id)],
+                "score": priority.rollup(sc, ts), "repeat_done": priority.repeatable_done(ts),
+                "tickets": [{"t": t, "ask": ask_of(t), "score": sc.of(t)} for t in sc.sort(ts)],
             })
+        tracks.sort(key=lambda tr: (tr["score"].key, tr["name"] == UNTRACKED, tr["name"].lower()))
         done = len([t for t in mine if t.status == "done"])
         rows.append({"key": key, "title": store.project_title(key), "area": str(meta.get("area") or ""), "prefix": store.key_for(key), "aliases": store.aliases_for(key), "total": len(mine), "done": done,
                      "open": len([t for t in mine if t.is_open]), "pct": pct(done, len(mine)), "tracks": tracks,
+                     "score": priority.rollup(sc, mine), "repeat_done": priority.repeatable_done(mine),
                      "counts": {st: len([t for t in mine if t.status == st]) for st in STATUSES}})
+    rows.sort(key=lambda r: (r["score"].key, r["key"]))
     return rows
 
 

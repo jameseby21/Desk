@@ -15,6 +15,8 @@ DEFAULTS: dict = {
     "stale": {"days": 21},
     "life": {"combos": False},
     "attachments": {"max_mb": 10},
+    "rules": {"assignee_required_from": "2026-11-22"},
+    "priority": {},  # weights over priority.DEFAULTS, and `private_weights` (a TOML file outside the repo with people boosts); docs/PRIORITY.md
 }
 
 DEFAULT_TOML = """[desk]
@@ -33,6 +35,9 @@ days = 21
 
 [life]
 combos = false             # when true: the Today page celebrates two tagged tickets done within 30 minutes
+
+[rules]
+assignee_required_from = "2026-11-22"  # a blank assignee on an open ticket is a warning in `drew validate` until this date, an error from it (blank = not yet scanned)
 
 [attachments]
 max_mb = 10                # largest screenshot the UI accepts when you paste or drop one (PNG, JPEG, WebP or GIF)

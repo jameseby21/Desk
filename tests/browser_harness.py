@@ -168,7 +168,7 @@ def live_app(asgi_app):
         th.join(15)
 
 
-def drive(store, script: str, path: str, *, intercept=None, timeout: float = 30, app=None) -> dict:
+def drive(store, script: str, path: str, *, intercept=None, timeout: float = 30, app=None, width: int = 1400) -> dict:
     """Open `path` of a real Desk app (on `store`, with `script` added to its pages) in a headless browser and return what the
     page's script POSTed to /m. The server and the browser are stopped before this returns."""
     import threading
@@ -177,5 +177,5 @@ def drive(store, script: str, path: str, *, intercept=None, timeout: float = 30,
 
     got, ev = {}, threading.Event()
     with live_app(Inject(app or create_app(store.home), script, got, ev, intercept)) as base:
-        _browse(base + path, ev, timeout)
+        _browse(base + path, ev, timeout, width)
     return got

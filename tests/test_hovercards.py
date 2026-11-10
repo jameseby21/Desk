@@ -53,7 +53,7 @@ def test_ticket_card_has_status_title_summary_and_acceptance(store, linked):
     t, dep = linked
     r = _c(store).get(f"/card/ticket/{dep.id}")
     assert r.status_code == 200
-    for needle in (dep.id, "inbox", "jre", "The dependency", "Why the dependency exists", "1 of 2 accepted"):
+    for needle in (dep.id, "Inbox", "jre", "The dependency", "Why the dependency exists", "1 of 2 accepted"):
         assert needle in r.text, needle
     assert "Second paragraph" not in r.text  # one line of summary, not the whole Context
     assert _c(store).get("/card/ticket/ZZZ-9999").status_code == 404
@@ -97,5 +97,5 @@ var out={},sleep=function(ms){return new Promise(function(r){setTimeout(r,ms);})
 def test_hovering_an_id_and_a_document_link_shows_a_card_in_a_real_browser(store, linked):
     t, dep = linked
     got = drive(store, HOVER, f"/ticket/{t.id}")
-    assert got["shown"] and dep.id in got["text"] and "The dependency" in got["text"] and "inbox" in got["text"] and got["described"] == "hcard", got
+    assert got["shown"] and dep.id in got["text"] and "The dependency" in got["text"] and "Inbox" in got["text"]  # the style's one word for the state (DESK-0037) and got["described"] == "hcard", got
     assert got["hidden"] and "Editions" in got["docText"] and "Edit in VS Code" in got["docText"] and got["escaped"], got

@@ -13,7 +13,7 @@
     if (a) { e.preventDefault(); window.location.href = a.href; }
   });
   document.addEventListener("change", function (e) {
-    var f = e.target.closest ? e.target.closest(".navpick") : null;
+    var f = e.target.closest ? e.target.closest(".navpick, .autosubmit") : null;
     if (f && f.requestSubmit) f.requestSubmit();
   });
 })();

@@ -193,17 +193,46 @@ def _render_fence(self, tokens, idx, options, env):
     return self.fence(tokens, idx, options, env)
 
 
+def _mask_span(word: str) -> Token:
+    """A masked word (DESK-0155): the stars as the no-script fallback, the word itself (base64, so the page text never carries it) for
+    mask.js, which sets it as the span's own text, transparent, so the block is exactly as wide as the word and Show moves nothing."""
+    import base64
+
+    from ..profanity import censor_word
+
+    t = Token("html_inline", "", 0)
+    b64 = base64.b64encode(word.encode("utf-8")).decode("ascii")
+    t.content = (f'<span class="mask" role="button" tabindex="0" aria-pressed="false" data-w="{b64}" '
+                 f'title="Masked by the language filter. Show reveals it here, this time; the file is not changed.">{html.escape(censor_word(word))}</span>')
+    return t
+
+
 def _censor_text(state):
     """Core rule, after autolinking: plain text nodes pass through env["censor"]. Code spans, fences and link targets are other
-    token types or attributes, so they are never touched."""
+    token types or attributes, so they are never touched. With env["mask"] each word becomes a mask span instead of stars."""
     fn = state.env.get("censor")
     if not fn:
         return
+    rx = getattr(fn, "rx", None) if state.env.get("mask") else None
     for block in state.tokens:
         if block.type == "inline" and block.children:
+            out = []
             for tok in block.children:
-                if tok.type == "text":
+                if tok.type != "text":
+                    out.append(tok)
+                elif rx is None:
                     tok.content = fn(tok.content)
+                    out.append(tok)
+                else:
+                    pos = 0
+                    for m in rx.finditer(tok.content):
+                        if m.start() > pos:
+                            out.append(_text(tok.content[pos:m.start()]))
+                        out.append(_mask_span(m.group(0)))
+                        pos = m.end()
+                    if pos < len(tok.content):
+                        out.append(_text(tok.content[pos:]))
+            block.children = out
 
 
 def _thumb_links(state):
@@ -246,7 +275,7 @@ _md.add_render_rule("heading_open", _render_heading_open)
 
 
 def render(text: str, *, known: dict | None = None, check: dict | None = None, actions=None,
-           docs=None, resolve=None, glossary: dict | None = None, seen: set | None = None, ids: bool = False, censor=None) -> str:
+           docs=None, resolve=None, glossary: dict | None = None, seen: set | None = None, ids: bool = False, censor=None, mask: bool = False) -> str:
     """Markdown to HTML for one ticket section.
 
     known:   {ticket id: (title, status)}; those ids become links.
@@ -255,6 +284,7 @@ def render(text: str, *, known: dict | None = None, check: dict | None = None, a
     resolve: fn(path as written) -> store-relative path (anchor kept) or None; lets a project-relative path link to its real file.
     glossary: {lowercase term: (Term, definition)}; the first use of each term in `seen` gets a popover, `[[Term]]` always links.
     censor:  optional fn(str) -> str applied to plain text nodes (the profanity filter); code is never touched.
+    mask:    with a filter from profanity.make_filter, draw each word as a mask span (DESK-0155) instead of stars.
     actions: optional fn(id, status) -> html appended to a checkbox line that links to a known ticket (review weeks).
     """
     text = text or ""
@@ -275,7 +305,7 @@ def render(text: str, *, known: dict | None = None, check: dict | None = None, a
         kept += c.extra
         i = c.last + 1
     out = _md.render(_COMMENT_LINE.sub("", "\n".join(kept)), {"known": known or {}, "docs": docs, "resolve": resolve, "glossary": glossary or {},
-                                                              "seen": seen if seen is not None else set(), "ids": ids, "censor": censor})
+                                                              "seen": seen if seen is not None else set(), "ids": ids, "censor": censor, "mask": mask})
     failed = any(c.state == "!" for c in checks)
     if not check and not failed:
         return out
@@ -319,7 +349,7 @@ def render(text: str, *, known: dict | None = None, check: dict | None = None, a
                   f'<span class="box">{_CROSS}</span></button>')
         sev = c.severity or DEFAULT_SEVERITY
         pills = "".join(f'<label class="sevpill"><input type="radio" name="severity" value="{v}"{" checked" if v == sev else ""}><span>{lab}</span></label>'
-                        for v, lab in zip(SEVERITIES, ("Must fix", "Should", "Nit")))
+                        for v, lab in zip(SEVERITIES, ("Must fix", "Should fix", "Minor")))
         cancel = ('<button type="submit" class="btn small" name="state" value=" " formnovalidate data-act="cancel-clear">Cancel</button>' if st == "x"
                   else '<button type="button" class="btn small" data-act="cancel">Cancel</button>')
         panel = (f'<div class="nr-panel" hidden data-line="{i}">{head()}<label>Why isn&#39;t this accepted?'
@@ -381,11 +411,14 @@ def _reason_html(c, why: str, editable: bool) -> str:
 
     e = html.escape
     sev = c.severity or DEFAULT_SEVERITY
-    label = {"must fix": "Must fix", "should": "Should", "nit": "Nit"}[sev]
+    label = {"must fix": "Must fix", "should": "Should fix", "nit": "Minor"}[sev]
     meta = [x for x in (f"{c.who[:1].upper()}{c.who[1:]} · {_clock(c.when)}" if c.who and c.when else "", _shots(len(c.evidence)) if c.evidence else "") if x]
-    return (f'<div class="nr-reason" data-sev="{sev}"><span class="sev">{label}</span> <span class="why">{e(why) if why else "Not accepted"}</span>'
-            + (f'<span class="nr-meta">{e(" · ".join(meta))}</span>' if meta else "")
-            + ('<button type="button" class="linkbtn" data-act="edit">Edit</button>' if editable else "") + "</div>")
+    text = why or "Not accepted"
+    # the one flag component (DESK-0154): a red chip, a red left rule, one 20 px reason line, More opens the rest in place
+    return (f'<div class="nr-reason" data-sev="{sev}"><span class="flag sev">{label}</span><span class="why">{e(text)}</span>'
+            f'<button type="button" class="tbtn" data-act="more" aria-expanded="false">More</button>'
+            + ('<button type="button" class="tbtn" data-act="edit">Edit</button>' if editable else "")
+            + f'<p class="more" hidden>{e(text)}' + (f' <span class="nr-meta">{e(" · ".join(meta))}</span>' if meta else "") + "</p></div>")
 
 
 def _place_reasons(out: str, pending: dict) -> str:
@@ -401,18 +434,64 @@ def _place_reasons(out: str, pending: dict) -> str:
     return out
 
 
-_KINDED = re.compile(r"^(- \d{4}-\d{2}-\d{2} \d{2}:\d{2} · [^·]+? · )(.*?)\s*<!-- kind: (Question|Suggestion|Concern|FYI) -->\s*$", re.M)
-_KIND_MARK = re.compile(r"@@KIND-(Question|Suggestion|Concern|FYI)@@")
+_KINDED = re.compile(r"^(- \d{4}-\d{2}-\d{2} \d{2}:\d{2} · [^·]+? · )(.*?)(?:\s*<!-- by ([^>]*?) -->)?\s*<!-- kind: (Question|Suggestion|Concern|FYI) -->\s*$", re.M)
+_KIND_MARK = re.compile(r"@@KIND-(Question|Suggestion|Concern|FYI)@@(?:@@BY-([^@]*)@@)?")
 
 
 def prep_comments(text: str) -> str:
-    """Before rendering the Comments section: move each line's `<!-- kind: X -->` tail to a marker right after the author."""
-    return _KINDED.sub(lambda m: f"{m.group(1)}@@KIND-{m.group(3)}@@ {m.group(2)}", text or "")
+    """Before rendering the Comments section: move each line's `<!-- kind: X -->` tail, and the identity tag before it (DESK-0144), to
+    markers right after the author. A line written before identities were kept gets the marker `none`."""
+    def swap(m):
+        by = (m.group(3) or "").strip()
+        tag = "@@BY-" + (by.encode("utf-8").hex() if by else "none") + "@@"  # hex: nothing in it can be read as markup
+        return f"{m.group(1)}@@KIND-{m.group(4)}@@{tag} {m.group(2)}"
+
+    return _KINDED.sub(swap, text or "")
+
+
+def _by_html(code: str | None) -> str:
+    if not code:
+        return ""
+    if code == "none":
+        return '<span class="by" title="Written before Desk kept who made a change">not recorded</span>'
+    try:
+        info = dict(re.findall(r"(\w+)=(\S*)", bytes.fromhex(code).decode("utf-8")))
+    except ValueError:
+        return ""
+    ok = info.get("ok") == "1"
+    words = f"{info.get('kind', '?')} · {info.get('src', '?')} · {info.get('via', '?').replace('-', ' ')} · {'confirmed' if ok else 'claimed'}"
+    if info.get("as"):
+        words += f" · as {info['as']}"
+    if info.get("parent"):
+        words += f" · parent {info['parent']}"
+    title = ("instance " + info["inst"]) if info.get("inst") else ""
+    return f'<span class="by {"confirmed" if ok else "claimed"}" title="{title}">{words}</span>'
+
+
+_COMMENT_LI = re.compile(r"<li>(.*?)</li>", re.S)
+
+
+def flag_row(chip: str, reason: str, button: str = "") -> str:
+    """The flag component (DESK-0154): chip, one reason line, an optional text button. The same markup in every style."""
+    return f'<span class="flagrow"><span class="flag">{chip}</span><span class="reason">{html.escape(reason)}</span>{button}</span>'
+
+
+def _flag_masked(m) -> str:
+    body = m.group(1)
+    n = body.count('class="mask"')
+    if not n:
+        return m.group(0)
+    row = flag_row("! Masked", f"Hidden by the language filter: {n} word{'' if n == 1 else 's'}.",
+                   '<button type="button" class="tbtn" data-act="mask-toggle" aria-pressed="false">Show</button>')
+    return f'<li class="flagged masked">{body}{row}</li>'
 
 
 def finish_comments(rendered: str) -> str:
-    """After rendering: the markers become the small kind labels (Question, Suggestion, Concern, FYI) beside the author."""
-    return _KIND_MARK.sub(lambda m: f'<span class="kind kind-{m.group(1).lower()}">{m.group(1)}</span>', rendered)
+    """After rendering: the markers become the small kind label (Question, Suggestion, Concern, FYI) and the identity (actor kind, source,
+    how it was established, confirmed or claimed) beside the author; a comment the language filter masked words in becomes a flagged
+    one: red chip `! Masked`, one reason line, Show."""
+    out = _KIND_MARK.sub(lambda m: f'<span class="kind kind-{m.group(1).lower()}">{m.group(1)}</span>{_by_html(m.group(2))}', rendered)
+    return _COMMENT_LI.sub(_flag_masked, out) if 'class="mask"' in out else out
 
 
 def has_mermaid(text: str) -> bool:

@@ -1,19 +1,23 @@
 {% extends "base.html" %}
-{% from "_chips.html" import bar, abar %}
+{% from "_filters.html" import dropdown %}
 {% block title %}Desk · Projects{% endblock %}
 {% block body %}
 <h1>Projects</h1>
-<p class="muted">Project, then track, then ticket, then a peek at the details. One row per <code>projects/&lt;key&gt;.md</code>; tracks come from each ticket's <code>track:</code> line. What is open stays in the address, so you can share it.</p>
-{{ abar(achips, assignee, abase, aextra) }}
+<p class="muted">Every project, then its tracks, then their tickets; open a ticket for a quick look at the details. What you open and the filters you pick stay in the address, so you can share it.</p>
+<div class="row filters" id="filters">
+  {% for name, label, plural in facets %}{{ dropdown(label, name, opts[name], plural, picked[name], fhidden, clear[name], "/projects", "open") }}
+  {% endfor %}
+</div>
+{% if filtering %}<p class="pf-shown" role="status">Showing {{ rows|length }} of {{ total_n }} project{{ 's' if total_n != 1 }} · <a href="{{ clear_all }}">Clear filters</a></p>{% endif %}
 <div class="tree">
 {% for r in rows %}
 {% set brand = s.brand_for(r.key) %}
 <details class="proj" data-key="p" data-val="{{ r.key }}"{% if sel_p == r.key %} open{% endif %}>
   <summary>
     {% if brand and brand.mark_url %}<img src="{{ brand.mark_url }}" width="22" height="22" alt="">{% else %}<span class="initial">{{ (r.title or '?')[0]|upper }}</span>{% endif %}
-    <a class="name" href="/projects?p={{ r.key }}">{{ r.title }}</a> <span class="chip">{{ r.key }}</span> <code>{{ r.prefix }}</code>{% if r.aliases %} <span class="muted" style="font-size:12.5px">formerly {{ r.aliases|join(', ') }}</span>{% endif %}
+    <a class="name" href="/projects?{{ fq_amp }}p={{ r.key }}">{{ r.title }}</a> <span class="chip">{{ r.key }}</span> <code>{{ r.prefix }}</code>{% if r.aliases %} <span class="muted" style="font-size:12.5px">formerly {{ r.aliases|join(', ') }}</span>{% endif %}
     {% if r.area %}<span class="muted area">{{ r.area }}</span>{% endif %}
-    <span class="counts">{{ r.open }} open · {{ r.counts['ready'] }} thrown · {{ r.counts['review'] }} dropped · {{ r.counts['blocked'] }} stuck · {{ r.done }} fetched</span>
+    <span class="counts">{{ r.open }} open{% if r.score.n %} · <a class="rollup" href="/scores?project={{ r.key }}" title="Highest score among the open tickets ranks the project · load {{ r.score.sum }} (sum) · mean {{ r.score.mean }}; click for the tickets in score order">score {{ r.score.max }}</a>{% endif %}{% if r.repeat_done %} · <span title="Done tickets tagged repeatable-process: solutions to repeatable, periodic processes this project has shipped">{{ r.repeat_done }} repeatable solution{{ 's' if r.repeat_done != 1 }}</span>{% endif %} · {{ r.counts['ready'] }} {{ screen('ready')|lower }} · {{ r.counts['review'] }} {{ screen('review')|lower }} · {{ r.counts['blocked'] }} {{ screen('blocked')|lower }} · {{ r.done }} {{ screen('done')|lower }}</span>
     <span class="pct" title="{{ r.done }} of {{ r.total }} done"><span class="barwrap"><span class="bar" style="width:{{ r.pct }}%"></span></span>{{ r.pct }}%</span>
   </summary>
   {% if r.tracks %}
@@ -21,10 +25,10 @@
   {% for tr in r.tracks %}
   <details class="track" data-key="t" data-val="{{ tr.slug }}"{% if sel_p == r.key and sel_t == tr.slug %} open{% endif %}>
     <summary>
-      <a class="name" href="/projects?p={{ r.key }}&amp;t={{ tr.slug }}">{{ tr.name }}</a>
+      <a class="name" href="/projects?{{ fq_amp }}p={{ r.key }}&amp;t={{ tr.slug }}">{{ tr.name }}</a>
       {% if tr.kind %}<span class="chip">{{ tr.kind }}</span>{% endif %}
       {% if tr.starts or tr.ends %}<span class="muted">{{ tr.starts }}{% if tr.ends %} to {{ tr.ends }}{% endif %}</span>{% endif %}
-      <span class="counts">{{ tr.open }} open of {{ tr.total }}</span>
+      <span class="counts">{{ tr.open }} open of {{ tr.total }}{% if tr.score.n %} · <a class="rollup" href="/scores?project={{ r.key }}&amp;track={{ tr.slug }}" title="Highest score among the open tickets · load {{ tr.score.sum }} · mean {{ tr.score.mean }}; click for the tickets in score order">score {{ tr.score.max }}</a>{% endif %}</span>
       <span class="pct"><span class="barwrap"><span class="bar" style="width:{{ tr.pct }}%"></span></span>{{ tr.pct }}%</span>
     </summary>
     {% if tr.goal %}<p class="muted goal">{{ tr.goal }}</p>{% endif %}
@@ -32,10 +36,11 @@
     {% for row in tr.tickets %}{% set t = row.t %}
       <li><details class="tk" data-key="k" data-val="{{ t.id }}" data-peek="/peek/{{ t.id }}"{% if sel_k == t.id %} open{% endif %}>
         <summary>
-          <code>{{ t.id }}</code> <span class="ttl">{{ t.meta.get('title') }}</span>
+          {% if row.score and row.score.score is not none %}<b class="score{% if row.score.emergency %} band{% endif %}" title="Score {{ row.score.score }}: {{ row.score.why() }}">{{ row.score.score }}</b>{% endif %} <code>{{ t.id }}</code> <span class="ttl">{{ t.meta.get('title') }}</span>
           <span class="chip {% if t.status == 'review' %}ball{% elif t.status == 'blocked' %}red{% endif %}">{{ screen(t.status) }}</span>
           <span class="chip ty ty-{{ t.meta.get('type') }}">{{ t.meta.get('type') }}</span> <span class="chip">{{ row.ask }}</span>
-          <span class="muted">{{ t.meta.get('owner') }}</span>
+          <span class="muted">{{ who(t.meta.get('owner')) }}</span>
+          {% set ru = family.rollup(t) if family is defined and family else none %}{% if ru %}<span class="sub-roll">{{ ru.text }}</span>{% endif %}
         </summary>
         <div class="panel">{% if sel_k == t.id %}{{ peek_html|safe }}{% else %}<span class="muted">Loading...</span> <a href="/ticket/{{ t.id }}">Open the full ticket</a>{% endif %}</div>
       </details></li>
@@ -48,7 +53,9 @@
 </details>
 {% endfor %}
 </div>
-{% if not rows %}<p class="muted">No projects yet. Add <code>projects/&lt;key&gt;.md</code> files to the store.</p>{% endif %}
+{% if not rows %}{% if filtering %}<p class="muted">No project has a ticket that matches these filters. <a href="{{ clear_all }}">Clear filters</a></p>
+{% else %}<p class="muted">No projects yet. Add <code>projects/&lt;key&gt;.md</code> files to the store.</p>{% endif %}{% endif %}
+<script src="/static/board-filter.js" defer></script>
 <script>
 (function () {
   function sync() {
@@ -62,7 +69,7 @@
         if (tk) u.searchParams.set("k", tk.dataset.val); } }
     history.replaceState(null, "", u);
   }
-  document.querySelectorAll("details").forEach(function (d) {
+  document.querySelectorAll(".tree details").forEach(function (d) {  /* the filter dropdowns are not part of what is open */
     d.addEventListener("toggle", function () {
       if (d.open && d.dataset.peek && !d.dataset.loaded) {
         d.dataset.loaded = "1";

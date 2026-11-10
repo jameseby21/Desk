@@ -106,6 +106,6 @@ def test_track_filter_chip_on_board_and_today(rules_store):
     _mk(s, "In seven", "desk", track="Sprint 7")
     _mk(s, "In eight", "desk", track="Sprint 8")
     c = TestClient(create_app(s.home))
-    board = c.get("/board?track=sprint-7").text
-    assert "In seven" in board and "In eight" not in board and "track=sprint-8" in board
+    board = c.get("/board?company=unsorted&track=sprint-7").text  # DESK-0183: inside a company a filter opens what is left
+    assert "In seven" in board and "In eight" not in board and 'name="track" value="sprint-8"' in board  # offered in the Track dropdown (DESK-0034)
     assert "In eight" not in c.get("/?track=sprint-7").text
