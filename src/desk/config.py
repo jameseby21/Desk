@@ -16,6 +16,7 @@ DEFAULTS: dict = {
     "life": {"combos": False},
     "attachments": {"max_mb": 10},
     "rules": {"assignee_required_from": "2026-11-22"},
+    "priority": {},  # weights over priority.DEFAULTS, and `private_weights` (a TOML file outside the repo with people boosts); docs/PRIORITY.md
 }
 
 DEFAULT_TOML = """[desk]

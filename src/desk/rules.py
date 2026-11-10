@@ -116,6 +116,9 @@ def validate_ticket(t: Ticket, store: "Store", known_ids: set[str] | None = None
                 raise ValueError
         except (TypeError, ValueError):
             errors.append(f"{where}: confidence must be between 0 and 1")
+    if "value" in m and m["value"] not in (None, ""):  # DESK-0135: a typo never silently changes the order
+        if not (isinstance(m["value"], int) and not isinstance(m["value"], bool) and 1 <= m["value"] <= 5):
+            errors.append(f"{where}: value must be a whole number from 1 to 5 (what the ticket is worth when done)")
     if "effort_hours" in m and m["effort_hours"] not in (None, "", []):
         eh = m["effort_hours"]
         if not (isinstance(eh, list) and len(eh) == 2 and all(isinstance(x, (int, float)) for x in eh) and eh[0] <= eh[1]):

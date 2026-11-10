@@ -71,7 +71,7 @@ def test_an_assignee_with_tickets_in_one_project_draws_one_row(store):
     assert "Showing 1 of 5 projects" in page
     assert re.search(r'<a href="/projects"[^>]*>Clear filters</a>', page)
     assert "0 open · 0" not in page  # no zero-count rows
-    assert _rows(c.get("/projects").text) == ["desk", "jeby-us", "jre", "lab", "temujin"]  # no filter: every project, as before
+    assert sorted(_rows(c.get("/projects").text)) == ["desk", "jeby-us", "jre", "lab", "temujin"]  # no filter: every project (in score order since DESK-0136, 2026-11-10)
     assert "Showing" not in c.get("/projects").text
 
 
@@ -117,7 +117,7 @@ def test_the_chip_row_is_gone_and_four_dropdowns_hold_their_values_in_the_addres
 
 def test_company_filter_draws_only_its_projects_with_tickets(store):
     c = _fx(store)
-    assert _rows(c.get("/projects?company=personal").text) == ["jre", "temujin"]
+    assert sorted(_rows(c.get("/projects?company=personal").text)) == ["jre", "temujin"]  # rows are in score order since DESK-0136 (2026-11-10)
     page = c.get("/projects?company=unsorted").text  # Lab is the only Unsorted project and has no tickets
     assert _rows(page) == [] and "Showing 0 of 5 projects" in page and "No project has a ticket that matches" in page
 

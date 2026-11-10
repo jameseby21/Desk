@@ -112,13 +112,15 @@ def _fill_from_rules(s: Store, t) -> None:
 
 
 def cmd_list(args):
-    from . import people, subtickets
+    from . import people, priority, subtickets
 
     from . import sprints
 
     s = _store(args)
     who = people.load(s.home)
-    fam = subtickets.Family(s.tickets())  # DESK-0208: a subticket is listed like any ticket, its title followed by the main ticket it is part of
+    every = s.tickets()
+    fam = subtickets.Family(every)  # DESK-0208: a subticket is listed like any ticket, its title followed by the main ticket it is part of
+    sc = priority.scores(s, every)  # DESK-0135: a score column; --sort score orders the table by it, highest first
     rows = []
     due = None
     if args.due is not None:
@@ -133,7 +135,7 @@ def cmd_list(args):
                          str(t.meta.get("owner", "")), str(t.meta.get("title", ""))[:60]])
         print(_table(rows, ["id", "project", "deadline", "when", "status", "pri", "owner", "title"]) if rows else "No tickets match.")
         return
-    for t in _by_project(s.tickets()):
+    for t in (sc.sort(every) if getattr(args, "sort", "") == "score" else _by_project(every)):
         stale = s.is_stale(t)
         if args.project and t.project != args.project:
             continue
@@ -150,12 +152,25 @@ def cmd_list(args):
         if not args.all and not t.is_open and not args.status:
             continue
         part = fam.label(t)
-        rows.append([_id_label(s, t), t.project, t.meta.get("type", ""), t.status + (" (stale)" if stale else ""), t.meta.get("priority", ""),
+        score = sc.of(t).score
+        rows.append([_id_label(s, t), t.project, t.meta.get("type", ""), t.status + (" (stale)" if stale else ""), str(score) if score is not None else "", t.meta.get("priority", ""),
                      t.meta.get("size", ""), str(t.meta.get("owner", "")), who.display(ops.assignee_of(t)), str(t.meta.get("title", ""))[:60] + (f" ({part})" if part else "")])
     if not rows:
         print("No tickets match.")
         return
-    print(_table(rows, ["id", "project", "type", "status", "pri", "size", "owner", "assignee", "title"]))
+    print(_table(rows, ["id", "project", "type", "status", "score", "pri", "size", "owner", "assignee", "title"]))
+
+
+def cmd_explain(args):
+    """`drew explain ID` (DESK-0137): the score, every term in plain words with its points, and which level set each weight."""
+    from . import priority
+
+    s = _store(args)
+    try:
+        t = s.get(args.id)
+    except KeyError as e:
+        _die(str(e))
+    print(priority.explain(s, t))
 
 
 def cmd_next_after(args, s):
@@ -724,8 +739,16 @@ def cmd_clone(args):
 
 
 def cmd_stats(args):
+    from . import priority
+
     s = _store(args)
     st = ops.stats(s, since=args.since, project=args.project)
+    every = [t for t in s.tickets() if not args.project or t.project == args.project]
+    sc = priority.scores(s)
+    whole = priority.rollup(sc, every)
+    by_person = priority.by_group(sc, [t for t in every if t.is_open], lambda t: ops.assignee_of(t) or "(unassigned)")
+    st["score"] = {"store": {"open": whole.n, "max": whole.max, "sum": whole.sum, "mean": whole.mean, "top": whole.top.id if whole.top else ""},
+                   "by_assignee": {k: {"open": r.n, "max": r.max, "sum": r.sum, "mean": r.mean, "top": r.top.id if r.top else ""} for k, r in by_person}}
     if args.json:
         print(json.dumps(st, indent=2))
         return
@@ -739,6 +762,10 @@ def cmd_stats(args):
         print(_table(rows, [label, "count"]))
     print("\nBy assignee")
     print(_table([[k, str(v["open"]), str(v["done_this_week"])] for k, v in st["by_assignee"].items()] or [["(none)", "0", "0"]], ["assignee", "open", "done this week"]))
+    print("\nBy score (DESK-0136: the highest score ranks; load is the sum, mean is the health)")
+    print(_table([[k, str(r.n), str(r.max), str(r.sum), f"{r.mean:g}", r.top.id if r.top else ""] for k, r in by_person] or [["(none)", "0", "0", "0", "0", ""]],
+                 ["assignee", "open", "score", "load", "mean", "top ticket"]))
+    print(f"Whole store: {whole.n} open · score {whole.max} · load {whole.sum} · mean {whole.mean:g}" + (f" · top {whole.top.id}" if whole.top else ""))
     print("\nDecisions per week")
     print(_table([[k, str(v)] for k, v in st["decisions_per_week"].items()], ["week of", "tickets decided"]))
     print(f"\nReview weeks: {st['review_weeks']['created']} created, {st['review_weeks']['closed']} closed")
@@ -1310,8 +1337,13 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--sprint", help="only tickets in this sprint")
     sp.add_argument("--stale", action="store_true", help="only tickets untouched past the stale window")
     sp.add_argument("--due", type=int, metavar="DAYS", help="open tickets with a hard deadline within DAYS days or already missed, soonest first (what Today's Immediate Action Required row shows)")
+    sp.add_argument("--sort", choices=["project", "score"], default="project", help="score: the priority score, highest first (DESK-0135); project: by project, then id")
     sp.add_argument("--all", action="store_true")
     sp.set_defaults(fn=cmd_list)
+
+    sp = sub.add_parser("explain", help="why a ticket scores what it does: the score, every signal in plain words with its points, and which level (default, store, track rules, project, private file) set each weight")
+    sp.add_argument("id")
+    sp.set_defaults(fn=cmd_explain)
 
     sp = sub.add_parser("deadline", help="set a ticket's deadline: `drew deadline ID 2026-11-12 --hard` (or --soft, --sprint); `drew deadline ID --clear` removes it. Only a hard deadline reaches Today's Immediate Action Required row")
     sp.add_argument("id")
@@ -1324,7 +1356,7 @@ def build_parser() -> argparse.ArgumentParser:
     actor(sp)
     sp.set_defaults(fn=cmd_deadline)
 
-    sp = sub.add_parser("next", help="the highest-priority ready ticket, printed in full")
+    sp = sub.add_parser("next", help="the highest-scoring ready ticket whose dependencies are closed (the priority score, DESK-0135), printed in full")
     sp.add_argument("--project")
     sp.add_argument("--json", action="store_true", help="SessionStart hook format")
     sp.add_argument("--after", metavar="ID", help="instead: the ticket after ID in the walk chosen in the UI (Previous and Next)")

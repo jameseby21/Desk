@@ -29,7 +29,7 @@
 <a class="bcomp" href="{{ c.href }}" data-slug="{{ c.slug }}">
   <span class="initial">{{ (c.title or '?')[0]|upper }}</span>
   <span class="bctitle"><b class="bname" title="{{ c.name }}">{{ c.title }}</b>{% if c.subtitle %}<span class="muted bsub" title="{{ c.subtitle }}">{{ c.subtitle }}</span>{% endif %}</span>
-  <span class="bcounts" title="{{ c.projects }} project{{ 's' if c.projects != 1 }}; done is a share of every ticket not let go">{{ c.projects }} project{{ 's' if c.projects != 1 }} · {{ c.open }} open · {{ c.in_hand }} in hand · {{ c.review }} review · {{ c.done_pct }}% done</span>
+  <span class="bcounts" title="{{ c.projects }} project{{ 's' if c.projects != 1 }}; done is a share of every ticket not let go">{{ c.projects }} project{{ 's' if c.projects != 1 }} · {{ c.open }} open · {{ c.in_hand }} in hand · {{ c.review }} review · {{ c.done_pct }}% done{% if c.open %} · <span title="{{ c.score_text }}: the highest score among the open tickets ranks the company, load is their sum, mean their health">score {{ c.score }}</span>{% endif %}</span>
   {% if c.top %}<span class="chip {% if c.top == 'p0' %}red{% elif c.top == 'p1' %}ball{% endif %}" title="Highest priority among the open tickets here, and how many carry it">top {{ c.top }} &times;{{ c.top_n }}</span>{% endif %}
 </a>
 {% else %}<p class="muted">No tickets match. {% if tokens %}<a href="/board">Clear the filters</a>.{% endif %}</p>
@@ -44,14 +44,14 @@
   <summary>
     {% if brand and brand.mark_url %}<img src="{{ brand.mark_url }}" width="22" height="22" alt="">{% else %}<span class="initial">{{ (r.title or '?')[0]|upper }}</span>{% endif %}
     <b class="bname" title="{{ r.title }}">{{ r.title }}</b> <span class="chip">{{ r.key }}</span>
-    <span class="bcounts">{{ counts_line(r.counts, r.open) }}</span>
+    <span class="bcounts">{{ counts_line(r.counts, r.open) }}{% if r.score and r.score.n %} · <a class="rollup" href="/scores?project={{ r.key }}" title="{{ r.score.text }}; click for the tickets in score order">score {{ r.score.max }}</a>{% endif %}</span>
     {{ top_chip(r.top) }}{% if r.top_ticket %}<a class="btop" href="/ticket/{{ r.top_ticket.id }}" title="{{ r.top_ticket.meta.get('title') }}">{{ r.top_ticket.id }}</a>{% endif %}
     <span class="muted bgn">{{ r.groups|length }} {{ 'track' if by == 'track' else 'sprint' }}{{ 's' if r.groups|length != 1 }}</span>
   </summary>
   <div class="bgroups">
   {% for g in r.groups %}
   <details class="bgroup" data-key="g" data-val="{{ r.key }}:{{ g.slug }}" data-project="{{ r.key }}" data-slug="{{ g.slug }}"{% if g.is_open %} open{% endif %}>
-    <summary><b class="bname" title="{{ g.name }}">{{ g.name }}</b> <span class="bcounts">{{ counts_line(g.counts, g.open) }}</span> {{ top_chip(g.top) }}{% if g.top_ticket %}<a class="btop" href="/ticket/{{ g.top_ticket.id }}" title="{{ g.top_ticket.meta.get('title') }}">{{ g.top_ticket.id }}</a>{% endif %}<span class="muted bgn">{{ g.total }} ticket{{ 's' if g.total != 1 }}</span></summary>
+    <summary><b class="bname" title="{{ g.name }}">{{ g.name }}</b> <span class="bcounts">{{ counts_line(g.counts, g.open) }}{% if g.score and g.score.n %} · <a class="rollup" href="/scores?project={{ r.key }}{% if by == 'track' %}&amp;track={{ g.slug }}{% endif %}" title="{{ g.score.text }}; click for the tickets in score order">score {{ g.score.max }}</a>{% endif %}</span> {{ top_chip(g.top) }}{% if g.top_ticket %}<a class="btop" href="/ticket/{{ g.top_ticket.id }}" title="{{ g.top_ticket.meta.get('title') }}">{{ g.top_ticket.id }}</a>{% endif %}<span class="muted bgn">{{ g.total }} ticket{{ 's' if g.total != 1 }}</span></summary>
     <div class="gbody">{% if g.is_open %}{{ columns(g.tickets, s, r.key, g.slug) }}{% endif %}</div>
   </details>
   {% endfor %}

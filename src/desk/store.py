@@ -346,11 +346,18 @@ class Store:
         return (on - updated).days > self.stale_days
 
     def next_ready(self, project: str | None = None) -> Ticket | None:
-        cands = [t for t in self.tickets() if t.status == "ready" and (project is None or t.project == project)]
+        """The highest-scoring ready ticket (DESK-0135: the priority score orders it, hand-set priority is one input); one whose
+        dependencies are all closed comes before one that is still waiting on something."""
+        from . import priority  # local import: priority depends on store
+
+        tickets = self.tickets()
+        cands = [t for t in tickets if t.status == "ready" and (project is None or t.project == project)]
         if not cands:
             return None
-        cands.sort(key=lambda t: (str(t.meta.get("priority", "p3")), str(t.meta.get("created", "")), t.id))
-        return cands[0]
+        sc = priority.scores(self, tickets)
+        by_id = {t.id: t for t in tickets}
+        free = [t for t in cands if not any((d := by_id.get(str(x))) is not None and d.is_open for x in (t.meta.get("depends_on") or []))]
+        return sc.sort(free or cands)[0]
 
     def index(self) -> Path:
         self.index_path.parent.mkdir(parents=True, exist_ok=True)

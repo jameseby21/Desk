@@ -20,7 +20,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from .. import timing
-from .. import deadlines, newform, notify, asks, boardfilter as bf, boardview as bv, commands, companies as compmod, identity as idmod, ladder, readability, sprints as sprintmod, todayview as tv, people as peoplemod, projectfilter as pf, search as srch, nav as navmod, needs_me as nmod, buildstamp as bs, comments as cm, docs as docsmod, ops, profanity, review as rv, style as styles, subtickets as subt, tracks as trk, version as ver
+from .. import deadlines, newform, notify, asks, boardfilter as bf, boardview as bv, commands, companies as compmod, identity as idmod, ladder, priority, readability, sprints as sprintmod, todayview as tv, people as peoplemod, projectfilter as pf, search as srch, nav as navmod, needs_me as nmod, buildstamp as bs, comments as cm, docs as docsmod, ops, profanity, review as rv, style as styles, subtickets as subt, tracks as trk, version as ver
 from ..config import find_home
 from ..rules import RuleError
 from ..store import Store, id_parts, split_profile
@@ -234,6 +234,8 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
                                  build=ver.describe(), who=who_html, person=person_name, sprint_slug=lambda n: sprintmod.slugify(str(n), 60), ask_badge=lambda t: ((asks.ask_of(t) or {}).get("kind") or "").capitalize(),
                                  card_extra=lambda t, st: [x for x in [str(t.meta.get("type") or "")] + ([words.screen("stale")] if st.is_stale(t) else []) + [f"#{x}" for x in t.tags] if x],
                                  card_age=bv.age_days, card_review=bv.review_by_text, card_proof=bv.proof_dot, columns_of=bv.five, finished_of=bv.finished, first_cards=bv.FIRST_CARDS)
+    # DESK-0135: `score_of` and the score-ordered `columns_of` are set per request in ctx(), scored once; never per card (the 2026-11-10 review
+    # measured Today at twice its time when every badge re-stamped the store).
 
     def finalize(v):
         fn = shown["censor"]
@@ -252,6 +254,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         return profanity.make_filter(st.home) if styles.load(st.home)["profanity"] else None
 
     def ctx(request: Request, st: Store, **kw) -> dict:
+        sc = priority.scores(st)  # one scoring per request (a cache hit after the first stamp), shared by every card on the page
         censor = shown["censor"] = censor_for(st)
         shown["style"] = styles.load(st.home)["name"]
         known = None
@@ -288,7 +291,8 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         can_act = me.confirmed and me.name == st.owner
         return {"me": me, "unnamed": idmod.unnamed(me), "can_act_as": can_act, "act_people": [p for p in peoplemod.load(st.home).list if p.key != st.owner] if can_act else [],
                 "build_stale": bs.stale(STAMP_DIR), "stale_text": bs.STALE_TEXT, "assign_dod": ops.ASSIGN_DOD, "events": events, "notice": notice(done_kind, qp.get("at", ""), int(qp.get("dup") or 0) if str(qp.get("dup") or "0").isdigit() else 0), "render": render, "comments_html": comments_html, "request": request, "owner": st.owner, "style": styles.load(st.home), "favicon": FAVICON, "home": str(st.home), "today": dt.date.today().isoformat(),
-                "titles": {k: st.project_title(k) for k in st.projects()}, **kw}
+                "titles": {k: st.project_title(k) for k in st.projects()},
+                "score_of": sc.of, "columns_of": lambda ts: bv.five(ts, sc.key), **kw}
 
     held: OrderedDict[str, dict] = OrderedDict()  # unhandled errors a person may file as a bug, by one-time id
     app.state.errors = held
@@ -400,7 +404,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         view = tv.build(s, ts, counted=counted)
         now = dt.date.today()
         return templates.TemplateResponse(request, "today.html", ctx(request, s, asked=asked, nm=nm, nm_shown=nmod.SHOWN, empty_head=head, empty_body=body, back="/" + ("?" + keep_q if keep_q else ""), family=fam,
-                                                             all_open_href="/board" + ("?" + board_q if board_q else ""), n_open=sum(1 for t in counted if t.is_open), v=view, stale=sorted(stale, key=tv.queue_key), decided=by_project(decided),
+                                                             all_open_href="/board" + ("?" + board_q if board_q else ""), n_open=sum(1 for t in counted if t.is_open), v=view, stale=priority.scores(s).sort(stale), decided=by_project(decided),
                                                              cap=cap, s=s, combos=combos, review_line=review_line, long_today=f"{now.strftime('%A, %B')} {now.day}",
                                                              chips=chips, track=track, schips=schips, sprint=sprint, cchips=cchips, company=company,
                                                              gchips=gchips, tag=tag, ychips=ychips, ttype=ttype, board_q=board_q,
@@ -627,7 +631,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         fam = subt.Family(all_t)  # DESK-0208: main tickets only
         ts = [t for t in bf.apply(fam.mains(all_t), sel) if t.project == project and trk.track_slug(bv.group_name(t, by) if bv.group_name(t, by) not in (bv.UNTRACKED, bv.NO_SPRINT) else "") == slug]
         ts, nm_items, nm_extra = needs_only(s, ts, needs)
-        items = bv.column_items(ts, col)[max(offset, 0):]
+        items = bv.column_items(ts, col, priority.scores(s).key)[max(offset, 0):]
         if frag:
             return templates.TemplateResponse(request, "_bmore.html", ctx(request, s, items=items, s=s, needs=nm_extra.get("needs", ""), nm_items=nm_items, family=fam))
         label = "Finished" if col == "finished" else words.screen(col, shown["style"])
@@ -689,6 +693,36 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
                                                               facets=pf.FACETS, opts=opts, picked={f: [fx.label(f, v) for v in sel[f]] for f in pf.NAMES},
                                                               fhidden={**sel, **here}, clear={f: url(**{**sel, f: [], **here}) for f in pf.NAMES},
                                                               clear_all=url(**here), filtering=filtering, total_n=len(fx.projects), fq_amp=fq + "&" if fq else "",
+                                                              events_url="/events", events_since=ev.tickets_stamp(s)))
+
+    @app.get("/scores", response_class=HTMLResponse)
+    def scores_page(request: Request, project: str = "", track: str = "", assignee: str = "", company: str = "", tag: str = ""):
+        """DESK-0136: the tickets behind one rollup (a project, a track, a person, a company or the whole store) in score order, each with
+        its score and its top three reasons in plain words, under the rollup's own numbers."""
+        s = store()
+        every = s.tickets()
+        sc = priority.scores(s, every)
+        ts = [t for t in every if t.is_open]
+        where = []
+        if company:
+            of = compmod.by_project(s)
+            ts = [t for t in ts if compmod.slug(of.get(t.project) or compmod.of(s, t.project)) == company]
+            where.append(compmod.title(next((n for n in of.values() if compmod.slug(n) == company), company)))
+        if project:
+            ts = [t for t in ts if t.project == project]
+            where.append(s.project_title(project))
+        if track:
+            ts = [t for t in ts if trk.track_slug(trk.track_of(t)) == track]
+            where.append(next((trk.track_of(t) for t in ts if trk.track_of(t)), track) if track != "untracked" else trk.UNTRACKED)
+        if assignee:
+            pe = peoplemod.load(s.home)
+            ts = [t for t in ts if ops.assignee_of(t).lower() == pe.resolve(assignee).lower()]
+            where.append(pe.display(assignee))
+        if tag:
+            ts = [t for t in ts if tag in t.tags]
+            where.append(f"#{tag}")
+        roll = priority.rollup(sc, ts)
+        return templates.TemplateResponse(request, "scores.html", ctx(request, s, s=s, tickets=sc.sort(ts), roll=roll, where=" › ".join(where) or "the whole store", sc=sc,
                                                               events_url="/events", events_since=ev.tickets_stamp(s)))
 
     def peek_panel(s: Store, t) -> str:

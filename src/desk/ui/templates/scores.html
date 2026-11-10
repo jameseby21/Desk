@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Desk · Scores{% endblock %}
+{% block body %}
+<p style="font-size:14px"><a href="/">Today</a> › <a href="/projects">Projects</a> › Scores</p>
+<h1 style="margin-top:6px">Tickets by score: {{ where }}</h1>
+{% if roll.n %}
+<p class="muted" style="margin-top:0">{{ roll.n }} open ticket{{ 's' if roll.n != 1 }} · highest score <b>{{ roll.max }}</b> (this is what ranks the group) · load {{ roll.sum }} (the sum) · mean {{ roll.mean }} (the health). <a href="/doc/docs/PRIORITY.md">How the score works</a>.</p>
+<div class="rows" id="scored">
+{% for t in tickets %}{% set x = sc.of(t) %}
+<a class="trow" href="/ticket/{{ t.id }}">
+  <span class="tr-lead"><b class="score{% if x.emergency %} band{% endif %}" title="{% if x.emergency %}Emergency band 90 to 99{% else %}Score 0 to 89{% endif %}">{{ x.score }}</b></span>
+  <span class="tr-title">{{ t.meta.get('title') }}<span class="tr-step">{{ x.why() }}</span></span>
+  <span class="tr-id">{{ t.project }} · {{ screen(t.status) }} · {{ t.id }}</span>
+</a>
+{% endfor %}
+</div>
+{% else %}<p class="muted">No open tickets here.</p>{% endif %}
+{% endblock %}

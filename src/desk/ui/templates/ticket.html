@@ -39,7 +39,8 @@
   {% for tag in t.tags %}<span class="tag">#{{ tag }}</span>{% endfor %}
 </div>
 <h1 style="margin-top:10px">{{ t.meta.get('title') }}</h1>
-<p class="muted" style="margin-top:0">{{ t.meta.get('priority') }} · size {{ t.meta.get('size') }} · owner {{ who(t.meta.get('owner')) }} · created {{ t.meta.get('created') }} · updated {{ t.meta.get('updated') }}{% if t.meta.get('done_at') %} · done {{ t.meta.get('done_at') }}{% endif %}{% if t.meta.get('branch') %} · <code>{{ t.meta.get('branch') }}</code>{% endif %}</p>
+{% set x = score_of(t) if score_of is defined else none %}
+<p class="muted" id="score" style="margin-top:0">{% if x and x.score is not none %}<b class="score{% if x.emergency %} band{% endif %}">{{ x.score }}</b> of 100{% if x.emergency %}, in the emergency band{% endif %} · why: {{ x.why() }} · <a href="/doc/docs/PRIORITY.md">how the score works</a> · {% endif %}{{ t.meta.get('priority') }} · size {{ t.meta.get('size') }} · owner {{ who(t.meta.get('owner')) }} · created {{ t.meta.get('created') }} · updated {{ t.meta.get('updated') }}{% if t.meta.get('done_at') %} · done {{ t.meta.get('done_at') }}{% endif %}{% if t.meta.get('branch') %} · <code>{{ t.meta.get('branch') }}</code>{% endif %}</p>
 {% if tl is defined and tl %}{# DESK-0171: the latest change on one line, then every event; a plain default until Chaz's design (DESK-0170) #}
 <section class="tl" id="timeline" aria-label="Timeline of this ticket">
   {% set L = tl.latest %}

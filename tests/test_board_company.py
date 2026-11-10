@@ -89,7 +89,7 @@ def test_drill_url_round_trip_company_project_track(store):
     assert '<nav class="crumbs"' in co and '<a href="/board">jeby</a>' in co and ">jebyLabs</a>" in co
     pr = cl.get(f"/board?company={JEBYLABS}&open=desk").text
     assert re.search(r'<details class="bproj"[^>]*data-val="desk" open>', pr) and _cards(pr) == []
-    assert re.findall(r'class="bgroup"[^>]*data-val="([^"]+)"', pr) == ["desk:core", "desk:ui"]
+    assert re.findall(r'class="bgroup"[^>]*data-val="([^"]+)"', pr) == ["desk:ui", "desk:core"]  # DESK-0136: the group holding the best ticket (Alpha ui, p0 ready) first
     tr = cl.get(f"/board?company={JEBYLABS}&open=desk&g=desk:ui").text
     assert sorted(_cards(tr)) == ["Alpha ui", "Beta ui"]
     assert sorted(_cards(cl.get(f"/board?company={JEBYLABS}&open=desk&g=desk:ui").text)) == ["Alpha ui", "Beta ui"]  # a reload draws the same view

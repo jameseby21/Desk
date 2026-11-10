@@ -496,3 +496,10 @@ header .search-open kbd{position:absolute;right:10px;top:50%;transform:translate
 .tr-part,.nm-part{display:block;font:400 12.5px/1.4 var(--font-body);color:var(--muted);white-space:normal;overflow-wrap:anywhere}
 .part-line{display:block;font-size:13px;color:var(--muted);margin-top:2px;overflow-wrap:anywhere}
 .pal-part{flex-basis:100%;font-size:12.5px}
+/* DESK-0135: the priority score on cards, rows and the ticket page; 12 px floor, plain words beside it. */
+.score{display:inline-block;min-width:2em;text-align:center;padding:1px 6px;border-radius:6px;font:700 12.5px var(--font-mono);background:var(--paper);border:1px solid var(--line);color:var(--ink)}
+.score.band{background:var(--red);border-color:var(--red);color:var(--on-red)}
+.scoreline{margin:4px 0 2px;font-size:14px}.scoreline .score{font-size:14px;padding:2px 8px}
+.cc-why{font:400 12px var(--font-body);margin:2px 0 4px;white-space:normal}.cc-why .score{margin-right:4px}
+.card .why{font-size:12.5px}
+a.rollup{color:var(--ink);font-weight:600;text-decoration:none}a.rollup:hover{text-decoration:underline}

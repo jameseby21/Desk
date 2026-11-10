@@ -39,6 +39,7 @@ class Group:
     counts: dict
     tickets: list[Ticket] = field(default_factory=list)
     is_open: bool = False
+    score: object = None  # priority.Rollup of the open tickets (DESK-0136)
 
 
 @dataclass
@@ -54,6 +55,7 @@ class ProjectRow:
     groups: list[Group]
     is_open: bool = False
     prio: dict = field(default_factory=dict)  # open tickets per priority (p0..p3), for the company row's top count
+    score: object = None  # priority.Rollup of the open tickets (DESK-0136)
 
 
 @dataclass
@@ -74,6 +76,14 @@ class CompanyRow:
     top_n: int  # open tickets at that priority
     top_ticket: Ticket | None
     href: str = ""  # the board address that opens this company, set by the page
+    score: int = 0  # the highest score among the open tickets (DESK-0136: the max ranks)
+    load: int = 0  # the sum of the scores
+    mean: float = 0.0
+    top3: int = 0  # the sum of the three best: the tie rule between groups (docs/PRIORITY.md), the same as projects and tracks
+
+    @property
+    def score_text(self) -> str:
+        return f"score {self.score} · load {self.load} · mean {self.mean:g}" if self.open else "no open tickets"
 
     @property
     def done_pct(self) -> int:
@@ -109,8 +119,11 @@ def _wanted(spec: str) -> set[str]:
 def build(store: Store, tickets: list[Ticket], by: str = "track", open_spec: str = "", group_spec: str = "", expand_all: bool = False) -> list[ProjectRow]:
     """One row per project that has tickets (or all projects when `tickets` is every ticket): groups with their counts and top
     priority, and for the ones the URL opens, their tickets. `expand_all` opens everything unless the URL names what to open."""
+    from . import priority
+
     if by not in BY:
         by = "track"
+    sc = priority.scores(store)
     projects, groups = _wanted(open_spec), _wanted(group_spec)
     if expand_all and not projects and not groups and "-" not in (open_spec or ""):
         projects, groups = {WIDE}, {WIDE}
@@ -122,17 +135,18 @@ def build(store: Store, tickets: list[Ticket], by: str = "track", open_spec: str
         for t in mine:
             by_group.setdefault(group_name(t, by), []).append(t)
         gs = []
-        for name, ts in sorted(by_group.items(), key=lambda kv: (kv[0] in (UNTRACKED, NO_SPRINT), kv[0].lower())):
+        for name, ts in by_group.items():
             n_open, top, top_t, counts = _stats(ts)
             slug = track_slug(name if name not in (UNTRACKED, NO_SPRINT) else "")
             on = WIDE in groups or f"{key}:{slug}" in groups
-            gs.append(Group(name, slug, len(ts), n_open, top, top_t, counts, sorted(ts, key=lambda t: t.id) if on else [], on))
+            gs.append(Group(name, slug, len(ts), n_open, top, top_t, counts, sorted(ts, key=lambda t: t.id) if on else [], on, priority.rollup(sc, ts)))
+        gs.sort(key=lambda g: (g.score.key, g.name in (UNTRACKED, NO_SPRINT), g.name.lower()))  # the group with the best ticket first (DESK-0136)
         n_open, top, top_t, counts = _stats(mine)
         on = WIDE in projects or key in projects or any(g.is_open for g in gs)  # an open group keeps its project open
         prio = {p: sum(1 for t in mine if t.status not in CLOSED and t.meta.get("priority") == p) for p in PRIORITIES}
-        rows.append(ProjectRow(key, store.project_title(key), str(meta.get("area") or ""), len(mine), n_open, top, top_t, counts, gs, on, prio))
+        rows.append(ProjectRow(key, store.project_title(key), str(meta.get("area") or ""), len(mine), n_open, top, top_t, counts, gs, on, prio, priority.rollup(sc, mine)))
     rows = [r for r in rows if r.total]
-    rows.sort(key=lambda r: (PRIORITIES.index(r.top) if r.top in PRIORITIES else len(PRIORITIES), -r.open, r.key))  # the most urgent project first
+    rows.sort(key=lambda r: (r.score.key, -r.open, r.key))  # the project holding the best thing to do next first (DESK-0136: the max ranks)
     return rows
 
 
@@ -148,10 +162,15 @@ def companies(store: Store, rows: list[ProjectRow]) -> list[CompanyRow]:
         top_t = sorted(tops, key=queue_key)[0] if tops else None
         c = {st: sum(r.counts.get(st, 0) for r in rs) for st in STATUSES}
         title, sub = comp.split(name)
+        scored = [r.score for r in rs if r.score is not None and r.score.n]
+        n = sum(x.n for x in scored)
+        load = sum(x.sum for x in scored)
+        top3 = sum(sorted((v for x in scored for v in x.vals), reverse=True)[:3])
         out.append(CompanyRow(name, comp.slug(name), title, sub, len(rs), sum(r.total for r in rs), sum(r.open for r in rs),
                               c.get("claimed", 0) + c.get("in_progress", 0), c.get("review", 0), c.get("done", 0), c.get("rejected", 0),
-                              top, sum(r.prio.get(top, 0) for r in rs) if top else 0, top_t))
-    out.sort(key=lambda c: (-c.in_hand, -c.open, c.name == comp.UNSORTED, c.title.lower()))
+                              top, sum(r.prio.get(top, 0) for r in rs) if top else 0, top_t,
+                              score=max((x.max for x in scored), default=0), load=load, mean=round(load / n, 1) if n else 0.0, top3=top3))
+    out.sort(key=lambda c: (-c.score, -c.top3, -c.load, -c.in_hand, -c.open, c.name == comp.UNSORTED, c.title.lower()))  # DESK-0136: the company with the best thing to do next first
     return out
 
 
@@ -160,10 +179,10 @@ def by_status(tickets: list[Ticket]) -> list[tuple[str, list[Ticket]]]:
     return [(st, [t for t in tickets if t.status == st]) for st in STATUSES]
 
 
-def five(tickets: list[Ticket]) -> list[tuple[str, list[Ticket]]]:
-    """The five working columns of one group, each in queue order (priority, review-by, id). All five are always drawn so a column
-    that is empty says so instead of vanishing."""
-    return [(key, sorted([t for t in tickets if t.status in states], key=queue_key)) for key, states in COLUMNS]
+def five(tickets: list[Ticket], key=queue_key) -> list[tuple[str, list[Ticket]]]:
+    """The five working columns of one group, each in score order (DESK-0135; `key` is the priority score's sort key, the old queue order
+    without one). All five are always drawn so a column that is empty says so instead of vanishing."""
+    return [(col, sorted([t for t in tickets if t.status in states], key=key)) for col, states in COLUMNS]
 
 
 def finished(tickets: list[Ticket]) -> dict:
@@ -172,11 +191,11 @@ def finished(tickets: list[Ticket]) -> dict:
     return {"items": items, **{st: sum(1 for t in items if t.status == st) for st in FINISHED}}
 
 
-def column_items(tickets: list[Ticket], col: str) -> list[Ticket]:
+def column_items(tickets: list[Ticket], col: str, key=queue_key) -> list[Ticket]:
     """The tickets of one column by its key (`inbox`, `ready`, `in_progress`, `review`, `blocked` or `finished`)."""
     if col == "finished":
         return finished(tickets)["items"]
-    return dict(five(tickets)).get(col, [])
+    return dict(five(tickets, key)).get(col, [])
 
 
 def age_days(t: Ticket, today: dt.date | None = None) -> int | None:

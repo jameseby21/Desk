@@ -44,12 +44,16 @@ def ask_label(t: Ticket, owner: str) -> str:
 
 
 def build(store: Store, tickets: list[Ticket], counted: list[Ticket] | None = None) -> dict:
-    """The rows list every ticket given, subtickets included; the "Also open" counts use `counted` when given (DESK-0208: main tickets only)."""
+    """The rows list every ticket given, subtickets included; the "Also open" counts use `counted` when given (DESK-0208: main tickets only).
+    Every row list is in score order (DESK-0135); the Immediate Action Required row alone keeps its hard-deadline order (DESK-0193)."""
+    from . import priority
+
     owner = store.owner
-    needs = sorted([t for t in tickets if t.status in ASK_OPEN and ask_label(t, owner)], key=lambda t: (due_text(t) == "", str(t.meta.get("review_by") or "9999")[:10], queue_key(t)))
+    key = priority.scores(store).key
+    needs = sorted([t for t in tickets if t.status in ASK_OPEN and ask_label(t, owner)], key=key)
     need_ids = {t.id for t in needs}
-    hand = sorted([t for t in tickets if t.status in HAND and t.id not in need_ids], key=queue_key)
-    pile = sorted([t for t in tickets if t.status == "review" and t.id not in need_ids], key=queue_key)
+    hand = sorted([t for t in tickets if t.status in HAND and t.id not in need_ids], key=key)
+    pile = sorted([t for t in tickets if t.status == "review" and t.id not in need_ids], key=key)
     counts = {st: sum(1 for t in (tickets if counted is None else counted) if t.status == st) for st in OTHER}
     imm = deadlines.immediate(tickets)  # DESK-0193: the row above everything else on Today
     return {"imm": imm, "imm_shown": imm[:deadlines.SHOWN], "imm_more": imm[deadlines.SHOWN:], "imm_missed": any(deadlines.days_left(t) < 0 for t in imm),
