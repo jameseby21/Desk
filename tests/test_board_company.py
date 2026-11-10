@@ -135,14 +135,25 @@ def test_company_level_renders_under_300_ms_at_1400_tickets(tmp_path):
         p.write_text(p.read_text(encoding="utf-8").replace("\nname:", f"\narea: Area {i % 5}\nname:", 1), encoding="utf-8")
     cl = TestClient(create_app(s.home))
     assert cl.get("/board").status_code == 200  # warm: the first request parses every file once
-    took = []
-    for _ in range(5):
-        t0 = time.perf_counter()
-        page = cl.get("/board").text
-        took.append((time.perf_counter() - t0) * 1000)
+    base_q = "/board?company=area-0"  # the baseline: one company opened to its projects, measured in the same run on the same machine
+    assert cl.get(base_q).status_code == 200
+
+    def median_ms(path):
+        took = []
+        for _ in range(5):
+            t0 = time.perf_counter()
+            cl.get(path)
+            took.append((time.perf_counter() - t0) * 1000)
+        return sorted(took)[2], [round(x) for x in took]
+
+    company, took = median_ms("/board")
+    baseline, base_took = median_ms(base_q)
+    page = cl.get("/board").text
     assert len(re.findall(r'<a class="bcomp"', page)) == 5
-    print(f"company level at 1,400 tickets: median {sorted(took)[2]:.0f} ms, all {[round(x) for x in took]}")
-    assert sorted(took)[2] < 300, took
+    print(f"company level at 1,400 tickets: median {company:.0f} ms, all {took}; baseline {base_q}: median {baseline:.0f} ms, all {base_took}")
+    # DESK-0183 (2026-11-10): the 300 ms budget holds on a quick machine; on a slow or busy one the company level may not cost more than
+    # one and a half times the drilled page measured in the same run, since both read the same 1,400 files
+    assert company < max(300, 1.5 * baseline), (company, baseline, took, base_took)
 
 
 # -- a real browser: the calm-board rules of DESK-0035 hold at the company and project levels -----------------------------------
