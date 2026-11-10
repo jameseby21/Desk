@@ -24,6 +24,7 @@ ITEM_CHARS = 400  # a list item this long is a wall
 
 _URL = re.compile(r"https?://[^\s)>\]\"'`]+")
 _LIST = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+")
+_TABLE_SEP = re.compile(r"^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$")  # the `--- | ---` line under a table's header, pipes at the edges optional
 _ABBREV = {"e.g", "i.e", "etc", "vs", "no", "st", "dr", "mr", "ms", "mrs", "u.s", "fig", "approx", "inc", "ltd", "jr", "sr", "p", "pp", "cf", "al"}
 
 
@@ -51,6 +52,12 @@ def sentence_count(text: str) -> int:
             continue
         n += 1
     return max(n, 1 if t.strip() else 0)
+
+
+def _starts_block(ln: str) -> bool:
+    """A line that opens a new block (so a lazy quote continuation stops there): blank, quote, table, heading, fence or list item."""
+    s = ln.strip()
+    return not s or s[0] in ">|#" or s.startswith(("```", "~~~")) or bool(_LIST.match(ln))
 
 
 def blocks(section_text: str) -> list[tuple[str, str]]:
@@ -87,10 +94,20 @@ def blocks(section_text: str) -> list[tuple[str, str]]:
             flush()
         elif s.startswith(">"):
             flush()
-            out.append(("quote", s))
-        elif s.startswith("|"):
+            j = i + 1  # Markdown lazy continuation (2026-11-10 review): the lines after a `>` line stay in the quote until a blank line or another block
+            while j < len(lines) and lines[j].strip() and not _starts_block(lines[j]):
+                j += 1
+            out.append(("quote", " ".join(x.strip() for x in lines[i:j])))
+            i = j
+            continue
+        elif s.startswith("|") or (("|" in s) and i + 1 < len(lines) and _TABLE_SEP.match(lines[i + 1])):
             flush()
-            out.append(("table", s))
+            j = i + 1  # a table written without a leading pipe (2026-11-10 review): header, separator and rows until a blank line
+            while j < len(lines) and lines[j].strip() and ("|" in lines[j] or _TABLE_SEP.match(lines[j])):
+                j += 1
+            out.append(("table", "\n".join(lines[i:j])))
+            i = j
+            continue
         elif s.startswith("#"):
             flush()
             out.append(("heading", s))

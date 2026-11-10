@@ -57,6 +57,20 @@ def test_quotes_code_and_tables_never_count():
     assert readability.walls("# " + PARA_400) == []  # a heading line
 
 
+def test_a_lazy_quote_and_a_table_without_edge_pipes_never_count():
+    """Protects: the 2026-11-10 review found two false positives: a blockquote whose `>` is only on its first line (Markdown lazy
+    continuation renders it as one quote) and a table written without a leading pipe. Neither is a wall; the prose after a blank line
+    following the quote still is."""
+    lazy = "> " + SENTENCE.strip() + "\n" + "\n".join(SENTENCE.strip() for _ in range(4))
+    assert readability.walls(lazy) == []
+    assert [k for k, _ in readability.blocks(lazy)] == ["quote"]
+    assert [w.kind for w in readability.walls(lazy + "\n\n" + PARA_400)] == ["paragraph"]  # a blank line ends the quote
+    bare = "a | b | c\n--- | --- | ---\n" + "\n".join(f"{PARA_400} | y | z" for _ in range(3))
+    assert readability.walls(bare) == []
+    assert [k for k, _ in readability.blocks(bare)] == ["table"]
+    assert readability.walls("a | b\n" + PARA_400) != []  # a pipe in prose with no separator line under it is still prose
+
+
 def test_a_quote_between_two_short_paragraphs_separates_them():
     text = f"{SENTENCE.strip()}\n{QUOTE}\n{SENTENCE.strip()}"
     assert readability.walls(text) == []
