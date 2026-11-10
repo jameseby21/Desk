@@ -26,16 +26,19 @@ def _rows(page):
 
 
 def test_order_is_needs_you_then_in_hand_then_review_preview_with_all_n(store):
-    ask = _mk(store, "Approve the logo rule", type="decision", status="ready", owner="james", review_by="2026-11-15")
+    ask = _mk(store, "Approve the logo rule", type="decision", status="ready", owner="james", review_by="2026-11-25")
     hand = _mk(store, "Fix the double comment", status="in_progress", priority="p0", type="bug")
     review = [_mk(store, f"Built thing {i}", status="review") for i in range(7)]
     page = _page(store)
     assert page.index("Needs you") < page.index("In hand") < page.index("Waiting for review")
-    assert _rows(page)[0] == ask.id and hand.id in _rows(page)
+    # since the 2026-11-10 review an ask Needs me draws (the block above Needs you, DESK-0149) is not drawn again under Needs you, so
+    # the ask sits once, as a Needs me row, and the first plain row is the ticket in hand
+    assert f'class="nm-row" data-ticket="{ask.id}"' in page and ask.id not in _rows(page)
+    assert _rows(page)[0] == hand.id
     pile = page[page.index("Waiting for review"):]
     assert len(set(_rows(pile)) & {t.id for t in review}) == 3  # a three-row preview, not the pile
     assert "All 7" in page and "/search?q=status%3Areview" in page
-    assert "Approve" in page and "due Nov 15" in page
+    assert "Approve this" in page and "due Nov 25" in page  # the Needs me row's chip and its reason line
 
 
 def test_rows_not_cards_and_only_bug_and_urgent_badges(store):

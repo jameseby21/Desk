@@ -49,7 +49,7 @@ code{font-family:var(--font-mono);font-size:13px;background:var(--paper);padding
 .col .card{padding:10px 12px;margin-bottom:8px}
 table{border-collapse:collapse;width:100%;font-size:14px;background:var(--card);border-radius:14px;overflow:hidden}
 th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line)}
-th{font:500 11px/1.3 var(--font-mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+th{font:500 12px/1.3 var(--font-mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
 .cap a{padding:8px 14px;border:1px solid var(--ink);text-decoration:none;font-weight:600;border-radius:10px}
 .cap a.on{background:var(--ball)}
 .cap a.on.rough{background:var(--ink);color:var(--on-ink)}
@@ -271,7 +271,8 @@ body.pal-open{overflow:hidden}
 .bsub{font-size:12px;overflow:hidden;text-overflow:ellipsis}
 .bcomp .chip{flex:none}
 .tr-place{display:inline-block;max-width:34ch;overflow:hidden;text-overflow:ellipsis;vertical-align:bottom}
-@media (max-width:700px){.bcomp{flex-wrap:wrap;white-space:normal}.bcomp .bcounts{flex-basis:100%;white-space:normal}.tr-place{max-width:100%}}
+@media (max-width:700px){.bcomp{flex-wrap:wrap;white-space:normal}.bcomp .bcounts{flex-basis:100%;white-space:normal}.tr-place{max-width:100%}
+  .bproj>summary,.bgroup>summary{flex-wrap:wrap;white-space:normal}.bproj>summary .bcounts,.bgroup>summary .bcounts{flex-basis:100%;white-space:normal}}  /* 2026-11-10: the counts line with its score wraps on a phone instead of being cut off at the edge */
 .bgroups{padding:0 10px 10px 28px;display:flex;flex-direction:column;gap:6px}
 .bgroup{background:var(--paper)}
 .gbody{padding:0 10px 10px}

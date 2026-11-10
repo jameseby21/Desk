@@ -183,6 +183,20 @@ def test_today_folds_needs_me_after_a_few_rows_and_links_the_rest_to_the_board(s
     assert '<span class="nm-count">12</span>' in block
 
 
+def test_an_ask_needs_me_draws_is_not_drawn_again_under_needs_you(store):
+    """Protects: the 2026-11-10 review found every ask on Today twice, once under Needs me and once under Needs you. The asks Needs me
+    draws are left out of Needs you; the asks past the fold still appear there, so nothing is lost and a ticket appears once."""
+    ids = [_decision(store, f"Choose thing {i}", review_by=f"2026-11-{10 + i:02d}").id for i in range(needs_me.SHOWN + 2)]
+    page = TestClient(create_app(store.home)).get("/").text
+    nm_block = page.split('id="needs-me"')[1].split("</section>")[0]
+    ny_block = page.split('id="needs-you"')[1].split("</section>")[0]
+    drawn = [i for i in ids if f'data-ticket="{i}"' in nm_block]
+    assert len(drawn) == needs_me.SHOWN
+    for i in ids:
+        assert (f'href="/ticket/{i}"' in ny_block) == (i not in drawn), i
+    assert needs_me.shown_ids(needs_me.build(store, now=NOW)) == set(drawn)
+
+
 # -- a real browser at phone width: the 12 px floor ----------------------------------------------------------------------------------
 import pytest  # noqa: E402
 from browser_harness import browser, drive  # noqa: E402
@@ -191,14 +205,15 @@ from test_subtickets import PHONE  # noqa: E402
 
 @pytest.mark.skipif(browser() is None, reason="no Edge or Chrome installed")
 def test_needs_me_tags_and_board_cards_fit_a_390_px_phone_with_nothing_under_12_px(store):
-    """Protects: the 2026-11-10 review found the Needs me chips at 11 px, flags at 10.5 px and tags at 11.5 px. Today's Needs me
-    block, a ticket page with tags and a board card: no sideways scroll and no text under 12 px (James's floor, 2026-11-08)."""
+    """Protects: the 2026-11-10 review found the Needs me chips at 11 px, flags at 10.5 px, tags at 11.5 px and table headings at
+    11 px. Today (Needs me block included), a ticket page with tags and the board with a card open: every element's computed font
+    size is 12 px or more and nothing scrolls sideways at 390 px (James's floor, 2026-11-08)."""
     ask = _decision(store, "Choose the colour of the thing with a long title that wraps on a phone", review_by="2026-10-30", tags=["look", "emergency"])
     t = ops.new(store, "Tagged and in progress", "desk", "feature", owner="main")
     t.meta["status"] = "in_progress"
     t.meta["tags"] = ["look", "repeatable-process"]
     store.save(t)
-    urls = [["/", "#needs-me"], [f"/ticket/{ask.id}", ".tag"], ["/board?company=unsorted&open=*&g=*", ".ccard"]]
+    urls = [["/", "body"], [f"/ticket/{ask.id}", "body"], ["/board?company=unsorted&open=*&g=*", "body"]]  # whole pages (2026-11-10 review): every computed font size
     got = drive(store, PHONE % repr(urls).replace("'", '"'), "/about")
     assert len(got.get("pages", [])) == 3, got
     for p in got["pages"]:

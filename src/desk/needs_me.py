@@ -322,6 +322,14 @@ def build(store: Store, who: str | None = None, now: dt.datetime | None = None, 
     return asks + changes
 
 
+def shown_ids(items: list[Item], shown: int = SHOWN) -> set[str]:
+    """The ids Today's Needs me block draws (the first `shown` asks and the first `shown` changes), so the sections under it can leave
+    them out and a ticket appears once on Today (2026-11-10 review)."""
+    asks = [i.id for i in items if i.group == "ask"][:shown]
+    changes = [i.id for i in items if i.group == "change"][:shown]
+    return set(asks) | set(changes)
+
+
 def summary(items: list[Item]) -> str:
     a = sum(1 for i in items if i.group == "ask")
     return f"{a} asks for you · {len(items) - a} changed by someone else"

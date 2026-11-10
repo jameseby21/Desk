@@ -402,6 +402,8 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         keep_q = "&".join(x for x in (f"cap={cap}" if cap != "normal" else "", board_q) if x)
         counted = fam.mains(ts)
         view = tv.build(s, ts, counted=counted)
+        drawn = nmod.shown_ids(nm)  # 2026-11-10 review: an ask Needs me draws is not drawn again under Needs you; a ticket appears once on Today
+        view["needs"] = [t for t in view["needs"] if t.id not in drawn]
         now = dt.date.today()
         return templates.TemplateResponse(request, "today.html", ctx(request, s, asked=asked, nm=nm, nm_shown=nmod.SHOWN, empty_head=head, empty_body=body, back="/" + ("?" + keep_q if keep_q else ""), family=fam,
                                                              all_open_href="/board" + ("?" + board_q if board_q else ""), n_open=sum(1 for t in counted if t.is_open), v=view, stale=priority.scores(s).sort(stale), decided=by_project(decided),
