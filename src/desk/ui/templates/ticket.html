@@ -7,6 +7,10 @@
 <div class="md">{{ render(f.head)|safe }}</div>
 {% if f.rest %}<details class="ladder"><summary>{{ f.label }}</summary><div class="md">{{ render(f.rest)|safe }}</div></details>{% endif %}
 {%- endmacro %}
+{% macro wall(name) -%}
+{# DESK-0209: a small plain-words flag beside the heading of a free-text section that holds a wall of text (readability.flag_text). #}
+{% if name in ['Context','Outcome','Prompt','Out of scope','Report','Evidence'] %}{% set ft = readflag(t.section(name)) %}{% if ft %}<span class="wallflag" data-wall="{{ name }}">{{ ft }}</span>{% endif %}{% endif %}
+{%- endmacro %}
 {% block body %}
 <p style="font-size:14px"><a href="/">Today</a> › <a href="/board?project={{ t.project }}">{{ titles.get(t.project, t.project) }}</a> › <code>{{ t.id }}</code>{% if formerly %} <span class="muted">(formerly {{ formerly }})</span>{% endif %}</p>
 {% if part %}<p class="part-of" id="part-of">Part of <a href="/ticket/{{ part.id }}">{{ part.id }}: {{ part.meta.get('title') }}</a> <span class="muted">· {{ screen(part.status) }}</span></p>{% elif part_id == t.id %}<p class="part-of missing" id="part-of">This ticket names itself as its main ticket. Clear <code>parent:</code> or name the main ticket.</p>{% elif part_id %}<p class="part-of missing" id="part-of">Part of {{ part_id }}, which Desk cannot find. Check the id in <code>parent:</code>.</p>{% endif %}
@@ -70,7 +74,7 @@
 <div class="cols">
   <div>
     {% for name in ['Context','Outcome'] %}{% if t.section(name) %}
-    <div class="card section"><span class="label">{{ name }}</span>{{ shaped(t.section(name)) }}</div>
+    <div class="card section"><span class="label">{{ name }}</span>{{ wall(name) }}{{ shaped(t.section(name)) }}</div>
     {% endif %}{% endfor %}
 
     {% if subs %}{# DESK-0208: the pieces of this ticket that others do, each tracked and assigned on its own, kept off the board. With none, the
@@ -117,14 +121,14 @@
       {% if cc[1] %}<ul class="mentions">{% for p in cc[1] %}<li>{{ p }}</li>{% endfor %}</ul>{% endif %}</div>
     {% endif %}
     <div class="card section">
-      <div class="row" style="justify-content:space-between"><span class="label">Proof (Report)</span>
+      <div class="row" style="justify-content:space-between"><span class="label">Proof (Report)</span>{{ wall('Report') }}
         {% if not t.section('Report') %}<span class="chip red">Not run</span>{% endif %}</div>
       {% if t.section('Report') %}{{ shaped(t.section('Report')) }}{% else %}<p class="muted">No report yet. A claim with no run behind it gets a red tag, not a pass.</p>{% endif %}
       {% set bad = t.failed_checks() %}{% if bad %}<div class="failed-checks"><span class="label">Failed checks ({{ bad|length }})</span><ul>{% for sec, txt in bad %}<li><span class="chip red">Not run</span> {{ sec }}: {{ txt }}</li>{% endfor %}</ul></div>{% endif %}
     </div>
 
     {% if t.section('Evidence') or t.meta.get('evidence') %}
-    <div class="card section" id="evidence"><span class="label">Evidence</span>{% if t.meta.get('evidence') %}<p style="margin:6px 0">{{ t.meta.get('evidence') }}</p>{% endif %}{% if t.section('Evidence') %}<div class="md" data-check-section="Evidence">{{ render(t.section('Evidence'), t, 'Evidence')|safe }}</div>{% endif %}</div>
+    <div class="card section" id="evidence"><span class="label">Evidence</span>{{ wall('Evidence') }}{% if t.meta.get('evidence') %}<p style="margin:6px 0">{{ t.meta.get('evidence') }}</p>{% endif %}{% if t.section('Evidence') %}<div class="md" data-check-section="Evidence">{{ render(t.section('Evidence'), t, 'Evidence')|safe }}</div>{% endif %}</div>
     {% endif %}
 
     {% if t.section('Decision') or reply_ask %}
@@ -182,7 +186,7 @@
     </details>
 
     {% if t.section('Prompt') %}
-    <div class="card section" id="prompt"><span class="label">Prompt (paste this to execute)</span><div class="md" data-check-section="Prompt">{{ render(t.section('Prompt'), t, 'Prompt')|safe }}</div></div>
+    <div class="card section" id="prompt"><span class="label">Prompt (paste this to execute)</span>{{ wall('Prompt') }}<div class="md" data-check-section="Prompt">{{ render(t.section('Prompt'), t, 'Prompt')|safe }}</div></div>
     {% endif %}
 
     <div class="card section" id="attachments"{% if not t.section('Attachments') %} hidden{% endif %}><span class="label">Attachments</span><div class="md attachments" id="attachments-body">{% if t.section('Attachments') %}{{ render(t.section('Attachments'))|safe }}{% endif %}</div></div>
@@ -196,7 +200,7 @@
       {% if t.tests_text() %}<div class="md">{{ render(t.tests_text())|safe }}</div>{% else %}<p class="muted">No Tests text yet. Name the automated test, or the steps a person performs and what they must see.</p>{% endif %}</div>
     {% endif %}
     {% for name in ['Docs to update','Out of scope'] %}{% if name not in hid %}
-    <div class="card section"><span class="label">{{ name }}</span><div class="md">{{ render(t.section(name))|safe }}</div></div>
+    <div class="card section"><span class="label">{{ name }}</span>{{ wall(name) }}<div class="md">{{ render(t.section(name))|safe }}</div></div>
     {% endif %}{% endfor %}
     {% if hid or no_decision or not mentions or cmds_hidden %}
     <details class="fold hidden-secs" id="hidden-sections"><summary>Hidden while still default or empty: {{ hid_all|join(', ') }} &middot; <b>Show</b></summary>
@@ -205,7 +209,7 @@
       {% if t.tests_text() %}<div class="md">{{ render(t.tests_text())|safe }}</div>{% else %}<p class="muted">No Tests text yet. Name the automated test, or the steps a person performs and what they must see.</p>{% endif %}</div>
       {% endif %}
       {% for name in ['Docs to update','Out of scope'] %}{% if name in hid %}
-      <div class="card section"><span class="label">{{ name }}</span>{% if t.section(name) %}<div class="md">{{ render(t.section(name))|safe }}</div>{% else %}<p class="muted">Empty.</p>{% endif %}</div>
+      <div class="card section"><span class="label">{{ name }}</span>{{ wall(name) }}{% if t.section(name) %}<div class="md">{{ render(t.section(name))|safe }}</div>{% else %}<p class="muted">Empty.</p>{% endif %}</div>
       {% endif %}{% endfor %}
       {% if cmds_hidden %}<div class="card section" id="commands"><span class="label">Commands</span><p class="muted">None yet. A worker adds the exact commands it ran.</p></div>{% endif %}
       {% if no_decision %}<div class="card section" id="decision"><span class="label">Decision</span><p class="muted">Nothing decided yet.</p></div>{% endif %}
@@ -214,7 +218,7 @@
     {% endif %}
 
     {% for name in t.sections %}{% if name not in sections and t.section(name) %}
-    <div class="card section"><span class="label">{{ name }}</span><div class="md">{{ render(t.section(name))|safe }}</div></div>
+    <div class="card section"><span class="label">{{ name }}</span>{{ wall(name) }}<div class="md">{{ render(t.section(name))|safe }}</div></div>
     {% endif %}{% endfor %}
 
     {% if owning %}<div class="card section"><span class="label">Owning docs</span>

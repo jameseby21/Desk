@@ -6,7 +6,7 @@ import datetime as dt
 import re
 from typing import TYPE_CHECKING
 
-from . import commands, deadlines, ladder, people, subtickets
+from . import commands, deadlines, ladder, people, readability, subtickets
 from .store import id_parts
 from .ticket import CLOSED, ID_LISTS_LOOSE, ID_LISTS_STRICT, PRIORITIES, REQUIRED, LEGACY_TYPES, SIZES, STATUSES, TYPES, Ticket, canon_type, parse_checks, validate_steps
 
@@ -207,6 +207,7 @@ def validate_store(store: "Store") -> tuple[list[str], list[str]]:
             warnings.append(f"{t.id}: doc link `{link}`: dead link (tried: {', '.join(tried)})")
         warnings += commands.warnings(t)  # DESK-0177: a ready ticket names its commands; ui work in review shows a screenshot
         warnings += ladder.warnings(t)  # DESK-0139: a wall of text, or a field that should be a linked file
+        warnings += readability.warnings(t)  # DESK-0209: no plain blocks; a paragraph over 300 characters or a bullet over 400 is a wall
         if t.status == "done":
             for dep in t.meta.get("depends_on") or []:
                 d = by_id.get(str(dep))

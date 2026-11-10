@@ -361,6 +361,7 @@ details.hidden-secs{margin:14px 0}details.hidden-secs>.card{margin-top:10px}p.hi
 /* Text ladder and the folded composer (DESK-0139) */
 details.ladder{margin:8px 0 0;border-top:1px solid var(--line);padding-top:8px}details.ladder>summary{cursor:pointer;color:var(--muted);font-size:14px}details.ladder[open]>summary{margin-bottom:6px}
 .readflag{margin:4px 0 8px;font-size:13.5px;color:var(--muted)}
+.wallflag{display:inline-block;margin-left:8px;font:500 12px/1.3 var(--font-body,inherit);letter-spacing:0;text-transform:none;color:var(--red)}  /* DESK-0209: beside a flagged section's heading, plain words at the 12 px floor */
 details.addc{margin-top:10px}details.addc>summary{cursor:pointer;font-weight:600;padding:6px 0}
 /* Header: Desk, navigation, search, the user (DESK-0176) */
 header .user{margin-left:auto;display:inline-flex;align-items:center;gap:8px;text-decoration:none;font-weight:600;font-size:14px}
