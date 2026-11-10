@@ -21,6 +21,8 @@ from .ops import _COMMENT_LINE
 from .store import Store
 from .ticket import Ticket, parse_checks
 
+SHOWN = 5  # DESK-0149 (2026-11-10 review): Today draws this many asks and this many changes, then "N more" opens the board's Needs me view
+
 STATE_FILE = "needs-me.json"
 CHECK_SECTIONS = ("Acceptance", "How to validate", "Prompt", "Evidence")
 _DECISION_LINE = re.compile(r"^- (\d{4}-\d{2}-\d{2}) · (.+?) · ")

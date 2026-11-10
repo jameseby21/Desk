@@ -1,7 +1,8 @@
 {% macro part(i) -%}{% if family is defined and family %}{% set po = family.label(i.ticket) %}{% if po %}<span class="nm-part">{{ po }}</span>{% endif %}{% endif %}{%- endmacro %}
 {% macro why(i) -%}{% if i.overdue and i.why.endswith(' overdue') %}{{ i.why[:-8] }} <span class="overdue">overdue</span>{% else %}{{ i.why }}{% endif %}{%- endmacro %}
-{% macro block(nm, style, all_open_href, n_open, back) -%}
+{% macro block(nm, style, all_open_href, n_open, back, shown=5, more_href='/board?needs=1') -%}
 {% set asks = nm|selectattr('group', 'equalto', 'ask')|list %}{% set changes = nm|selectattr('group', 'equalto', 'change')|list %}
+{# DESK-0149 (2026-11-10): each group draws `shown` rows, then one line to the board's Needs me view, so a store with hundreds of asks keeps Today short #}
 <section class="card nm" id="needs-me" aria-label="Needs me">
   <div class="nm-head">
     <h2>Needs me</h2><span class="nm-count{% if not nm %} zero{% endif %}">{{ nm|length }}</span>
@@ -12,17 +13,17 @@
     </span>
   </div>
   {% if asks %}<span class="label">Asks for you</span>
-  {% for i in asks %}<div class="nm-row" data-ticket="{{ i.id }}">
+  {% for i in asks[:shown] %}<div class="nm-row" data-ticket="{{ i.id }}">
     <span><span class="nm-ask">{{ i.chip }}</span>{% if i.emergency %}<span class="nm-emerg">Emergency</span>{% endif %}</span>
     <span class="nm-title"><a href="/ticket/{{ i.id }}" class="tid" data-status="{{ i.ticket.status }}">{{ i.id }} &middot; {{ i.ticket.meta.get('title') }}</a>{{ part(i) }}<span class="nm-why">{{ why(i) }}</span></span>
     <a class="rowb" href="/ticket/{{ i.id }}#decision">{{ i.act }}</a>
-  </div>{% endfor %}{% endif %}
+  </div>{% endfor %}{% if asks|length > shown %}<a class="nm-more" href="{{ more_href }}">{{ asks|length - shown }} more asks · see them all on the board &rarr;</a>{% endif %}{% endif %}
   {% if changes %}<span class="label">Changed since you last acted</span>
-  {% for i in changes %}<div class="nm-row" data-ticket="{{ i.id }}">
+  {% for i in changes[:shown] %}<div class="nm-row" data-ticket="{{ i.id }}">
     <span><span class="nm-chg">Changed</span>{% if i.emergency %}<span class="nm-emerg">Emergency</span>{% endif %}</span>
     <span class="nm-title"><a href="/ticket/{{ i.id }}" class="tid" data-status="{{ i.ticket.status }}">{{ i.id }} &middot; {{ i.ticket.meta.get('title') }}</a>{{ part(i) }}<span class="nm-why">{{ why(i) }}</span></span>
     <span class="nm-btns"><form class="post-once" method="post" action="/needs-me/seen" data-progress="Sending,Saving,Done"><input type="hidden" name="token" value="{{ token() }}"><input type="hidden" name="ids" value="{{ i.id }}"><input type="hidden" name="next" value="{{ back }}"><button class="ghostb" type="submit">Mark seen</button></form><a class="rowb" href="/ticket/{{ i.id }}">Open</a></span>
-  </div>{% endfor %}{% endif %}
+  </div>{% endfor %}{% if changes|length > shown %}<a class="nm-more" href="{{ more_href }}">{{ changes|length - shown }} more changes · see them all on the board &rarr;</a>{% endif %}{% endif %}
   {% if not nm %}<div class="nm-empty"><b>{{ empty_head }}</b><span class="nm-note">{{ empty_body }}</span></div>{% endif %}
   <span class="nm-note nm-foot">Asks leave this list only when you answer them. Changes leave when you act on the ticket (reply, check a line, answer, move it) or press Mark seen. Opening or reading a ticket doesn't count, which is why Mark seen exists.</span>
 </section>

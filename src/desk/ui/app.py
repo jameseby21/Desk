@@ -399,7 +399,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         counted = fam.mains(ts)
         view = tv.build(s, ts, counted=counted)
         now = dt.date.today()
-        return templates.TemplateResponse(request, "today.html", ctx(request, s, asked=asked, nm=nm, empty_head=head, empty_body=body, back="/" + ("?" + keep_q if keep_q else ""), family=fam,
+        return templates.TemplateResponse(request, "today.html", ctx(request, s, asked=asked, nm=nm, nm_shown=nmod.SHOWN, empty_head=head, empty_body=body, back="/" + ("?" + keep_q if keep_q else ""), family=fam,
                                                              all_open_href="/board" + ("?" + board_q if board_q else ""), n_open=sum(1 for t in counted if t.is_open), v=view, stale=sorted(stale, key=tv.queue_key), decided=by_project(decided),
                                                              cap=cap, s=s, combos=combos, review_line=review_line, long_today=f"{now.strftime('%A, %B')} {now.day}",
                                                              chips=chips, track=track, schips=schips, sprint=sprint, cchips=cchips, company=company,

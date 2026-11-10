@@ -40,7 +40,7 @@
   {% else %}<p class="muted imm-empty">Nothing has a hard deadline in the next {{ v.window }} days.</p>{% endif %}
 </section>
 
-{{ needs_block(nm, style, all_open_href, n_open, back) }}
+{{ needs_block(nm, style, all_open_href, n_open, back, nm_shown, all_open_href + ('&' if '?' in all_open_href else '?') + 'needs=1') }}
 
 <section class="t-sec" id="needs-you">
   <h2>{{ heading('needs') }} <small>Answer these and the rest can move</small></h2>

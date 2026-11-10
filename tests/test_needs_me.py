@@ -169,3 +169,37 @@ def test_cli_needs_me_prints_the_reason_line(store, capsys, monkeypatch):
     capsys.readouterr()
     main(["--home", str(store.home), "needs-me", "--as", "james"])
     assert "Changed by Patch" not in capsys.readouterr().out
+
+
+def test_today_folds_needs_me_after_a_few_rows_and_links_the_rest_to_the_board(store):
+    """Protects: the 2026-11-10 review found Today drawing 570 Needs me rows on James's store. Each group draws needs_me.SHOWN rows,
+    then one line "N more asks · see them all on the board" to /board?needs=1; the count badge still says the whole number."""
+    for i in range(12):
+        _decision(store, f"Choose thing {i}", review_by="2026-11-20")
+    page = TestClient(create_app(store.home)).get("/").text
+    block = page.split('id="needs-me"')[1].split("</section>")[0]
+    assert block.count('class="nm-row"') == needs_me.SHOWN
+    assert f'<a class="nm-more" href="/board?needs=1">{12 - needs_me.SHOWN} more asks · see them all on the board &rarr;</a>' in block
+    assert '<span class="nm-count">12</span>' in block
+
+
+# -- a real browser at phone width: the 12 px floor ----------------------------------------------------------------------------------
+import pytest  # noqa: E402
+from browser_harness import browser, drive  # noqa: E402
+from test_subtickets import PHONE  # noqa: E402
+
+
+@pytest.mark.skipif(browser() is None, reason="no Edge or Chrome installed")
+def test_needs_me_tags_and_board_cards_fit_a_390_px_phone_with_nothing_under_12_px(store):
+    """Protects: the 2026-11-10 review found the Needs me chips at 11 px, flags at 10.5 px and tags at 11.5 px. Today's Needs me
+    block, a ticket page with tags and a board card: no sideways scroll and no text under 12 px (James's floor, 2026-11-08)."""
+    ask = _decision(store, "Choose the colour of the thing with a long title that wraps on a phone", review_by="2026-10-30", tags=["look", "emergency"])
+    t = ops.new(store, "Tagged and in progress", "desk", "feature", owner="main")
+    t.meta["status"] = "in_progress"
+    t.meta["tags"] = ["look", "repeatable-process"]
+    store.save(t)
+    urls = [["/", "#needs-me"], [f"/ticket/{ask.id}", ".tag"], ["/board?company=unsorted&open=*&g=*", ".ccard"]]
+    got = drive(store, PHONE % repr(urls).replace("'", '"'), "/about")
+    assert len(got.get("pages", [])) == 3, got
+    for p in got["pages"]:
+        assert p["found"] >= 1 and p["scrollW"] <= p["w"] and p["wide"] == [] and p["small"] == [], p

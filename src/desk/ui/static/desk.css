@@ -28,7 +28,7 @@ h2 small{font-weight:400;color:var(--muted);font-size:14px;margin-left:10px}
 .chip.ball{background:var(--ball);border-color:var(--ink);color:var(--ink)}
 .chip.red{background:var(--red);border-color:var(--red);color:var(--on-ink)}
 .chip.ink{background:var(--ink);color:var(--on-ink);border-color:var(--ink)}
-.label{font:500 11px/1.3 var(--font-mono);letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
+.label{font:500 12px/1.3 var(--font-mono);letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}
 .title{font-weight:700;font-size:17px;margin:8px 0 4px}
 .muted{color:var(--muted)}
 .btn{display:inline-flex;align-items:center;justify-content:center;min-height:44px;padding:0 16px;border-radius:12px;border:1.5px solid var(--ink);background:var(--card);color:var(--ink);font:600 14px/1 inherit;cursor:pointer;text-decoration:none}
@@ -303,7 +303,7 @@ details.refine-split>summary{cursor:pointer;font-weight:600}
 /* who is acting (DESK-0144) */
 header .actas{margin:0;font-size:13px}
 header .actas select{font:inherit;padding:3px 6px}
-.by{font:500 11.5px var(--font-mono);color:var(--muted);margin-left:6px}
+.by{font:500 12px var(--font-mono);color:var(--muted);margin-left:6px}
 .by.claimed{color:#8a5a00}
 .by.confirmed::after{content:" \2713"}
 /* Today as rows (DESK-0040) */
@@ -353,7 +353,7 @@ a.more{display:block;padding:8px 6px;color:var(--muted);font-size:14px;text-deco
 details.finished{margin:12px 0 4px;padding-top:10px;border-top:1px solid var(--line)}details.finished>summary{cursor:pointer;color:var(--muted);list-style:none}details.finished>summary b{color:var(--ink)}details.finished .show{color:var(--ink);font-weight:600}
 .fin-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:0 12px}
 .cc-foot{flex-wrap:wrap}.cc-foot .formerly{font-size:12px}
-.tag{display:inline-block;padding:1px 7px;border-radius:6px;font:600 11.5px var(--font-body);background:var(--paper);border:1px solid var(--line)}.tag.red{background:var(--red);border-color:var(--red);color:var(--on-red)}
+.tag{display:inline-block;padding:1px 7px;border-radius:6px;font:600 12px var(--font-body);background:var(--paper);border:1px solid var(--line)}.tag.red{background:var(--red);border-color:var(--red);color:var(--on-red)}
 /* Ticket page folds (DESK-0175) */
 details.dm>summary{display:flex;align-items:baseline;gap:12px;cursor:pointer;list-style:none;flex-wrap:wrap}details.dm>summary::-webkit-details-marker{display:none}
 details.dm .dm-line{color:var(--muted);flex:1;min-width:0}details.dm .show{margin-left:auto;font-weight:600}details.dm[open] .show::after{content:" (hide)";font-weight:400;color:var(--muted)}
@@ -439,8 +439,9 @@ header .search-open kbd{position:absolute;right:10px;top:50%;transform:translate
 .nm-tools{margin-left:auto;display:flex;gap:8px;align-items:center}
 .nm-tools form{margin:0}
 .nm-row{display:grid;grid-template-columns:112px minmax(0,1fr) auto;gap:12px;align-items:center;padding:10px 0;border-top:1px solid #EEEBE2}
-.nm-ask,.nm-chg,.nm-emerg{display:inline-flex;align-items:center;font:700 11px/1 var(--font-body);padding:5px 7px;border-radius:6px;white-space:nowrap;justify-self:start}
+.nm-ask,.nm-chg,.nm-emerg{display:inline-flex;align-items:center;font:700 12px/1 var(--font-body);padding:5px 7px;border-radius:6px;white-space:nowrap;justify-self:start}
 .nm-ask{background:#141414;color:#C8F03C}
+.nm-more{display:block;font:500 13px var(--font-body);color:var(--ink);padding:6px 0 2px}
 .nm-chg{background:#E8F0FA;color:#1E3F66}
 .nm-emerg{background:#C21B24;color:#FFFFFF;margin-left:6px}
 .nm-title{min-width:0;display:flex;flex-direction:column;gap:2px}
@@ -459,7 +460,7 @@ header .search-open kbd{position:absolute;right:10px;top:50%;transform:translate
 
 /* DESK-0154 / DESK-0155 (Chaz F1 to F5): one flag component for every flagged thing. Red #C21B24, white text, a 3 px rule on the left,
    one 20 px reason line cut with an ellipsis, More opens the rest in place. Marks, words and colours are the same in every style. */
-.flag{display:inline-flex;align-items:center;gap:5px;font:600 10.5px/1 var(--font-mono);letter-spacing:.1em;text-transform:uppercase;color:#FFFFFF;background:#C21B24;border-radius:5px;padding:4px 6px;flex:none}
+.flag{display:inline-flex;align-items:center;gap:5px;font:600 12px/1 var(--font-mono);letter-spacing:.1em;text-transform:uppercase;color:#FFFFFF;background:#C21B24;border-radius:5px;padding:4px 6px;flex:none}
 .flagged,.nr-reason{border-left:3px solid #C21B24}
 .reason,.nr-reason .why{font-size:13.5px;line-height:20px;height:20px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--ink);min-width:0;flex:1 1 0}
 .tbtn{border:0;background:transparent;padding:0 6px;min-height:20px;min-width:60px;text-align:center;font:600 13px/20px var(--font-body);text-decoration:underline;text-underline-offset:3px;cursor:pointer;color:var(--ink);flex:none}
