@@ -185,7 +185,7 @@ any open status → blocked (then `desk unblock` restores the previous status)
 any open status → rejected (with a reason)
 ```
 
-On screen each status has one word, chosen by the style in Settings (one word per state, never both): Plain, the default, says Inbox, Ready, In progress, Review, Done, Blocked, Let go, Stale; Dogs (Drew or Fuzz) says Sniffed (inbox), Thrown (ready), Fetching (in_progress), Dropped (review), Fetched (done), Stuck (blocked), Let go (rejected), Chewed back (stale); Cat says the plain words. The files and the command line always use the plain words. The tables are `src/desk/words.py`.
+On screen each status has a plain label, chosen by the style in Settings (DESK-0253: a mascot word may only sit beside the plain label, never replace it): Plain, the default, says Inbox, To sort, Ready, Claimed, In progress, Sent for review, Changes requested, Approved, Done, Blocked, Rejected, Stale; Dogs (Drew or Fuzz) adds a dog word in brackets after the plain label, for example Ready (thrown), In progress (fetching), Done (fetched), Blocked (stuck), Stale (chewed back); Cat says the plain labels. The files and the command line always use the plain words. The tables are `src/desk/words.py`.
 
 Rules the CLI and the UI both enforce, and `desk validate` checks in the files:
 
@@ -244,7 +244,7 @@ DESK_HOME=/path/to/store desk-ui      # http://127.0.0.1:8765  (DESK_UI_PORT to 
 
 Plain HTML forms over FastAPI and Jinja2; no build step. The only JavaScript is the vendored Mermaid, loaded on ticket pages that contain a diagram.
 
-- **Today**: In your mouth (claimed and in progress), Dropped at your feet (review, and open decisions), Other balls in play, Chewed back (stale), Decided this week. A Good / Normal / Rough switch hides the chewed-back pile on a rough week and shows each ticket's smallest step. With `[life] combos = true`, a **Combos** card lists any two tagged tickets finished within 30 minutes of each other today: `"Dishes" and "Laundry" completed together, +100 for efficiency!` It is computed from `done_at`; nothing new is stored.
+- **Today**: Claimed tickets (claimed and in progress), Waiting on you (review, and open decisions), Waiting for review, Stale (not touched for a long time), Decided this week. The Dogs style adds its dog words in brackets beside these labels. A Good / Normal / Rough switch hides the stale pile on a rough week and shows each ticket's smallest step. With `[life] combos = true`, a **Combos** card lists any two tagged tickets finished within 30 minutes of each other today: `"Dishes" and "Laundry" completed together, +100 for efficiency!` It is computed from `done_at`; nothing new is stored.
 - **Board**: one column per status, filter by project.
 - **Ticket**: every section rendered as Markdown (see Rich bodies), acceptance checkboxes with a count, the Report beside them with a red **Not run** tag when it is empty, Attachments with inline images, Approve and Send back forms (both require words, acting as the configured owner), a guarded Move form, comments.
 - **Projects**: one row per `projects/*.md` with its prefix and aliases, counts by status and last activity.

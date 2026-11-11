@@ -31,9 +31,9 @@ SLACK = dt.timedelta(minutes=2)  # a write follows the minute stamped on its own
 CHIP = {"approve": "Approve this", "choose": "Choose one", "answer": "Answer this", "provide": "Provide this", "do": "Do a step"}
 ACT = {"approve": "Review", "choose": "Choose", "answer": "Answer", "provide": "Provide", "do": "Start"}
 EMPTY = {
-    "plain": ("Nothing needs you", "Every open ticket has someone else on it. New asks and changes show up here."),
-    "dogs": ("Nothing to fetch for you", "Drew has every ball covered. New asks and changes show up here."),
-    "cat": ("Nothing on your doorstep", "Soot has it handled. New asks and changes show up here."),
+    "plain": ("Nothing needs you", "Every open ticket has someone else on it. New requests and changes show up here."),
+    "dogs": ("Nothing needs you (nothing to fetch)", "Drew has every ticket covered. New requests and changes show up here."),
+    "cat": ("Nothing needs you (nothing on your doorstep)", "Soot has it handled. New requests and changes show up here."),
 }
 
 
@@ -236,8 +236,8 @@ def changes_of(store: Store, t: Ticket, who: str, state: dict, now: dt.datetime)
         pass
     if snap:
         now_sig = signature(t)
-        words = {"status": f"status changed to {t.status}", "ask": "the ask changed", "report": "report updated", "proof": "proof added",
-                 "checks": "a line checked or unchecked", "done_means": "Done means edited"}
+        words = {"status": f"status changed to {t.status}", "ask": "the request changed", "report": "report updated", "proof": "proof added",
+                 "checks": "a line checked or unchecked", "done_means": "what done means was edited"}
         for order, key in enumerate(("status", "ask", "report", "proof", "checks", "done_means"), start=3):
             if key == "checks" and checks:
                 continue  # already said, with a name
@@ -332,7 +332,7 @@ def shown_ids(items: list[Item], shown: int = SHOWN) -> set[str]:
 
 def summary(items: list[Item]) -> str:
     a = sum(1 for i in items if i.group == "ask")
-    return f"{a} asks for you · {len(items) - a} changed by someone else"
+    return f"{a} need your answer · {len(items) - a} changed by someone else"
 
 
 def empty_words(style_name: str) -> tuple[str, str]:

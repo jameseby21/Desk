@@ -6,7 +6,7 @@ import datetime as dt
 import re
 from typing import TYPE_CHECKING
 
-from . import commands, deadlines, gps, ladder, people, readability, subtickets
+from . import commands, deadlines, gps, ladder, people, plainwords, readability, subtickets
 from .store import id_parts
 from .ticket import CLOSED, ID_LISTS_LOOSE, ID_LISTS_STRICT, PRIORITIES, REQUIRED, LEGACY_TYPES, SIZES, STATUSES, TYPES, Ticket, canon_type, parse_checks, validate_steps
 
@@ -211,6 +211,7 @@ def validate_store(store: "Store") -> tuple[list[str], list[str]]:
         warnings += commands.warnings(t)  # DESK-0177: a ready ticket names its commands; ui work in review shows a screenshot
         warnings += ladder.warnings(t)  # DESK-0139: a wall of text, or a field that should be a linked file
         warnings += readability.warnings(t)  # DESK-0209: no plain blocks; a paragraph over 300 characters or a bullet over 400 is a wall
+        warnings += plainwords.warnings(t)  # DESK-0253: grade above 10, or listed jargon with no plain gloss, in Context, Outcome or How to validate
         g = gps.warning(t, store)  # DESK-0215: Goal in one sentence, Proof someone can observe, Steps without handwaving (the project's gps: block applies)
         if g:
             warnings.append(g)
@@ -285,7 +286,7 @@ def check_transition(t: Ticket, new: str, store: "Store", *, actor: str | None =
         raise RuleError(f"{t.id} is {cur}; closed tickets do not move")
     if new in ("blocked", "rejected"):
         if new == "blocked" and not str(t.meta.get("blocked_on") or "").strip():
-            raise RuleError("Stuck needs a name: set blocked_on to the ticket or person it waits on.")
+            raise RuleError("Blocked needs a name: set blocked_on to the ticket or person it waits on.")
         if new == "rejected":
             _words(reason)
         return

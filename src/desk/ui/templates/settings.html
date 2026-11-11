@@ -15,7 +15,7 @@
 <form method="post" action="/settings" class="radios post-once" data-inplace="stay" data-progress="Sending,Saving,Done">
   <fieldset style="border:1px solid var(--line);border-radius:14px;max-width:70ch">
     <legend class="label">Style</legend>
-    {% for n, d in (("plain", "Plain: plain words (Ready, In progress), the Desk ball, no mascots"), ("dogs", "Dogs: dog words (Thrown, Fetching) and a dog in empty states"), ("cat", "Cat: Soot in empty states")) %}
+    {% for n, d in (("plain", "Plain: plain labels (Ready, In progress), no mascots"), ("dogs", "Dogs: plain labels with a dog word in brackets after them (Ready (thrown)), and a dog in empty states"), ("cat", "Cat: plain labels, and Soot in empty states")) %}
     <label><input type="radio" name="name" value="{{ n }}"{% if style.name == n %} checked{% endif %}>{{ d }}</label>
     {% endfor %}
   </fieldset>

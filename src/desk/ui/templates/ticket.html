@@ -88,7 +88,7 @@
     {% endif %}
 
     <div class="card section" id="acceptance">
-      <div class="row" style="justify-content:space-between"><span class="label">Acceptance (this ticket's outcome)</span></div>
+      <div class="row" style="justify-content:space-between"><span class="label">Acceptance (what must be true when it is done)</span></div>
       {% set summary = check_summary(t.section('Acceptance')) %}{% if summary %}<div id="chk-summary" class="chk-summary" role="status" aria-live="polite">{{ summary }}</div>{% endif %}
       {% if t.section('Acceptance') %}<div class="md" data-check-section="Acceptance">{{ render(t.section('Acceptance'), t, 'Acceptance')|safe }}</div>{% else %}<p class="muted">No acceptance lines yet.</p>{% endif %}
       {% if t.is_open %}
@@ -156,7 +156,7 @@
       {% endif %}</div>
     {% endif %}
 
-    <div class="card section" id="comments"><span class="label">Talk (Comments)</span>{% if flag_empty %} <span class="flag-empty" title="{{ flag_empty[1] }}">{{ flag_empty[0] }}</span>{% endif %}
+    <div class="card section" id="comments"><span class="label">Comments</span>{% if flag_empty %} <span class="flag-empty" title="{{ flag_empty[1] }}">{{ flag_empty[0] }}</span>{% endif %}
       <div class="md" data-comments>{% if t.section('Comments') %}{{ comments_html(t.section('Comments'))|safe }}{% else %}<p class="muted">No comments.</p>{% endif %}</div>
       <details class="addc" id="add-comment"><summary>Add a comment</summary>
       <form class="post-once composer" id="composer" method="post" action="/ticket/{{ t.id }}/comment" data-timeout-ms="10000" data-posting="Posting…" data-progress="Sending,Saving,Done">
@@ -176,18 +176,18 @@
       </details>
     </div>
 
-    <details class="card section dm" id="done-means"><summary><span class="label">Done means</span> <span class="dm-line">{{ dod.line }} &middot; {{ dod.n_checks }} check{{ 's' if dod.n_checks != 1 }}</span><span class="show">Show checklist</span></summary>
+    <details class="card section dm" id="done-means"><summary><span class="label">What done means</span> <span class="dm-line">{{ dod.line }} &middot; {{ dod.n_checks }} check{{ 's' if dod.n_checks != 1 }}</span><span class="show">Show checklist</span></summary>
       <p class="muted" style="font-size:13px;margin:8px 0 0">{% if dod.kind == 'project' %}This project's own{% else %}Shared modules{% endif %}, from the Definition of Done, read from the file, not copied.</p>
       {% if dod.note %}<p class="muted"><span class="chip red">Check</span> {{ dod.note }}</p>{% endif %}
       {% for it in dod['items'] %}
       <details open style="margin-top:6px"><summary><b>{{ it.label }}</b>{% if it.path %} <a class="docref" href="/doc/{{ it.path|urlencode_path }}">{{ it.path }}</a> <a class="vsc" href="{{ it.edit_url }}">Edit in VS Code</a>{% endif %}</summary>
         {% if it.body is defined %}<div class="md">{{ render(it.body)|safe }}</div>{% else %}<p class="muted"><span class="chip red">missing</span> No file at {{ it.tried|join(' or ') }}.</p>{% endif %}
       </details>
-      {% else %}<p class="muted">This ticket lists no DoD modules. Add `dod:` to its frontmatter.</p>{% endfor %}
+      {% else %}<p class="muted">This ticket lists no Definition of Done checklists. Add a dod: line to the top of the ticket file.</p>{% endfor %}
     </details>
 
     {% if t.section('Prompt') %}
-    <div class="card section" id="prompt"><span class="label">Prompt (paste this to execute)</span>{{ wall('Prompt') }}<div class="md" data-check-section="Prompt">{{ render(t.section('Prompt'), t, 'Prompt')|safe }}</div></div>
+    <div class="card section" id="prompt"><span class="label">Instructions for the worker (paste this to start the work)</span>{{ wall('Prompt') }}<div class="md" data-check-section="Prompt">{{ render(t.section('Prompt'), t, 'Prompt')|safe }}</div></div>
     {% endif %}
 
     <div class="card section" id="attachments"{% if not t.section('Attachments') %} hidden{% endif %}><span class="label">Attachments</span><div class="md attachments" id="attachments-body">{% if t.section('Attachments') %}{{ render(t.section('Attachments'))|safe }}{% endif %}</div></div>
@@ -255,7 +255,7 @@
             {% if t.status == 'blocked' %}<option value="unblock">unblock (back to {{ t.meta.get('blocked_from') or 'ready' }})</option>{% endif %}
             {% for st in statuses %}{% if st != t.status %}<option value="{{ st }}">{{ screen(st) }}</option>{% endif %}{% endfor %}
           </select></label>
-        <label>Reason (needed to let go)<input type="text" name="reason"></label>
+        <label>Reason (needed to reject a ticket)<input type="text" name="reason"></label>
         <button class="btn" type="submit">Move</button>
         <span class="muted" style="font-size:12.5px">The same rules as the CLI apply; a refused move says why.</span>
       </form>
@@ -279,7 +279,7 @@
       {% if t.meta.get('cloned_from') %}<div><span class="label">Cloned from</span><div><a href="/ticket/{{ t.meta.get('cloned_from') }}"><code>{{ t.meta.get('cloned_from') }}</code></a></div></div>{% endif %}
       {% if t.meta.get('blocks') %}<div><span class="label">Blocks</span><div>{% for d in t.meta.get('blocks') %}<a href="/ticket/{{ d }}"><code>{{ d }}</code></a> {% endfor %}</div></div>{% endif %}
       {% if t.meta.get('related') %}<div><span class="label">Related</span><div>{% for d in t.meta.get('related') %}<a href="/ticket/{{ d }}"><code>{{ d }}</code></a> {% endfor %}</div></div>{% endif %}
-      <div><span class="label">Waits on</span><div>{% if deps %}{% for d, st in deps %}{% if st == 'missing' %}<code>{{ d }}</code> (missing){% else %}<a class="tid" href="/ticket/{{ d }}" data-status="{{ st }}">{{ d }}</a> ({{ screen(st) }}){% endif %} {% endfor %}{% else %}Nobody.{% endif %}{% if t.meta.get('blocked_on') %}<br>Stuck on: {{ t.meta.get('blocked_on') }}{% endif %}</div></div>
+      <div><span class="label">Waiting on</span><div>{% if deps %}{% for d, st in deps %}{% if st == 'missing' %}<code>{{ d }}</code> (missing){% else %}<a class="tid" href="/ticket/{{ d }}" data-status="{{ st }}">{{ d }}</a> ({{ screen(st) }}){% endif %} {% endfor %}{% else %}Nobody.{% endif %}{% if t.meta.get('blocked_on') %}<br>Blocked on: {{ t.meta.get('blocked_on') }}{% endif %}</div></div>
       {% if t.meta.get('review_by') %}<div><span class="label">Review by</span><div>{{ t.meta.get('review_by') }}</div></div>{% endif %}
       {% if t.meta.get('smallest_step') %}<div><span class="label">Smallest step on a rough week</span><div>{{ t.meta.get('smallest_step') }}</div></div>{% endif %}
       {% if t.meta.get('source') %}<div><span class="label">Source</span><div>{% for sd in source_doc %}{% if not loop.first %}; {% endif %}{% if sd.path %}<a class="docref" href="/doc/{{ sd.path|urlencode_path }}">{{ sd.text }}</a> <a class="vsc" href="{{ sd.edit_url }}">Edit in VS Code</a>{% else %}<code>{{ sd.text }}</code>{% endif %}{% endfor %}</div></div>{% endif %}

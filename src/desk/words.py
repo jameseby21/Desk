@@ -1,42 +1,31 @@
-"""The words for states on screen, one word per state in each style (DESK-0037). Plain is the default; Dogs (Drew or Fuzz) say
-Thrown and Fetching; Cat has no words of its own yet and says the plain ones. The files and the command line are always plain."""
+"""The words for states on screen, one word per state in each style (DESK-0037). Plain is the default; Dogs (Drew or Fuzz) add a dog word
+in brackets after the plain label (Ready (thrown)); Cat has no words of its own yet and says the plain ones. The files and the command line are always plain."""
 
 PLAIN = {
     "inbox": "Inbox",
-    "triage": "Triage",
+    "triage": "To sort",
     "ready": "Ready",
     "claimed": "Claimed",
     "in_progress": "In progress",
-    "review": "Review",
-    "changes_requested": "Sent back",
+    "review": "Sent for review",
+    "changes_requested": "Changes requested",
     "approved": "Approved",
     "done": "Done",
     "blocked": "Blocked",
-    "rejected": "Let go",
+    "rejected": "Rejected",
     "stale": "Stale",
 }
 
-DOGS = {
-    "inbox": "Sniffed",
-    "triage": "Triage",
-    "ready": "Thrown",
-    "claimed": "Claimed",
-    "in_progress": "Fetching",
-    "review": "Dropped",
-    "changes_requested": "Sent back",
-    "approved": "Approved",
-    "done": "Fetched",
-    "blocked": "Stuck",
-    "rejected": "Let go",
-    "stale": "Chewed back",
-}
+# DESK-0253 (standards rule 15, "Human-readable by default"): a mascot word may only sit beside the plain label, never replace it.
+_DOG_WORD = {"inbox": "sniffed", "ready": "thrown", "in_progress": "fetching", "review": "dropped", "done": "fetched", "blocked": "stuck", "stale": "chewed back"}
+DOGS = {k: (f"{v} ({_DOG_WORD[k]})" if k in _DOG_WORD else v) for k, v in PLAIN.items()}
 
 TABLES = {"plain": PLAIN, "dogs": DOGS, "cat": PLAIN}
 
-# Headings of Today, which are phrases rather than states: (plain, dogs)
+# Headings of Today, which are phrases rather than states: (plain, dogs). The dogs one keeps the plain label first.
 HEADINGS = {
-    "needs": ("Needs you", "Dropped at your feet"),
-    "hand": ("In hand", "In your mouth"),
+    "needs": ("Waiting on you", "Waiting on you (dropped at your feet)"),
+    "hand": ("Claimed tickets", "Claimed tickets (in your mouth)"),
     "waiting": ("Waiting for review", "Waiting for review"),
 }
 
@@ -54,8 +43,8 @@ def heading(key: str, style: str = "plain") -> str:
 # Empty state of the flag component (Chaz F5): the only words that differ between Plain, Dogs and Cat.
 FLAG_EMPTY = {
     "plain": ("Nothing flagged", "No masked comments and no rejected notes on this ticket."),
-    "dogs": ("Nothing to growl at", "Drew checked: no masked comments and no rejected notes here."),
-    "cat": ("Nothing hissed at", "Soot checked: no masked comments and no rejected notes here."),
+    "dogs": ("Nothing flagged (nothing to growl at)", "Drew checked: no masked comments and no rejected notes on this ticket."),
+    "cat": ("Nothing flagged (nothing to hiss at)", "Soot checked: no masked comments and no rejected notes on this ticket."),
 }
 
 

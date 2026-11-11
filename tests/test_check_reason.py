@@ -92,7 +92,7 @@ def test_api_empty_or_short_reason_returns_422_and_a_good_one_200(store):
 
 
 def _acc(page: str) -> str:
-    return page.split("Acceptance (this")[1].split('id="done-means"')[0]
+    return page.split("Acceptance (what")[1].split('id="done-means"')[0]
 
 
 def test_saved_reason_shows_severity_who_when_evidence_count_and_edit(store):

@@ -24,7 +24,7 @@ def _ticket(store):
 
 
 def _acc(page: str) -> str:
-    return page.split("Acceptance (this")[1].split('id="done-means"')[0]
+    return page.split("Acceptance (what")[1].split('id="done-means"')[0]
 
 
 def test_headers_and_two_hit_areas_per_line(store):

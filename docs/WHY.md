@@ -29,11 +29,11 @@ Ticket tools grew up making managers feel in control. These are the habits that 
 | --- | --- | --- |
 | `inbox` | Inbox | Captured: the problem and the evidence for it |
 | `ready` | Ready | Committed: done-means, a range of hours, a review date |
-| `in_progress` | In progress | Someone is holding it. One each |
-| `review` | Review | At the owner's feet, with proof attached |
+| `in_progress` | In progress | Someone is working on it. One each |
+| `review` | Sent for review | Waiting for the owner, with proof attached |
 | `done` | Done | Approved in words, merged, and a lesson buried |
 | `blocked` | Blocked | Says what it is waiting on and who |
-| `rejected` | Let go | Always says why |
+| `rejected` | Rejected | Always says why |
 
 Plain words are the default. If you want a Scottish Terrier named Drew fetching your tickets, or a cat named Soot, that is a per-person setting; the files and the command line never change.
 

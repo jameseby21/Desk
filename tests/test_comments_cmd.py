@@ -92,9 +92,9 @@ def test_a_bad_since_is_a_sentence(store, capsys):
 def test_today_page_has_the_asked_block_with_the_open_count(store, mixed):
     c = TestClient(create_app(store.home))
     page = c.get("/").text
-    assert "James asked" in page and "2 waiting for an answer" in page and "why is this like that?" in page
+    assert "Your questions" in page and "2 questions from you have no answer yet" in page and "why is this like that?" in page
     quiet = c.get("/?cap=rough").text
-    assert "James asked" in quiet
+    assert "Your questions" in quiet
 
 
 def test_review_week_ticket_shows_the_open_count(store, mixed):

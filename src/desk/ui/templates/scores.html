@@ -4,7 +4,7 @@
 <p style="font-size:14px"><a href="/">Today</a> › <a href="/projects">Projects</a> › Scores</p>
 <h1 style="margin-top:6px">Tickets by score: {{ where }}</h1>
 {% if roll.n %}
-<p class="muted" style="margin-top:0">{{ roll.n }} open ticket{{ 's' if roll.n != 1 }} · highest score <b>{{ roll.max }}</b> (this is what ranks the group) · load {{ roll.sum }} (the sum) · mean {{ roll.mean }} (the health). <a href="/doc/docs/PRIORITY.md">How the score works</a>.</p>
+<p class="muted" style="margin-top:0">{{ roll.n }} open ticket{{ 's' if roll.n != 1 }} · highest score <b>{{ roll.max }}</b> (this ranks the group) · total score {{ roll.sum }} · average score {{ roll.mean }} (how healthy the group is). <a href="/doc/docs/PRIORITY.md">How the score works</a>.</p>
 <div class="rows" id="scored">
 {% for t in tickets %}{% set x = sc.of(t) %}
 <a class="trow" href="/ticket/{{ t.id }}">

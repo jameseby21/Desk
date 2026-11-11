@@ -323,9 +323,9 @@ def done(store: Store, t: Ticket, commit: str | None = None) -> Ticket:
 
 def block(store: Store, t: Ticket, on: str, reason: str, actor: str | None = None) -> Ticket:
     if not on.strip():
-        raise RuleError("Stuck needs a name: who or which ticket is it waiting on?")
+        raise RuleError("Blocked needs a name: say who or which ticket it is waiting on.")
     if len(reason.strip()) < 4:
-        raise RuleError("Stuck needs a reason.")
+        raise RuleError("Blocked needs a reason: say why it is blocked.")
     t.meta["blocked_on"] = on.strip()
     return move(store, t, "blocked", actor=actor, note=f"blocked on {on.strip()}: {reason.strip()}")
 
