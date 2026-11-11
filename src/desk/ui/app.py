@@ -51,6 +51,7 @@ BRAND_TYPES = {".svg", ".png", ".jpg", ".jpeg", ".webp", ".gif"}
 _SECTION_ANCHOR = {"Acceptance": "acceptance", "How to validate": "validate", "Evidence": "evidence", "Prompt": "prompt"}  # where a check box sits on the page
 _CHECK_LINE = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+\S")  # a list item in a Definition of Done file is one check
 _ASSET_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._ -]*$")
+SHOW_PRIVATE_COOKIE = "desk_show_private"  # DESK-0254: "1" while the Show private people box in the Act as menu is ticked
 IMAGE_TYPES = "PNG, JPEG, WebP or GIF"
 
 
@@ -289,7 +290,8 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         events = {"url": events_url, "since": events_since} if events_url and styles.load(st.home)["autorefresh"] else None
         me = acting(request)
         can_act = me.confirmed and me.name == st.owner
-        return {"me": me, "unnamed": idmod.unnamed(me), "can_act_as": can_act, "act_people": [p for p in peoplemod.load(st.home).list if p.key != st.owner] if can_act else [],
+        show_private = request.cookies.get(SHOW_PRIVATE_COOKIE) == "1"  # DESK-0254: private people stay out of the Act as menu until the toggle is on
+        return {"me": me, "unnamed": idmod.unnamed(me), "can_act_as": can_act, "act_people": [p for p in peoplemod.load(st.home).list if p.key != st.owner and (show_private or not p.private or p.key == me.as_)] if can_act else [], "show_private": show_private,
                 "build_stale": bs.stale(STAMP_DIR), "stale_text": bs.STALE_TEXT, "assign_dod": ops.ASSIGN_DOD, "events": events, "notice": notice(done_kind, qp.get("at", ""), int(qp.get("dup") or 0) if str(qp.get("dup") or "0").isdigit() else 0), "render": render, "comments_html": comments_html, "request": request, "owner": st.owner, "style": styles.load(st.home), "favicon": FAVICON, "home": str(st.home), "today": dt.date.today().isoformat(),
                 "titles": {k: st.project_title(k) for k in st.projects()},
                 "score_of": sc.of, "columns_of": lambda ts: bv.five(ts, sc.key), **kw}
@@ -1188,7 +1190,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         return r
 
     @app.post("/act-as")
-    def post_act_as(request: Request, person: str = Form(""), back: str = Form("/"), token: str = Form("")):
+    def post_act_as(request: Request, person: str = Form(""), back: str = Form("/"), token: str = Form(""), show_private: str = Form("")):
         """The store owner may act as someone else; the record then reads `james (as chaz)`. Anyone else is refused."""
         if not tokens.use(token):
             return _spent("")
@@ -1197,7 +1199,14 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         if not (me.confirmed and me.name == s.owner):
             return HTMLResponse("<p>Only the owner, once Desk knows who they are, can act as someone else.</p>", status_code=403)
         r = RedirectResponse(back if back.startswith("/") and not back.startswith("//") else "/", status_code=303)
-        if person and peoplemod.load(s.home).get(person):
+        if show_private == "1":  # DESK-0254: the box in the Act as menu; off by default, and unticking it also hides who it shows
+            r.set_cookie(SHOW_PRIVATE_COOKIE, "1", samesite="lax")
+        else:
+            r.delete_cookie(SHOW_PRIVATE_COOKIE)
+        who = peoplemod.load(s.home).get(person) if person else None
+        if who and who.private and show_private != "1":  # a private person cannot be picked while the toggle is off
+            who = None
+        if who:
             r.set_cookie("desk_act_as", peoplemod.load(s.home).get(person).key, samesite="lax")
         else:
             r.delete_cookie("desk_act_as")
