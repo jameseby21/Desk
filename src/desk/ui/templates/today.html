@@ -14,7 +14,7 @@
 <div class="row t-head">
   <div>
     <h1 style="margin:0">{{ long_today }}</h1>
-    <p class="muted" style="margin:2px 0 0">Asks first · <b>{{ v.hand|length }}</b> in hand · {{ v.pile|length }} waiting for review{% if cap == 'rough' %} · a rough week: {{ screen('stale')|lower }} hidden, smallest steps shown{% endif %}</p>
+    <p class="muted" style="margin:2px 0 0">Waiting on you first · <b>{{ v.hand|length }}</b> claimed · {{ v.pile|length }} waiting for review{% if cap == 'rough' %} · a rough week: {{ screen('stale')|lower }} hidden, smallest steps shown{% endif %}</p>
   </div>
   <div class="row t-controls">
     <a class="btn ball" href="/new" id="new-ticket">New ticket</a>
@@ -23,7 +23,7 @@
     {{ dropdown("Sprint", "sprint", schips, sprint, "/", fhidden) }}
     {{ dropdown("Tag", "tag", gchips, tag, "/", fhidden) }}
     {{ dropdown("Type", "type", ychips, ttype, "/", fhidden) }}
-    <div class="row cap" role="group" aria-label="How is the week">
+    <div class="row cap" role="group" aria-label="How your week is going">
       <a href="/?cap=good{% if board_q %}&amp;{{ board_q }}{% endif %}" class="{% if cap=='good' %}on{% endif %}">Good</a>
       <a href="/?cap=normal{% if board_q %}&amp;{{ board_q }}{% endif %}" class="{% if cap=='normal' %}on{% endif %}">Normal</a>
       <a href="/?cap=rough{% if board_q %}&amp;{{ board_q }}{% endif %}" class="{% if cap=='rough' %}on rough{% endif %}">Rough</a>
@@ -47,10 +47,10 @@
   {% if v.needs %}<div class="rows">{% for t in v.needs %}{{ row(t, 'ask:' ~ v.ask_label(t), v.due_text(t)) }}{% endfor %}</div>
   {% else %}{{ empty(style, "Nothing is waiting on you.") }}{% endif %}
   <div class="card asked" id="asked">
-    <span class="label">{{ owner|capitalize }} asked</span>
-    {% if asked %}<b>{{ asked|length }} waiting for an answer</b> <span class="muted">(your comments with no later reply from patch and no later change to the ticket)</span>
+    <span class="label">Your questions</span>
+    {% if asked %}<b>{{ asked|length }} question{{ 's' if asked|length != 1 }} from you {{ 'have' if asked|length != 1 else 'has' }} no answer yet</b> <span class="muted">(comments you wrote that nobody has replied to, on tickets that have not changed since)</span>
     <ul class="mentions">{% for c in asked[:8] %}<li><a class="tid" href="/ticket/{{ c.ticket_id }}#comments">{{ c.ticket_id }}</a> <span class="muted">{{ c.when.strftime('%b %d %H:%M') }}</span> {{ c.text[:140] }}{% if c.text|length > 140 %}…{% endif %}</li>{% endfor %}{% if asked|length > 8 %}<li class="muted">and {{ asked|length - 8 }} more: <code>drew comments --author {{ owner }} --unanswered</code></li>{% endif %}</ul>
-    {% else %}<span class="muted">Nothing waiting for an answer.</span>{% endif %}
+    {% else %}<span class="muted">All your questions have an answer.</span>{% endif %}
   </div>
 </section>
 
@@ -62,7 +62,7 @@
 {% endif %}
 
 <section class="t-sec" id="in-hand">
-  <h2>{{ heading('hand') }} <small>Being worked on now, one each</small></h2>
+  <h2>{{ heading('hand') }} <small>Being worked on now, one per person</small></h2>
   {% if v.hand %}<div class="rows">{% for t in v.hand_shown %}{{ row(t, who(t.meta.get('assignee') or t.meta.get('owner')), '', t.meta.get('smallest_step') if cap == 'rough' else '') }}{% endfor %}</div>
   {% if v.hand_more %}<details class="fold"><summary>and {{ v.hand_more|length }} more · <b>Show</b></summary><div class="rows">{% for t in v.hand_more %}{{ row(t, who(t.meta.get('assignee') or t.meta.get('owner')), '', t.meta.get('smallest_step') if cap == 'rough' else '') }}{% endfor %}</div></details>{% endif %}
   {% else %}{{ empty(style, "Nothing is being worked on right now.") }}{% endif %}
@@ -78,8 +78,8 @@
   {% set oc = v.other_counts %}
   <p class="muted" style="margin:0">Also open, not shown here:
     {% for st, label in (('ready', 'ready'), ('inbox', 'in inbox'), ('triage', 'in triage'), ('blocked', 'blocked'), ('approved', 'approved, waiting for merge')) %}{% if oc[st] %}<a href="/search?q=status%3A{{ st }}">{{ oc[st] }} {{ label }}</a> · {% endif %}{% endfor %}<a href="/board">the board</a></p>
-  {% if stale %}<details class="fold"><summary>{{ screen('stale') }} · {{ stale|length }} untouched past the stale window · <b>Show</b></summary>
-    <p class="muted">Keep each with a reason, or let it go with one.</p><div class="rows">{% for t in stale[:8] %}{{ row(t, t.project) }}{% endfor %}</div>{% if stale|length > 8 %}<p class="muted"><a href="/search?q=is%3Astale">All {{ stale|length }} &rarr;</a></p>{% endif %}</details>{% endif %}
+  {% if stale %}<details class="fold"><summary>{{ screen('stale') }} · {{ stale|length }} not touched for a long time · <b>Show</b></summary>
+    <p class="muted">Keep each one with a reason, or close it with a reason.</p><div class="rows">{% for t in stale[:8] %}{{ row(t, t.project) }}{% endfor %}</div>{% if stale|length > 8 %}<p class="muted"><a href="/search?q=is%3Astale">All {{ stale|length }} &rarr;</a></p>{% endif %}</details>{% endif %}
   <details class="fold"><summary>Decided this week · {{ decided|length }} · <b>Show</b></summary>
   {% if decided %}
   <table><tr><th>Ticket</th><th>Status</th><th>Decision</th></tr>

@@ -125,7 +125,7 @@ def test_board_and_company_rows_show_main_tickets_only_with_the_roll_up(store):
     m, icon, ask, plain = _fx(store)
     c = TestClient(create_app(store.home))
     top = c.get("/board").text
-    assert re.search(r"1 project · 2 open · 1 in hand · 0 review", top), top  # the main ticket and the plain one; not the two subtickets
+    assert re.search(r"1 project · 2 open · 1 claimed · 0 sent for review", top), top  # the main ticket and the plain one; not the two subtickets
     page = c.get("/board?company=unsorted&open=*&g=*").text
     cards = re.findall(r'<div class="cc-title" title="([^"]*)"', page)
     assert MAIN in cards and "Plain ready ticket" in cards and ICON not in cards and INPUT not in cards

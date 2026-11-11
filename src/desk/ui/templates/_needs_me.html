@@ -6,18 +6,18 @@
 <section class="card nm" id="needs-me" aria-label="Needs me">
   <div class="nm-head">
     <h2>Needs me</h2><span class="nm-count{% if not nm %} zero{% endif %}">{{ nm|length }}</span>
-    <span class="nm-note">{{ asks|length }} asks for you · {{ changes|length }} changed by someone else</span>
+    <span class="nm-note">{{ asks|length }} need your answer · {{ changes|length }} changed by someone else</span>
     <span class="nm-tools">
       {% if changes %}<form class="post-once" method="post" action="/needs-me/seen" data-progress="Sending,Saving,Done"><input type="hidden" name="token" value="{{ token() }}"><input type="hidden" name="all" value="1"><input type="hidden" name="next" value="{{ back }}"><button class="ghostb" type="submit">Mark all changes seen</button></form>{% endif %}
       <a class="rowb" href="{{ all_open_href }}">All open ({{ n_open }}) &rarr;</a>
     </span>
   </div>
-  {% if asks %}<span class="label">Asks for you</span>
+  {% if asks %}<span class="label">Needs your answer</span>
   {% for i in asks[:shown] %}<div class="nm-row" data-ticket="{{ i.id }}">
     <span><span class="nm-ask">{{ i.chip }}</span>{% if i.emergency %}<span class="nm-emerg">Emergency</span>{% endif %}</span>
     <span class="nm-title"><a href="/ticket/{{ i.id }}" class="tid" data-status="{{ i.ticket.status }}">{{ i.id }} &middot; {{ i.ticket.meta.get('title') }}</a>{{ part(i) }}<span class="nm-why">{{ why(i) }}</span></span>
     <a class="rowb" href="/ticket/{{ i.id }}#decision">{{ i.act }}</a>
-  </div>{% endfor %}{% if asks|length > shown %}<a class="nm-more" href="{{ more_href }}">{{ asks|length - shown }} more asks · see them all on the board &rarr;</a>{% endif %}{% endif %}
+  </div>{% endfor %}{% if asks|length > shown %}<a class="nm-more" href="{{ more_href }}">{{ asks|length - shown }} more need your answer · see them all on the board &rarr;</a>{% endif %}{% endif %}
   {% if changes %}<span class="label">Changed since you last acted</span>
   {% for i in changes[:shown] %}<div class="nm-row" data-ticket="{{ i.id }}">
     <span><span class="nm-chg">Changed</span>{% if i.emergency %}<span class="nm-emerg">Emergency</span>{% endif %}</span>
@@ -25,6 +25,6 @@
     <span class="nm-btns"><form class="post-once" method="post" action="/needs-me/seen" data-progress="Sending,Saving,Done"><input type="hidden" name="token" value="{{ token() }}"><input type="hidden" name="ids" value="{{ i.id }}"><input type="hidden" name="next" value="{{ back }}"><button class="ghostb" type="submit">Mark seen</button></form><a class="rowb" href="/ticket/{{ i.id }}">Open</a></span>
   </div>{% endfor %}{% if changes|length > shown %}<a class="nm-more" href="{{ more_href }}">{{ changes|length - shown }} more changes · see them all on the board &rarr;</a>{% endif %}{% endif %}
   {% if not nm %}<div class="nm-empty"><b>{{ empty_head }}</b><span class="nm-note">{{ empty_body }}</span></div>{% endif %}
-  <span class="nm-note nm-foot">Asks leave this list only when you answer them. Changes leave when you act on the ticket (reply, check a line, answer, move it) or press Mark seen. Opening or reading a ticket doesn't count, which is why Mark seen exists.</span>
+  <span class="nm-note nm-foot">A request leaves this list only when you answer it. Changes leave when you act on the ticket (reply, check a line, answer, move it) or press Mark seen. Opening or reading a ticket does not count, so use Mark seen when you only needed to read it.</span>
 </section>
 {%- endmacro %}

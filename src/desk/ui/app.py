@@ -1130,7 +1130,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         except (KeyError, RuleError, ValueError) as e:
             return refused(e) if js else _back(ticket_id, str(e), anchor="acceptance")
         if js:
-            return JSONResponse({"ok": True, "message": f"Split into {new.id}. This ticket now lists it under blocks and asks for the completion decision.", "new": new.id, "stamp": str(ev.ticket_stamp(s, ticket_id))})
+            return JSONResponse({"ok": True, "message": f"Split into {new.id}. This ticket now waits on it, and you still need to decide whether this one counts as done as scoped.", "new": new.id, "stamp": str(ev.ticket_stamp(s, ticket_id))})
         return RedirectResponse(f"/ticket/{new.id}", status_code=303)
 
     @app.post("/ticket/{ticket_id}/outcome")

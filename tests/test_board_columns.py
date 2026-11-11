@@ -39,14 +39,14 @@ def test_five_working_columns_and_one_finished_line(store):
     _mk(store, "X1", track="T", status="rejected")
     page = _client(store).get("/board?open=desk&g=desk:t").text
     heads = re.findall(r'<h3 class="colhead"[^>]*><span>([^<]*)</span>', page)
-    assert heads == ["Inbox", "Ready", "In progress", "Review", "Blocked"]
+    assert heads == ["Inbox", "Ready", "In progress", "Sent for review", "Blocked"]
     inbox = page[page.index('data-col="inbox"'):page.index('data-col="ready"')]
-    assert "Triage" in inbox and "I" in _cards(inbox) and "Tr" in _cards(inbox)
+    assert "To sort" in inbox and "I" in _cards(inbox) and "Tr" in _cards(inbox)
     prog = page[page.index('data-col="in_progress"'):page.index('data-col="review"')]
-    assert "Sent back" in prog and 'class="tag red"' in prog and _cards(prog) == ["P", "S"] or sorted(_cards(prog)) == ["P", "S"]
+    assert "Changes requested" in prog and 'class="tag red"' in prog and _cards(prog) == ["P", "S"] or sorted(_cards(prog)) == ["P", "S"]
     assert page.count('class="finished"') == 1
     fin = page[page.index('class="finished"'):]
-    assert "1 done" in fin and "1 approved" in fin and "1 let go" in fin
+    assert "1 done" in fin and "1 approved" in fin and "1 rejected" in fin
     assert "D1" in _cards(fin) and "A1" in _cards(fin) and "X1" in _cards(fin)  # one click away, nothing lost
     assert "D1" not in _cards(page[:page.index('class="finished"')])
 

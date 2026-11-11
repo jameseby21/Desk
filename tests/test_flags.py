@@ -37,11 +37,11 @@ def _page(store, tid, style="plain"):
 
 
 def _states_as_plain(html, style):
-    """Each style has its own word per state (DESK-0037: Dogs say Sniffed, Thrown, Fetching); F5 is about the flag component, so those
+    """Each style has its own word per state (DESK-0037, DESK-0253: Dogs add a dog word in brackets); F5 is about the flag component, so those
     words are read as the Plain ones before pages of two styles are compared."""
     for st, word in words.TABLES[style].items():
         if word != words.PLAIN[st]:
-            html = re.sub(rf"\b{re.escape(word)}\b", words.PLAIN[st], html)
+            html = html.replace(word, words.PLAIN[st])  # Dogs write the plain label first, then the dog word in brackets (DESK-0253)
     return html
 
 
@@ -93,7 +93,7 @@ def test_the_three_styles_differ_only_in_the_empty_state(store):
     pages = {s: _states_as_plain(_page(store, clean.id, s), s) for s in ("plain", "dogs", "cat")}
     node = re.compile(r'<span class="flag-empty" title="[^"]*">[^<]*</span>')
     assert len({node.search(p).group(0) for p in pages.values()}) == 3
-    assert "Nothing flagged" in pages["plain"] and "Nothing to growl at" in pages["dogs"] and "Nothing hissed at" in pages["cat"]
+    assert "Nothing flagged" in pages["plain"] and "nothing to growl at" in pages["dogs"] and "nothing to hiss at" in pages["cat"]
     assert len({node.sub("", p) for p in pages.values()}) == 1
 
 

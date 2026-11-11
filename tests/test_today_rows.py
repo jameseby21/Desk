@@ -30,7 +30,7 @@ def test_order_is_needs_you_then_in_hand_then_review_preview_with_all_n(store):
     hand = _mk(store, "Fix the double comment", status="in_progress", priority="p0", type="bug")
     review = [_mk(store, f"Built thing {i}", status="review") for i in range(7)]
     page = _page(store)
-    assert page.index("Needs you") < page.index("In hand") < page.index("Waiting for review")
+    assert page.index("Waiting on you") < page.index("Claimed tickets") < page.index("Waiting for review")
     # since the 2026-11-10 review an ask Needs me draws (the block above Needs you, DESK-0149) is not drawn again under Needs you, so
     # the ask sits once, as a Needs me row, and the first plain row is the ticket in hand
     assert f'class="nm-row" data-ticket="{ask.id}"' in page and ask.id not in _rows(page)
@@ -45,7 +45,7 @@ def test_rows_not_cards_and_only_bug_and_urgent_badges(store):
     _mk(store, "Hot bug", status="in_progress", priority="p0", type="bug", tags=["x"], track="First")
     _mk(store, "Plain feature", status="in_progress", priority="p2", type="feature", tags=["y"])
     page = _page(store)
-    assert 'class="card' not in page.split("<main>")[1].split("In hand")[1].split("Waiting for review")[0]
+    assert 'class="card' not in page.split("<main>")[1].split("Claimed tickets")[1].split("Waiting for review")[0]
     row = lambda title: re.search(r'<a class="trow[^>]*>(?:(?!</a>).)*' + title + r'.*?</a>', page, re.S).group(0)
     hot, plain = row("Hot bug"), row("Plain feature")
     assert "Urgent" in hot and "Bug" in hot
@@ -77,4 +77,4 @@ def test_the_rest_of_v0_is_folded_not_removed(store):
     _mk(store, "Old", status="ready", updated="2000-01-01")
     page = _page(store)
     assert "Decided this week" in page and "Done lately" in page
-    assert "James asked" in page and "Nothing waiting" in page
+    assert "Your questions" in page and "All your questions have an answer." in page

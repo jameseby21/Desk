@@ -19,7 +19,7 @@ KEYS = ("project", "title", "type", "priority", "size", "owner", "assignee", "as
         "parent")  # DESK-0208: Part of, the main ticket a subticket belongs to
 SAY = {
     "project": "Pick the project this ticket belongs to.",
-    "title": "Give the ticket a title, a few words with the ask first (Approve, Choose, Fix, Add).",
+    "title": "Give the ticket a title, a few words, starting with what you want done (Approve, Choose, Fix, Add).",
     "acceptance": "Write at least one Acceptance line: something a person can check to say this is done.",
 }
 

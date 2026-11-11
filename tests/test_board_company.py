@@ -58,7 +58,7 @@ def test_default_board_is_five_company_rows_and_nothing_else(store):
     assert ">Client work</b>" in page and ">JA Insights</span>" in page
     row = page[page.index(f'data-slug="{JEBYLABS}"'):]
     row = row[:row.index("</a>")]
-    assert "1 project · 3 open · 1 in hand · 1 review · 25% done" in row and "top p0 &times;1" in row
+    assert "1 project · 3 open · 1 claimed · 1 sent for review · 25% done" in row and "top p0 &times;1" in row
     assert 'href="/board?company=' in page
 
 

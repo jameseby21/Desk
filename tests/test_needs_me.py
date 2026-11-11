@@ -125,15 +125,15 @@ def test_today_first_block_counts_and_mark_seen_buttons(store):
     c = TestClient(create_app(store.home))
     page = c.get("/").text
     assert page.index('id="immediate"') < page.index('id="needs-me"') < page.index('id="needs-you"')  # DESK-0193 keeps the top row
-    assert "2 asks for you · 1 changed by someone else" in page
-    assert page.count("Asks for you") == 1 and "Changed since you last acted" in page
+    assert "2 need your answer · 1 changed by someone else" in page
+    assert page.count("Needs your answer") == 1 and "Changed since you last acted" in page
     assert "Mark all changes seen" in page and "All open (" in page
     assert '<span class="nm-count">3</span>' in page
     tok = re.search(r'action="/needs-me/seen"[^>]*>\s*<input type="hidden" name="token" value="([^"]+)"', page).group(1)
     r = c.post("/needs-me/seen", data={"token": tok, "all": "1"}, follow_redirects=False)
     assert r.status_code == 303
     after = c.get("/").text
-    assert "2 asks for you · 0 changed by someone else" in after and "Mark all changes seen" not in after
+    assert "2 need your answer · 0 changed by someone else" in after and "Mark all changes seen" not in after
 
 
 def test_board_chip_filters_and_shows_reason_lines(store):
@@ -155,15 +155,15 @@ def test_only_the_empty_state_differs_across_styles(store):
         page = TestClient(create_app(store.home)).get("/").text
         outs[name] = re.search(r'<div class="nm-empty">(.*?)</div>', page, re.S).group(1)
     assert "Nothing needs you" in outs["plain"]
-    assert "Nothing to fetch for you" in outs["dogs"]
-    assert "Nothing on your doorstep" in outs["cat"]
+    assert "Nothing needs you (nothing to fetch)" in outs["dogs"]
+    assert "nothing on your doorstep" in outs["cat"]
 
 
 def test_cli_needs_me_prints_the_reason_line(store, capsys, monkeypatch):
     ask, due, changed, *_ = _fixture(store)
     main(["--home", str(store.home), "needs-me"])
     out = capsys.readouterr().out
-    assert re.search(r"ask: choose · 3 options · due (Nov 10|Tue)", out) and "2 asks for you · 1 changed by someone else" in out
+    assert re.search(r"ask: choose · 3 options · due (Nov 10|Tue)", out) and "2 need your answer · 1 changed by someone else" in out
     assert "Only viewed" not in out
     main(["--home", str(store.home), "needs-me", "--seen", changed.id])
     capsys.readouterr()
@@ -173,13 +173,13 @@ def test_cli_needs_me_prints_the_reason_line(store, capsys, monkeypatch):
 
 def test_today_folds_needs_me_after_a_few_rows_and_links_the_rest_to_the_board(store):
     """Protects: the 2026-11-10 review found Today drawing 570 Needs me rows on James's store. Each group draws needs_me.SHOWN rows,
-    then one line "N more asks · see them all on the board" to /board?needs=1; the count badge still says the whole number."""
+    then one line "N more need your answer · see them all on the board" to /board?needs=1; the count badge still says the whole number."""
     for i in range(12):
         _decision(store, f"Choose thing {i}", review_by="2026-11-20")
     page = TestClient(create_app(store.home)).get("/").text
     block = page.split('id="needs-me"')[1].split("</section>")[0]
     assert block.count('class="nm-row"') == needs_me.SHOWN
-    assert f'<a class="nm-more" href="/board?needs=1">{12 - needs_me.SHOWN} more asks · see them all on the board &rarr;</a>' in block
+    assert f'<a class="nm-more" href="/board?needs=1">{12 - needs_me.SHOWN} more need your answer · see them all on the board &rarr;</a>' in block
     assert '<span class="nm-count">12</span>' in block
 
 
@@ -212,7 +212,7 @@ def test_a_ticket_needs_me_draws_is_not_drawn_again_under_in_hand_or_waiting_for
     for i in (changed.id, built.id):
         assert f'data-ticket="{i}"' in nm_block, i
         assert f'href="/ticket/{i}"' not in below, i
-    assert "<b>3</b> in hand" in page  # the counts line still counts the changed ticket among the three in hand
+    assert "<b>3</b> claimed" in page  # the counts line still counts the changed ticket among the three in hand
 
 
 # -- a real browser at phone width: the 12 px floor ----------------------------------------------------------------------------------

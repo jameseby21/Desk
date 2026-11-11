@@ -2,7 +2,7 @@
 {% from "_filters.html" import dropdown %}
 {% from "_bcols.html" import columns with context %}
 {% macro counts_line(c, n_open) -%}
-{{ n_open }} open{% if c['ready'] %} · {{ c['ready'] }} {{ screen('ready')|lower }}{% endif %}{% if c['in_progress'] or c['claimed'] %} · {{ c['in_progress'] + c['claimed'] }} {{ screen('in_progress')|lower }}{% endif %}{% if c['review'] %} · {{ c['review'] }} dropped{% endif %}{% if c['blocked'] %} · {{ c['blocked'] }} stuck{% endif %}
+{{ n_open }} open{% if c['ready'] %} · {{ c['ready'] }} {{ screen('ready')|lower }}{% endif %}{% if c['in_progress'] or c['claimed'] %} · {{ c['in_progress'] + c['claimed'] }} {{ screen('in_progress')|lower }}{% endif %}{% if c['review'] %} · {{ c['review'] }} {{ screen('review')|lower }}{% endif %}{% if c['blocked'] %} · {{ c['blocked'] }} {{ screen('blocked')|lower }}{% endif %}
 {%- endmacro %}
 {% macro top_chip(top) -%}{% if top %}<span class="chip {% if top == 'p0' %}red{% elif top == 'p1' %}ball{% endif %}" title="Highest priority among the open tickets here">top {{ top }}</span>{% endif %}{%- endmacro %}
 {% block title %}Desk · Board{% endblock %}
@@ -20,7 +20,7 @@
   {% for name, label, plural in (('project', 'Project', 'projects'), ('assignee', 'Assignee', 'people'), ('track', 'Track', 'tracks'), ('sprint', 'Sprint', 'sprints'), ('tag', 'Tag', 'tags'), ('type', 'Type', 'types')) %}{% if show[name] or name in ('project','assignee','track') %}
   {{ dropdown(label, name, opts[name], plural, tokens|selectattr('facet', 'equalto', name)|map(attribute='label')|list, fhidden, clear[name]) }}{% endif %}{% endfor %}
   {% for tk in tokens %}<a class="tok" href="{{ tk.href }}" title="Remove {{ tk.label }}">{{ tk.label }} <span aria-hidden="true">&times;</span><span class="vh"> remove</span></a>{% endfor %}
-  <span class="views">Views: <a href="{{ mine_url }}">Mine</a> <a href="{{ needs_href }}" id="needs-me-view"{% if needs %} aria-current="page"{% endif %} title="Asks for you and changes by someone else since you last acted, as on Today">Needs me · {{ nm_count }}</a>{% if needs %} <a href="{{ all_href }}">All open</a>{% endif %}{% if tokens %} <a href="{{ links.clear_all }}">Clear all</a>{% endif %}</span>
+  <span class="views">Views: <a href="{{ mine_url }}">Mine</a> <a href="{{ needs_href }}" id="needs-me-view"{% if needs %} aria-current="page"{% endif %} title="Tickets waiting on you, and tickets someone else changed since you last acted, as on Today">Needs me · {{ nm_count }}</a>{% if needs %} <a href="{{ all_href }}">All open</a>{% endif %}{% if tokens %} <a href="{{ links.clear_all }}">Clear all</a>{% endif %}</span>
 </div>
 {% if level == 'company' %}
 <p class="muted" style="margin:2px 0 10px">Companies first. Open one to see its projects.</p>
@@ -29,7 +29,7 @@
 <a class="bcomp" href="{{ c.href }}" data-slug="{{ c.slug }}">
   <span class="initial">{{ (c.title or '?')[0]|upper }}</span>
   <span class="bctitle"><b class="bname" title="{{ c.name }}">{{ c.title }}</b>{% if c.subtitle %}<span class="muted bsub" title="{{ c.subtitle }}">{{ c.subtitle }}</span>{% endif %}</span>
-  <span class="bcounts" title="{{ c.projects }} project{{ 's' if c.projects != 1 }}; done is a share of every ticket not let go">{{ c.projects }} project{{ 's' if c.projects != 1 }} · {{ c.open }} open · {{ c.in_hand }} in hand · {{ c.review }} review · {{ c.done_pct }}% done{% if c.open %} · <span title="{{ c.score_text }}: the highest score among the open tickets ranks the company, load is their sum, mean their health">score {{ c.score }}</span>{% endif %}</span>
+  <span class="bcounts" title="{{ c.projects }} project{{ 's' if c.projects != 1 }}; done is a share of every ticket that was not rejected">{{ c.projects }} project{{ 's' if c.projects != 1 }} · {{ c.open }} open · {{ c.in_hand }} claimed · {{ c.review }} sent for review · {{ c.done_pct }}% done{% if c.open %} · <span title="{{ c.score_text }}: the highest score among the open tickets ranks the company; the total is their sum and the average shows how healthy the company is">score {{ c.score }}</span>{% endif %}</span>
   {% if c.top %}<span class="chip {% if c.top == 'p0' %}red{% elif c.top == 'p1' %}ball{% endif %}" title="Highest priority among the open tickets here, and how many carry it">top {{ c.top }} &times;{{ c.top_n }}</span>{% endif %}
 </a>
 {% else %}<p class="muted">No tickets match. {% if tokens %}<a href="/board">Clear the filters</a>.{% endif %}</p>
