@@ -294,6 +294,10 @@ class Store:
             parts = id_parts(t.id)
             if parts and parts[0] == key:
                 n = max(n, parts[1])
+        for rid in getattr(self, "reserved_ids", ()):  # ids open store pull requests add (DESK-0248)
+            parts = id_parts(rid)
+            if parts and parts[0] == key:
+                n = max(n, parts[1])
         return f"{key}-{n + 1:04d}"
 
     def path_for(self, ticket: Ticket) -> Path:

@@ -65,6 +65,9 @@ def cmd_new(args):
     s = _store(args)
     s.sync_before()
     dod = [x.strip() for x in (args.dod or "core").split(",") if x.strip()]
+    from . import reserved
+
+    s.reserved_ids = {tid for _, tid, _ in reserved.open_pr_tickets(s)}  # DESK-0248
     try:
         t = ops.new(s, args.title, args.project, args.type, priority=args.priority, size=args.size, owner=args.owner, dod=dod, source=args.source or "", assignee=args.assignee)
         if args.deadline:
@@ -386,6 +389,10 @@ def cmd_comment(args):
 def cmd_validate(args):
     s = _store(args)
     errors, warnings = validate_store(s)
+    if getattr(args, "prs", False):
+        from . import reserved
+
+        errors += reserved.collisions(s, reserved.open_pr_tickets(s))
     for w in warnings:
         print(f"warning: {w}")
     for e in errors:
@@ -1456,6 +1463,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp.set_defaults(fn=cmd_needs_me)
 
     sp = sub.add_parser("validate", help="schema, lifecycle rules, dangling depends_on (exit 1 on errors)")
+    sp.add_argument("--prs", action="store_true", help="also report open store pull requests whose ticket id names a different ticket on main (needs gh)")
     sp.set_defaults(fn=cmd_validate)
 
     sp = sub.add_parser("brand-check", help="projects with no brand block or a missing mark file; --create opens a ticket for each")
