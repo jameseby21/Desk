@@ -116,7 +116,7 @@ def test_page_has_real_links_the_position_and_the_picker(store, world):
     assert 'name="scope"' in page and 'name="order"' in page and "By priority score" in page and "Across the company" in page and "Within this sprint" in page
     end = c.get(f"/ticket/{w['d']}").text
     assert 'rel="prev"' not in end and "first ticket in this order" in end
-    assert '<script src="/static/nav.js"' in page
+    assert '<script src="/static/nav.js?v=' in page
 
 
 def test_picking_an_order_is_remembered_and_changes_the_links(store, world):

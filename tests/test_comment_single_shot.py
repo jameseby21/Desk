@@ -91,7 +91,7 @@ def test_the_page_carries_one_key_and_the_posting_words(store):
     assert 'data-timeout-ms="10000"' in form and 'data-posting="Posting…"' in form
     assert re.search(r'name="token" value="[^"]+"', form) and ">Post</button>" in form
     assert 'id="post-status"' in form and 'aria-live="polite"' in form
-    assert '<script src="/static/composer.js" defer>' in page
+    assert '<script src="/static/composer.js?v=' in page
 
 
 LIVE = """<script>addEventListener('load',function(){if(!document.getElementById('composer'))return;window.__alive=1;

@@ -47,7 +47,7 @@ def test_css_served_with_tokens(store):
     assert r.status_code == 200
     for token in ("--paper:#F5F3EC", "--ball:#C8F03C", "--red:#D7262E", "Bricolage Grotesque", "prefers-reduced-motion"):
         assert token in r.text
-    assert 'href="/static/desk.css"' in client(store).get("/").text
+    assert 'href="/static/desk.css?v=' in client(store).get("/").text
 
 
 def test_about_without_repo_says_where_to_look(store, monkeypatch):

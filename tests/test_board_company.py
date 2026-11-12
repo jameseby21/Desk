@@ -177,7 +177,7 @@ def test_no_horizontal_scroll_at_the_company_and_project_levels(store, width, le
     _profile(store, "lab", "Lab", "Research with a very long company name that goes on and on (and a long parenthetical too, for good measure)")
     html = TestClient(create_app(store.home)).get(level).text
     css = (STATIC / "desk.css").read_text(encoding="utf-8")
-    html = re.sub(r'<link rel="stylesheet" href="/static/desk.css">', lambda m: f"<style>{css}</style>", html)
+    html = re.sub(r'<link rel="stylesheet" href="/static/desk.css[^"]*">', lambda m: f"<style>{css}</style>", html)
     html = re.sub(r'<link rel="stylesheet" href="https://fonts[^>]*>|<link rel="preconnect"[^>]*>', "", html)
     html = re.sub(r'<script src="/static/[^"]*"[^>]*></script>', "", html).replace("</body>", MEASURE + "</body>")
     data = run_in_browser(html, width)

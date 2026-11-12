@@ -24,7 +24,7 @@ def test_page_carries_paste_handler(store):
     c = _client(store)
     page = c.get(f"/ticket/{t.id}").text
     js = c.get("/static/shots.js").text  # DESK-0124: the handlers live in static/shots.js now
-    assert f'data-attach="/ticket/{t.id}/attach"' in page and '<script src="/static/shots.js"' in page
+    assert f'data-attach="/ticket/{t.id}/attach"' in page and '<script src="/static/shots.js?v=' in page
     assert 'addEventListener("paste"' in js and 'addEventListener("drop"' in js
 
 

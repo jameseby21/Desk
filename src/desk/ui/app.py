@@ -199,6 +199,16 @@ def acting(request) -> "idmod.Actor":
     return request.scope.get("state", {}).get("actor") or idmod.Actor("desk", "person", "", "ui", "assumed-owner", False)
 
 
+class RevalidatingStaticFiles(StaticFiles):
+    """DESK-0257: `Cache-Control: no-cache` on every /static response, so a browser checks the ETag before it reuses a script or stylesheet
+    (without a header, browsers guess a freshness time and an old progress.js outlived the upgrade that fixed it)."""
+
+    def file_response(self, *args, **kwargs):
+        r = super().file_response(*args, **kwargs)
+        r.headers["Cache-Control"] = "no-cache"
+        return r
+
+
 def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastAPI:
     def who_html(key) -> Markup:
         """An owner or assignee as a colour dot and the display name from people.yaml; a value nobody listed renders as written."""
@@ -229,10 +239,11 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
     shown = {"censor": None, "style": "plain"}  # per request: the profanity filter (None when switched off) and the style that picks the words on screen
     templates = Jinja2Templates(directory=str(TEMPLATES))
     templates.TemplateResponse = timing.timed_render(templates.TemplateResponse)
-    mermaid_src = "/static/mermaid.min.js" if (STATIC / "mermaid.min.js").exists() else MERMAID_CDN
+    build_id = quote(ver.build_commit(), safe="")  # DESK-0257: the build id on every /static address, so an upgrade is a new address
+    mermaid_src = f"/static/mermaid.min.js?v={build_id}" if (STATIC / "mermaid.min.js").exists() else MERMAID_CDN
     templates.env.globals.update(deadline_of=lambda t: (lambda d, k: (k, d.isoformat(), deadlines.words(deadlines.days_left(t)), deadlines.days_left(t) < 0) if d else None)(*deadlines.of(t)), ladder=ladder.shape, readflag=readability.flag_text, cmds=commands.parse, screen=lambda st: words.screen(st, shown["style"]), heading=lambda key: words.heading(key, shown["style"]), md=md_html, has_mermaid=has_mermaid, statuses=STATUSES,
                                  sections=SECTIONS, mermaid_src=mermaid_src, by_project=by_project, token=tokens.issue, check_summary=lambda text: Markup(summary_html(text)), track_slug=trk.track_slug, track_of=trk.track_of,
-                                 build=ver.describe(), who=who_html, person=person_name, sprint_slug=lambda n: sprintmod.slugify(str(n), 60), ask_badge=lambda t: ((asks.ask_of(t) or {}).get("kind") or "").capitalize(),
+                                 build=ver.describe(), asset=lambda path: f"/static/{path}?v={build_id}", who=who_html, person=person_name, sprint_slug=lambda n: sprintmod.slugify(str(n), 60), ask_badge=lambda t: ((asks.ask_of(t) or {}).get("kind") or "").capitalize(),
                                  card_extra=lambda t, st: [x for x in [str(t.meta.get("type") or "")] + ([words.screen("stale")] if st.is_stale(t) else []) + [f"#{x}" for x in t.tags] if x],
                                  card_age=bv.age_days, card_review=bv.review_by_text, card_proof=bv.proof_dot, columns_of=bv.five, finished_of=bv.finished, first_cards=bv.FIRST_CARDS)
     # DESK-0135: `score_of` and the score-ordered `columns_of` are set per request in ctx(), scored once; never per card (the 2026-11-10 review
@@ -245,7 +256,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
     templates.env.finalize = finalize
     templates.env.filters["urlencode_path"] = lambda v: quote(str(v), safe="/#")
     if STATIC.exists():
-        app.mount("/static", StaticFiles(directory=str(STATIC)), name="static")
+        app.mount("/static", RevalidatingStaticFiles(directory=str(STATIC)), name="static")
 
     def store() -> Store:
         return Store(home or find_home())

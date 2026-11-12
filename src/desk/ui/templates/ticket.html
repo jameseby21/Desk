@@ -69,7 +69,7 @@
   </details>
   {% endif %}
 </section>
-<script src="/static/timeline.js" defer></script>
+<script src="{{ asset('timeline.js') }}" defer></script>
 {% endif %}
 
 <div class="cols">
@@ -290,11 +290,11 @@
   </aside>
 </div>
 <noscript><style>.nr-panel[hidden]{display:block}</style></noscript>
-<script src="/static/nav.js" defer></script>
-<script src="/static/shots.js" defer></script>
-<script src="/static/checks.js" defer></script>
-<script src="/static/composer.js" defer></script>
-<script src="/static/copy.js" defer></script>
+<script src="{{ asset('nav.js') }}" defer></script>
+<script src="{{ asset('shots.js') }}" defer></script>
+<script src="{{ asset('checks.js') }}" defer></script>
+<script src="{{ asset('composer.js') }}" defer></script>
+<script src="{{ asset('copy.js') }}" defer></script>
 {% if mermaid %}
 <script src="{{ mermaid_src }}"></script>
 <script>if (window.mermaid) { mermaid.initialize({ startOnLoad: true, securityLevel: "strict" }); }</script>
