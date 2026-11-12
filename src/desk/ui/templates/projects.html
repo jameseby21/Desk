@@ -55,7 +55,7 @@
 </div>
 {% if not rows %}{% if filtering %}<p class="muted">No project has a ticket that matches these filters. <a href="{{ clear_all }}">Clear filters</a></p>
 {% else %}<p class="muted">No projects yet. Add <code>projects/&lt;key&gt;.md</code> files to the store.</p>{% endif %}{% endif %}
-<script src="/static/board-filter.js" defer></script>
+<script src="{{ asset('board-filter.js') }}" defer></script>
 <script>
 (function () {
   function sync() {

@@ -189,7 +189,7 @@ def test_timeline_in_a_real_browser_no_sideways_scroll_one_line_latest_and_filte
     html = TestClient(create_app(store.home)).get(f"/ticket/{t.id}").text
     css = (STATIC / "desk.css").read_text(encoding="utf-8")
     js = (STATIC / "timeline.js").read_text(encoding="utf-8")
-    html = html.replace('<link rel="stylesheet" href="/static/desk.css">', f"<style>{css}</style>")
+    html = re.sub(r'<link rel="stylesheet" href="/static/desk.css[^"]*">', lambda m: f"<style>{css}</style>", html)
     html = re.sub(r'<link rel="stylesheet" href="https://fonts[^>]*>|<link rel="preconnect"[^>]*>', "", html)
     html = re.sub(r'<script src="[^"]*"[^>]*></script>', "", html).replace("</body>", f"<script>{js}</script>" + MEASURE + "</body>")
     data = run_in_browser(html, width)

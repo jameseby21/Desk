@@ -53,7 +53,7 @@ def test_boxes_are_buttons_labelled_with_the_line_and_pressed_state(store):
 def test_page_loads_the_check_script_and_serves_it(store):
     t = _ticket(store)
     c = TestClient(create_app(store.home))
-    assert '<script src="/static/checks.js" defer>' in c.get(f"/ticket/{t.id}").text
+    assert '<script src="/static/checks.js?v=' in c.get(f"/ticket/{t.id}").text
     assert c.get("/static/checks.js").status_code == 200
 
 
@@ -87,7 +87,7 @@ def test_check_column_alignment(store, width):
     t = _ticket(store)
     html = TestClient(create_app(store.home)).get(f"/ticket/{t.id}").text
     css = (STATIC / "desk.css").read_text(encoding="utf-8")
-    html = re.sub(r'<link rel="stylesheet" href="/static/desk.css">', lambda m: f"<style>{css}</style>", html)
+    html = re.sub(r'<link rel="stylesheet" href="/static/desk.css[^"]*">', lambda m: f"<style>{css}</style>", html)
     html = re.sub(r'<link rel="stylesheet" href="https://fonts[^>]*>|<link rel="preconnect"[^>]*>', "", html)
     html = html.replace("</body>", MEASURE + "</body>")
     data = run_in_browser(html, width)
