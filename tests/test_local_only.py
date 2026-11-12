@@ -90,3 +90,29 @@ def test_other_address_is_allowed_with_a_clear_warning(monkeypatch):
     assert host == "0.0.0.0" and "WARNING" in warn and "no login" in warn
     monkeypatch.setenv("DESK_UI_HOST", "192.168.1.5")
     assert appmod.bind_address([])[0] == "192.168.1.5"
+
+
+def test_dns_rebinding_post_is_refused(client):
+    """An attacker domain re-pointed at 127.0.0.1 sends Host and Origin that agree; the allowlist, not the Host header, decides."""
+    c, tid = client
+    r = _post(c, tid, Host="evil.example:8765", Origin="http://evil.example:8765")
+    assert r.status_code in (400, 403)
+
+
+def test_get_for_a_foreign_host_is_refused(client):
+    c, _ = client
+    assert c.get("/", headers={"Host": "evil.example"}).status_code == 400
+
+
+def test_owner_requests_still_pass(client):
+    c, tid = client
+    assert c.get("/", headers={"Host": "localhost:8765"}).status_code != 400
+    assert _post(c, tid, Host="127.0.0.1:8765", Origin="http://127.0.0.1:8765").status_code not in (400, 403)
+    assert _post(c, tid).status_code not in (400, 403)
+
+
+def test_lan_bind_address_is_an_allowed_host(store, monkeypatch):
+    monkeypatch.setenv("DESK_UI_HOST", "192.168.1.5")
+    c = TestClient(create_app(store.home), base_url="http://192.168.1.5:8765")
+    assert c.get("/").status_code != 400
+    assert c.get("/", headers={"Host": "evil.example"}).status_code == 400

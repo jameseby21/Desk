@@ -165,31 +165,43 @@ def why_text(home: Path) -> str:
 
 
 class SameSiteMiddleware:
-    """Pure ASGI. Refuses a state-changing request (not GET, HEAD or OPTIONS) whose Origin or Referer names another site (DESK-0074): a page
-    on the open web must not be able to make the owner's browser change tickets. No header (the CLI, a script) and the owner's own host
-    (127.0.0.1, localhost, [::1], or whatever the request's Host header says) pass."""
+    """Pure ASGI (DESK-0074). Desk answers only requests addressed to this computer: the Host header must be 127.0.0.1, localhost, [::1] or the
+    configured bind address (DESK_UI_HOST), any port; anything else gets 400, which closes DNS rebinding (an attacker's domain pointed at
+    127.0.0.1 sends its own name as Host). A state-changing request (not GET, HEAD, OPTIONS) whose Origin or Referer is not on that
+    allowlist is refused with 403 too. No Origin (the CLI, a script) passes."""
 
     SAFE = {"GET", "HEAD", "OPTIONS"}
 
     def __init__(self, app):
         self.app = app
 
+    @staticmethod
+    def _allowed(hostname: str) -> bool:
+        hostname = hostname.lower().strip("[]")
+        return hostname in ("127.0.0.1", "localhost", "::1") or (bool(hostname) and hostname == os.environ.get("DESK_UI_HOST", "").lower().strip("[]"))
+
     async def __call__(self, scope, receive, send):
-        if scope["type"] == "http" and scope["method"] not in self.SAFE:
+        if scope["type"] in ("http", "websocket"):
             from urllib.parse import urlsplit
 
             h = {k.decode("latin-1"): v.decode("latin-1") for k, v in scope.get("headers", [])}
-            own = h.get("host", "").lower()
-            for name in ("origin", "referer"):
-                if name in h:
-                    try:
-                        u = urlsplit(h[name])
-                        netloc, hostname = u.netloc.lower(), (u.hostname or "")
-                    except ValueError:
-                        netloc, hostname = "?", "?"
-                    if netloc != own and hostname not in ("127.0.0.1", "localhost", "::1"):
-                        resp = JSONResponse({"ok": False, "message": "Refused: this request came from another site, not from Desk."}, status_code=403)
-                        return await resp(scope, receive, send)
+            try:
+                host_ok = self._allowed(urlsplit("//" + h.get("host", "")).hostname or "")
+            except ValueError:
+                host_ok = False
+            if not host_ok:
+                resp = JSONResponse({"ok": False, "message": "Refused: Desk only answers requests addressed to this computer (127.0.0.1 or localhost)."}, status_code=400)
+                return await resp(scope, receive, send) if scope["type"] == "http" else await send({"type": "websocket.close", "code": 1008})
+            if scope["type"] == "http" and scope["method"] not in self.SAFE:
+                for name in ("origin", "referer"):
+                    if name in h:
+                        try:
+                            ok = self._allowed(urlsplit(h[name]).hostname or "")
+                        except ValueError:
+                            ok = False
+                        if not ok:
+                            resp = JSONResponse({"ok": False, "message": "Refused: this request came from another site, not from Desk."}, status_code=403)
+                            return await resp(scope, receive, send)
         await self.app(scope, receive, send)
 
 
@@ -1463,6 +1475,7 @@ def main() -> None:
     home = find_home(os.environ.get("DESK_HOME"))
     port = int(os.environ.get("DESK_UI_PORT", "8765"))
     host, warning = bind_address(sys.argv[1:])
+    os.environ["DESK_UI_HOST"] = host  # the host allowlist reads it
     if warning:
         print(warning, file=sys.stderr)
     print(f"Desk UI on http://{'127.0.0.1' if host == '0.0.0.0' else host}:{port}  (store: {home})")
