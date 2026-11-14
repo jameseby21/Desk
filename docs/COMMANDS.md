@@ -6,7 +6,7 @@ Every command a person or an agent runs day to day, with what it does and when. 
 | Command | What it does | When |
 | --- | --- | --- |
 | `drew-ui` | starts the web UI on http://127.0.0.1:8765 (`DESK_UI_PORT` to change, `DESK_HOME` for the store) | every session |
-| `uv run --no-sync pytest -q` | runs the whole test suite | before every report |
+| `uv run --no-sync pytest -q` | runs the whole test suite; CI (`.github/workflows/test.yml`) runs `uv sync --frozen` and this on Ubuntu and Windows for every pull request | before every report |
 | `drew validate` | schema, lifecycle rules, dependencies, track values; exit 1 on errors | before every commit |
 | `drew list [--project] [--status] [--assignee NAME] [--all]` | table of open tickets, with an assignee column | start of a session |
 | `drew assign <ID> --to NAME [--note "..."] [--handoff URL_OR_DOC_ID] [--as WHO]` | sets `assignee` and `assigned_at`, optional `handoff`, appends `- <date> · <actor> · assigned to <name>: <note>` to Comments. Done means: assignee named and notified; the hand-off record linked | handing a ticket to someone |
