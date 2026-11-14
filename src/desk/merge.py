@@ -3,7 +3,10 @@
 The survivor takes each source whole: a "Merged tickets" section holds the source file's full text, every open acceptance line moves
 over marked "(from <ID>)", and the source's project joins the survivor's `also_projects`. Each source stays on disk as a rejected ticket
 with `merged_into:` (or `duplicate_of:` for kind duplicate) and a Decision line naming the reason and who signed. Links that named a
-source follow the survivor.
+source follow the survivor: `depends_on`, `blocks`, `related` and a subticket's `parent` (a source with open subtickets is refused
+unless `--with-subtickets` is given). The survivor also takes each source's own `depends_on`, so it cannot be done before the work a
+source waited on, and the highest priority among them; a survivor in review gets a Comments line saying the carried lines are
+unchecked.
 
 Why the edits are on the text and not through Ticket.render: rendering rewrites quoting and blank lines in most files of a real store
 (1,713 of 1,753 in the 2026-11-13 store), and a merge must change nothing it was not asked to change. Only the lines named above move.
@@ -23,7 +26,8 @@ from pathlib import Path
 from . import activity, identity
 from .secretscan import looks_secret, refusal as secret_refusal
 from .store import Store
-from .ticket import MERGED, SECTIONS, Ticket, parse_checks
+from .subtickets import parent_of
+from .ticket import CLOSED, MERGED, PRIORITIES, SECTIONS, Ticket, parse_checks
 
 KINDS = ("duplicate", "linked", "family")
 HELD = {"in_progress": "in progress", "claimed": "claimed"}  # someone has it: never merged out from under them
@@ -210,7 +214,13 @@ def _one_line(text: str) -> str:
     return " ".join((text or "").split())
 
 
-def plan(store: Store, survivor: str, sources: list[str], *, kind: str, reason: str, signed: str, actor: str, on: str | None = None) -> Plan:
+def _rank(t: Ticket) -> int:
+    p = t.meta.get("priority")
+    return PRIORITIES.index(p) if p in PRIORITIES else len(PRIORITIES)
+
+
+def plan(store: Store, survivor: str, sources: list[str], *, kind: str, reason: str, signed: str, actor: str, on: str | None = None,
+         with_subtickets: bool = False) -> Plan:
     on = on or today()
     if kind not in KINDS:
         raise MergeError(f"kind must be one of {', '.join(KINDS)}")
@@ -244,6 +254,14 @@ def plan(store: Store, survivor: str, sources: list[str], *, kind: str, reason: 
         into = str(s.meta.get("merged_into") or s.meta.get("duplicate_of") or "")
         if into:
             raise MergeError(f"{tid} is already merged into {into}.")
+    if parent_of(sv) in ids:
+        raise MergeError(f"{sv_id} is a subticket of {parent_of(sv)}: merge the other way ({parent_of(sv)} as the survivor), or clear its parent first.")
+    kids = [t for t in by_id.values() if t.id not in ids and parent_of(t) in ids]
+    opened = [t for t in kids if t.status not in CLOSED]
+    if opened and not with_subtickets:
+        raise MergeError("A source has open subtickets, which would stay under a rejected ticket and drop off the boards: "
+                         + "; ".join(f"{t.id} ({t.status}, part of {parent_of(t)})" for t in opened)
+                         + f". Give --with-subtickets to move them to {sv_id}, or finish or move them first.")
 
     p = Plan(sv_id, ids, kind, reason, signed, actor, on)
     work: dict[str, list[str]] = {}
@@ -280,6 +298,22 @@ def plan(store: Store, survivor: str, sources: list[str], *, kind: str, reason: 
     if carried:
         _append(sl, "Acceptance", carried)
         p.notes.append(f"{sv_id}: Acceptance gains {len(carried)} open line(s): " + "; ".join(c[6:] for c in carried))
+        if sv.status == "review":  # the reviewer must know these lines arrived after the work was handed over
+            _append(sl, "Comments", [f"- {on} · {actor} · merge: {len(carried)} acceptance line(s) marked (from <ID>) were added while this "
+                                     f"ticket is in review ({', '.join(ids)}); they are unchecked. Tick each one when it is verified, or send the ticket back"])
+            p.notes.append(f"{sv_id}: in review, so Comments gains a line saying the {len(carried)} carried line(s) are unchecked")
+    top = min((by_id[t] for t in ids), key=_rank)
+    if _rank(top) < _rank(sv):
+        _put(sl, "priority", PRIORITIES[_rank(top)])
+        p.notes.append(f"{sv_id}: priority {sv.meta.get('priority') or 'none'} -> {PRIORITIES[_rank(top)]} (from {top.id})")
+    own_deps = [str(x) for x in sv.meta.get("depends_on") or []] if isinstance(sv.meta.get("depends_on"), list) else []
+    inherited: list[str] = []  # each source's own prerequisites, so the survivor still waits for them
+    for tid in ids:
+        deps = by_id[tid].meta.get("depends_on")
+        for d in [str(x) for x in deps] if isinstance(deps, list) else []:
+            if d not in ids and d != sv_id and d not in own_deps and d not in inherited:
+                inherited.append(d)
+                p.notes.append(f"{sv_id}: depends_on gains {d} (from {tid})")
     if also != [str(x) for x in (sv.meta.get("also_projects") or [])]:
         _put(sl, "also_projects", _flow(also), after=("project",))
         p.notes.append(f"{sv_id}: also_projects -> {_flow(also)}")
@@ -302,9 +336,10 @@ def plan(store: Store, survivor: str, sources: list[str], *, kind: str, reason: 
         if t.id in ids:
             continue
         edits = []
-        for fld in ("depends_on", "related"):
+        for fld in ("depends_on", "blocks", "related"):
             cur = [str(x) for x in (t.meta.get(fld) or [])] if isinstance(t.meta.get(fld), list) else []
-            if not any(x in ids for x in cur):
+            extra = inherited if (t.id == sv_id and fld == "depends_on") else []
+            if not any(x in ids for x in cur) and not extra:
                 continue
             new: list[str] = []
             for x in cur:
@@ -316,15 +351,19 @@ def plan(store: Store, survivor: str, sources: list[str], *, kind: str, reason: 
                     x = sv_id
                 if x not in new:
                     new.append(x)
-            edits.append((fld, new))
-        if edits:
+            edits.append((fld, new + [x for x in extra if x not in new]))
+        if parent_of(t) in ids:
+            p.repoints.append(f"repoint {t.id} parent: {parent_of(t)} -> {sv_id}")
+        if edits or parent_of(t) in ids:
             tl = lines_of(t)
             for fld, new in edits:
-                _put(tl, fld, _flow(new), after=("depends_on", "related", "assignee"))
+                _put(tl, fld, _flow(new), after=("depends_on", "blocks", "related", "assignee"))
+            if parent_of(t) in ids:
+                _put(tl, "parent", sv_id)
             _put(tl, "updated", on)
     p.notes += p.repoints
     if not p.repoints:
-        p.notes.append("no other ticket lists a source under depends_on or related")
+        p.notes.append("no other ticket lists a source under depends_on, blocks, related or parent")
 
     for tid, ls in work.items():
         t = by_id[tid]
@@ -372,8 +411,8 @@ def apply(store: Store, p: Plan) -> None:
 
 
 def merge(store: Store, survivor: str, sources: list[str], *, kind: str, reason: str, signed: str, actor: str, dry_run: bool = False,
-          on: str | None = None) -> Plan:
-    p = plan(store, survivor, sources, kind=kind, reason=reason, signed=signed, actor=actor, on=on)
+          on: str | None = None, with_subtickets: bool = False) -> Plan:
+    p = plan(store, survivor, sources, kind=kind, reason=reason, signed=signed, actor=actor, on=on, with_subtickets=with_subtickets)
     if not dry_run:
         apply(store, p)
     return p

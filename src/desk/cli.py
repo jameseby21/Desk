@@ -638,7 +638,8 @@ def cmd_merge(args):
         s.sync_before()
     actor = (identity.CURRENT.get() or identity.resolve_cli(s)).display()
     try:
-        plan = mg.merge(s, args.survivor, args.sources, kind=args.kind, reason=args.reason, signed=args.signed, actor=actor, dry_run=args.dry_run)
+        plan = mg.merge(s, args.survivor, args.sources, kind=args.kind, reason=args.reason, signed=args.signed, actor=actor, dry_run=args.dry_run,
+                        with_subtickets=args.with_subtickets)
     except (mg.MergeError, ValueError) as e:
         _die(str(e))
     for line in plan.report(args.dry_run):
@@ -1296,6 +1297,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--kind", required=True, choices=["duplicate", "linked", "family"], help="duplicate: same ask (duplicate_of); linked or family: related work that now lives in one ticket (merged_into)")
     sp.add_argument("--reason", required=True, help="why these are one ticket")
     sp.add_argument("--signed", required=True, help="the comment link or decision number that approves the merge")
+    sp.add_argument("--with-subtickets", action="store_true", help="move a source's open subtickets to the survivor (without it, a source with open subtickets is refused)")
     sp.add_argument("--dry-run", action="store_true", help="print the planned changes and write nothing")
     sp.set_defaults(fn=cmd_merge)
 

@@ -259,3 +259,93 @@ def test_an_interrupted_merge_can_be_run_again_without_copying_twice(store):
     text = surv.path.read_text(encoding="utf-8")
     assert text.count(f"**{src.id}**") == 1 and text.count(f"(from {src.id}) Open one") == 1
     assert Ticket.load(src.path).status == "rejected"
+
+
+# -- review findings on PR 16 (2026-11-13): links a merge must not leave behind ------------------------------------------------------------
+
+def test_open_subtickets_refuse_the_merge_unless_asked_and_then_follow_the_survivor(store, capsys):
+    """Protects: a source's open subtickets never stay under a rejected parent and drop off every board (review finding, high)."""
+    surv, src = _fixture(store)
+    kid1 = _mk(store, "Kid one", "jre", parent=src.id)
+    kid2 = _mk(store, "Kid two", "desk", parent=src.id, status="review")
+    h = _hashes(store)
+    with pytest.raises(merge.MergeError, match=r"subtickets.*--with-subtickets") as e:
+        _go(store, surv.id, src.id)
+    assert kid1.id in str(e.value) and kid2.id in str(e.value)
+    assert _hashes(store) == h  # refused: nothing written
+    main(["--home", str(store.home), "merge", surv.id, src.id, "--kind", "linked", "--reason", "one feature", "--signed", "decision 113",
+          "--with-subtickets"])
+    out = capsys.readouterr().out
+    for kid in (kid1, kid2):
+        assert Ticket.load(kid.path).meta["parent"] == surv.id
+        assert f"repoint {kid.id} parent: {src.id} -> {surv.id}" in out
+    from desk import subtickets
+    assert {t.id for t in subtickets.open_subs(store.tickets(), Ticket.load(surv.path))} == {kid1.id, kid2.id}
+
+
+def test_done_subtickets_follow_without_the_flag(store):
+    surv, src = _fixture(store)
+    kid = _mk(store, "Finished kid", "jre", parent=src.id, status="done")
+    _go(store, surv.id, src.id)
+    assert Ticket.load(kid.path).meta["parent"] == surv.id
+
+
+def test_blocks_follow_the_survivor(store):
+    surv, src = _fixture(store)
+    first = _mk(store, "Comes first", "jre", blocks=[src.id])
+    plan = _go(store, surv.id, src.id)
+    assert Ticket.load(first.path).meta["blocks"] == [surv.id]
+    assert any(first.id in r and "blocks" in r for r in plan.repoints)
+
+
+def test_source_depends_on_is_carried_so_the_survivor_waits(store):
+    """Protects: the survivor cannot be closed before the work a source waited on (review finding, medium)."""
+    from desk.rules import RuleError, check_transition
+
+    surv, src = _fixture(store)
+    pre = _mk(store, "Prerequisite", "jre")
+    t = Ticket.load(src.path)
+    t.meta["depends_on"] = [pre.id, surv.id]
+    t.write()
+    s = Ticket.load(surv.path)
+    s.meta["depends_on"] = [pre.id]  # already listed: carried once
+    s.write()
+    other = _mk(store, "Other prerequisite", "jre")
+    third = _mk(store, "Third source", "jre", depends_on=[other.id, src.id])
+    plan = _go(store, surv.id, src.id, third.id)
+    assert Ticket.load(surv.path).meta["depends_on"] == [pre.id, other.id]
+    assert any(other.id in n and "depends_on" in n for n in plan.notes)
+    s = Ticket.load(surv.path)
+    s.meta["status"] = "approved"  # the last step before done; only the inherited dependency stands in the way
+    with pytest.raises(RuleError, match=pre.id):
+        check_transition(s, "done", store, actor="james")
+
+
+def test_survivor_in_review_gets_a_comment_and_the_higher_priority(store):
+    """Protects: the ticket's 2026-11-13 refinement: a reviewer is told the carried lines are unchecked, and priority is carried up."""
+    surv, src = _fixture(store)
+    s = Ticket.load(surv.path)
+    s.meta.update({"status": "review", "priority": "p3"})
+    s.write()
+    t = Ticket.load(src.path)
+    t.meta["priority"] = "p1"
+    t.write()
+    plan = _go(store, surv.id, src.id)
+    after = Ticket.load(surv.path)
+    assert after.meta["priority"] == "p1"
+    note = [ln for ln in after.section("Comments").splitlines() if src.id in ln]
+    assert note and "review" in note[0] and "unchecked" in note[0]
+    assert any("priority" in n and "p1" in n for n in plan.notes)
+
+
+def test_lower_source_priority_and_open_survivor_change_nothing(store):
+    surv, src = _fixture(store)
+    s = Ticket.load(surv.path)
+    s.meta["priority"] = "p1"
+    s.write()
+    t = Ticket.load(src.path)
+    t.meta["priority"] = "p3"
+    t.write()
+    _go(store, surv.id, src.id)
+    after = Ticket.load(surv.path)
+    assert after.meta["priority"] == "p1" and "unchecked" not in after.section("Comments")
