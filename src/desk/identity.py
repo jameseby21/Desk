@@ -16,10 +16,13 @@ from __future__ import annotations
 
 import contextvars
 import getpass
+import hashlib
+import hmac
 import json
 import os
 import platform
 import re
+import secrets
 import subprocess
 import time
 from dataclasses import dataclass
@@ -54,7 +57,7 @@ class Actor:
         """`person · ui · os-user · confirmed`: kind, source, how it was established, and whether that is a check or a claim."""
         return f"{self.kind} · {self.source} · {self.how} · {'confirmed' if self.confirmed else 'claimed'}"
 
-    def tag(self) -> str:
+    def tag(self, extra: str = "") -> str:
         parts = [f"kind={self.kind}", f"src={self.source}", f"via={self.how.replace(' ', '-')}", f"ok={int(self.confirmed)}"]
         if self.instance:
             parts.append(f"inst={_safe(self.instance)}")
@@ -62,6 +65,8 @@ class Actor:
             parts.append(f"as={_safe(self.as_)}")
         if self.parent:
             parts.append(f"parent={_safe(self.parent)}")
+        if extra:
+            parts.append(extra)
         return "<!-- by " + " ".join(parts) + " -->"
 
     def as_dict(self) -> dict:
@@ -88,6 +93,64 @@ def describe(info: dict) -> str:
         return "not recorded"
     return f"{info.get('kind', '?')} · {info.get('src', '?')} · {info.get('via', '?').replace('-', ' ')} · {'confirmed' if info.get('ok') == '1' else 'claimed'}" + (
         f" · as {info['as']}" if info.get("as") else "") + (f" · parent {info['parent']}" if info.get("parent") else "")
+
+
+# -- verified authors (DESK-0259) --------------------------------------------------------
+# An actor's secret token lives in that actor's own environment (DESK_ACTOR_TOKEN). Desk keeps only K = sha256(token), in a file outside
+# every repo and store (`DESK_KEYS_DIR`, else `~/.desk/actor-keys/`). A comment is signed with HMAC(K, actor, ticket, time, words), so the
+# signature can be checked again later by whoever holds the key file, and the token itself is never written anywhere.
+
+def keys_dir(env=None) -> Path:
+    env = os.environ if env is None else env
+    return Path(env.get("DESK_KEYS_DIR") or (Path.home() / ".desk" / "actor-keys"))
+
+
+def _key_file(actor: str, env=None) -> Path:
+    return keys_dir(env) / (_safe(actor.lower()) + ".key")
+
+
+def _key_of(token: str) -> str:
+    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+
+def issue_token(actor: str, env=None, rotate: bool = False) -> str:
+    """A new secret token for `actor`, returned once; only its hash is stored (outside the repo)."""
+    if not _safe(actor):
+        raise ValueError("Name the actor (a key from people.yaml).")
+    f = _key_file(actor, env)
+    if f.exists() and not rotate:
+        raise ValueError(f"{actor} already has a token; pass --rotate to replace it (the old one stops working).")
+    token = secrets.token_urlsafe(32)
+    f.parent.mkdir(parents=True, exist_ok=True)
+    f.write_text(_key_of(token), encoding="utf-8")
+    try:
+        os.chmod(f, 0o600)
+    except OSError:
+        pass
+    return token
+
+
+def token_matches(actor: str, token: str, env=None) -> bool:
+    if not token or not actor:
+        return False
+    try:
+        return hmac.compare_digest(_key_file(actor, env).read_text(encoding="utf-8").strip(), _key_of(token))
+    except OSError:
+        return False
+
+
+def sign(actor: str, ticket_id: str, when: str, text: str, token: str) -> str:
+    return hmac.new(_key_of(token).encode(), f"{actor.lower()}\n{ticket_id}\n{when}\n{text}".encode("utf-8"), "sha256").hexdigest()[:32]
+
+
+def check_signature(actor: str, ticket_id: str, when: str, text: str, sig: str, env=None) -> bool:
+    """True when the stored key for `actor` reproduces `sig`; False when it does not or the key is not on this machine."""
+    try:
+        k = _key_file(actor, env).read_text(encoding="utf-8").strip()
+    except OSError:
+        return False
+    want = hmac.new(k.encode(), f"{actor.lower()}\n{ticket_id}\n{when}\n{text}".encode("utf-8"), "sha256").hexdigest()[:32]
+    return bool(sig) and hmac.compare_digest(want, sig)
 
 
 # -- finding who ------------------------------------------------------------------------
@@ -140,6 +203,8 @@ def resolve_cli(store, claimed: str | None = None, env=None, user: str | None = 
     if named:
         p = pe.get(named)
         kind = kind_env if kind_env in KINDS else _kind_of(p, "session" if named.lower() in PROTECTED - {"james"} else "person")
+        if token_matches(named, env.get("DESK_ACTOR_TOKEN", ""), env):  # DESK-0259: the secret proves it, the name alone never does
+            return Actor(named, kind, inst or (instance_here() if kind == "person" else ""), "cli", "verified", True)
         return Actor(named, kind, inst or (instance_here() if kind == "person" else ""), "cli", how_named, False)
     if env.get("CLAUDECODE"):  # a Claude Code shell that did not say which session it is: not James, not confirmed
         return Actor("claude-code", "session", inst, "cli", "env-CLAUDECODE", False)

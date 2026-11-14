@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime as dt
 import platform
+import os
 import re
 import shutil
 import subprocess
@@ -482,7 +483,14 @@ def comment(store: Store, t: Ticket, text: str, actor: str | None = None, kind: 
     if dup:
         return CommentResult(t, False, existing=dup[0], near=dup[1])
     ident = identity.CURRENT.get()
-    tag = f" {ident.tag()}" if ident is not None else ""  # who really wrote it: kind, source, how it was established, instance
+    extra = ""
+    if ident is not None and ident.how == "verified":  # DESK-0259: signed with the actor's own token
+        when = (now or dt.datetime.now()).strftime("%Y-%m-%d %H:%M")
+        extra = "sig=" + identity.sign(who, t.id, when, text.strip(), os.environ.get("DESK_ACTOR_TOKEN", ""))
+        now = dt.datetime.strptime(when, "%Y-%m-%d %H:%M")
+    elif ident is not None and _session_signed_as_another(store, ident.instance, who):
+        extra = "impersonation=suspected"
+    tag = f" {ident.tag(extra)}" if ident is not None else ""  # who really wrote it: kind, source, how it was established, instance
     t.append_line("Comments", _stamp(who, f"{text.strip()}{tag} <!-- kind: {kind} -->", at_time=True, now=now))
     if who.lower() == store.owner.lower():
         from . import repeats  # DESK-0158: the owner asking for the same thing twice in a week makes the ticket p0 with the tag emergency
@@ -492,6 +500,23 @@ def comment(store: Store, t: Ticket, text: str, actor: str | None = None, kind: 
     store.save(t)
     _acted(store, t, who)
     return CommentResult(t, True)
+
+
+def _session_signed_as_another(store: Store, instance: str, who: str) -> bool:
+    """DESK-0259: this session id already wrote a comment under a different author name, so writing as `who` may be someone's mimicry."""
+    if not instance:
+        return False
+    inst = _safe_inst(instance)
+    for t in store.tickets():
+        for ln in comment_lines(t):
+            m = _COMMENT_LINE.match(ln)
+            if m and m.group(3).strip().lower() != who.lower() and comment_identity(m.group(4)).get("inst") == inst:
+                return True
+    return False
+
+
+def _safe_inst(v: str) -> str:
+    return identity._safe(v)
 
 
 def comment_lines(t: Ticket) -> list[str]:

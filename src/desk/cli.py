@@ -385,6 +385,15 @@ def cmd_comment(args):
 
 def cmd_validate(args):
     s = _store(args)
+    if args.signoffs:  # DESK-0259: each sign-off and whether its author is verified; only verified ones count
+        from . import signoffs
+
+        rows = signoffs.rows(s)
+        for tid, when, author, state in rows:
+            print(f"{tid}  {when}  {author}  {state}")
+        bad = [r for r in rows if r[3] != signoffs.VERIFIED]
+        print(f"{len(rows)} sign-off(s), {len(rows) - len(bad)} verified, {len(bad)} not counted")
+        sys.exit(1 if bad else 0)
     errors, warnings = validate_store(s)
     for w in warnings:
         print(f"warning: {w}")
@@ -393,6 +402,17 @@ def cmd_validate(args):
     n = len(s.tickets())
     print(f"{n} ticket(s), {len(errors)} error(s), {len(warnings)} warning(s)")
     sys.exit(1 if errors else 0)
+
+
+def cmd_token(args):
+    from . import identity
+
+    try:
+        tok = identity.issue_token(args.actor, rotate=args.rotate)
+    except ValueError as e:
+        _die(str(e))
+    print(f"Token for {args.actor} (shown once; keep it in that actor's own environment, never in the repo):\n{tok}")
+    print(f"Set DESK_ACTOR={args.actor} and DESK_ACTOR_TOKEN=<token>. Only its hash is stored, in {identity.keys_dir()}.")
 
 
 def cmd_brand_check(args):
@@ -1456,7 +1476,12 @@ def build_parser() -> argparse.ArgumentParser:
     sp.set_defaults(fn=cmd_needs_me)
 
     sp = sub.add_parser("validate", help="schema, lifecycle rules, dangling depends_on (exit 1 on errors)")
+    sp.add_argument("--signoffs", action="store_true", help="list every sign-off with its state: verified, unverified or impersonation suspected (exit 1 unless all are verified)")
     sp.set_defaults(fn=cmd_validate)
+    sp = sub.add_parser("token", help="issue a secret token for an actor (printed once; only its hash is stored, outside the repo)")
+    sp.add_argument("actor", help="the actor's key in people.yaml")
+    sp.add_argument("--rotate", action="store_true", help="replace an existing token (the old one stops working)")
+    sp.set_defaults(fn=cmd_token)
 
     sp = sub.add_parser("brand-check", help="projects with no brand block or a missing mark file; --create opens a ticket for each")
     sp.add_argument("--create", action="store_true", help="open one chore per missing project in project `brand`")
@@ -1548,7 +1573,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 READ_ONLY = {"list", "show", "search", "validate", "board", "stats", "doctor", "bench", "home", "index", "people", "assign-rules", "dispatch", "next",
-             "outbox", "whoami", "stop", "refresh", "init", "upgrade", "sync", "brand-check", "history"}
+             "outbox", "whoami", "token", "stop", "refresh", "init", "upgrade", "sync", "brand-check", "history"}
 
 
 def _identify(args):
