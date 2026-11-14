@@ -170,13 +170,16 @@ def _actor_now(store):
 
 # -- what --------------------------------------------------------------------------------
 
-def _val(v) -> str:
+def _val(v, cut: bool = True) -> str:
+    """One line for a value; a list is joined first and then cut, so a long list never becomes a wall in the timeline or the log."""
     if v is None:
         return ""
-    if isinstance(v, (list, tuple)):
-        return ", ".join(_val(x) for x in v)
-    s = " ".join(str(v).split())
-    return s if len(s) <= MAX_VALUE else s[:MAX_VALUE - 1] + "…"
+    s = ", ".join(_val(x, False) for x in v) if isinstance(v, (list, tuple)) else " ".join(str(v).split())
+    return s if not cut or len(s) <= MAX_VALUE else s[:MAX_VALUE - 1] + "…"
+
+
+def _items(v) -> list[str]:
+    return [_val(x, False) for x in v] if isinstance(v, (list, tuple)) else ([_val(v, False)] if _val(v, False) else [])
 
 
 def comment_words(rest: str) -> str:
@@ -210,9 +213,15 @@ def diff(old, new) -> list[dict]:
     for k in keys:
         if k in SKIP_FIELDS:
             continue
-        a, b = _val(old.meta.get(k)), _val(new.meta.get(k))
-        if a != b:
-            out.append({"change": "field", "field": k, "old": a, "new": b, "what": f"{k}: {a or 'empty'} → {b or 'empty'}"})
+        ov, nv = old.meta.get(k), new.meta.get(k)
+        if _val(ov, False) == _val(nv, False):
+            continue
+        a, b = _val(ov), _val(nv)
+        what = f"{k}: {a or 'empty'} → {b or 'empty'}"
+        if isinstance(ov, (list, tuple)) or isinstance(nv, (list, tuple)):  # a list records what was added and removed, not both lists
+            oi, ni = _items(ov), _items(nv)
+            what = _val(f"{k}: " + (" ".join([f"+{x}" for x in ni if x not in oi] + [f"−{x}" for x in oi if x not in ni]) or "reordered"))
+        out.append({"change": "field", "field": k, "old": a, "new": b, "what": what})
     names = list(dict.fromkeys([*old.sections.keys(), *new.sections.keys()]))
     for name in names:
         a, b = old.sections.get(name, "") or "", new.sections.get(name, "") or ""
