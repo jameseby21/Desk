@@ -2,6 +2,8 @@
 
 **Why Desk exists and what it does differently: [docs/WHY.md](docs/WHY.md).**
 
+**Get started: [docs/QUICKSTART.md](docs/QUICKSTART.md) (install to a running store) and [docs/COMMANDS.md](docs/COMMANDS.md) (every command, what it does and when).**
+
 Tickets as Markdown files in your own git repo. A command line for people and AI agents, a small web UI for the owner. Nothing closes without proof, approval is the owner's own words, and every change is a reviewable diff.
 
 Desk is a lens on your files, not a landlord: the store is a plain directory you can read, grep and commit without Desk installed.
@@ -18,7 +20,7 @@ Set the store once so no `--home` is needed: `[Environment]::SetEnvironmentVaria
 # once per machine, from this repo
 uv tool install .
 # or run from the repo without installing
-uv run desk --help
+uv run drew --help
 ```
 
 Requires Python 3.11+ and [uv](https://docs.astral.sh/uv/).
@@ -33,15 +35,15 @@ A store is any directory with a `desk.toml`. Desk finds it in this order: the `-
   tickets/               # one file per ticket: KEY-0001-slug.md
   tickets/assets/<ID>/   # attachments and screen snaps for one ticket
   projects/<key>.md      # one profile per project; a ticket's project must exist here
-  intake/<date>-<topic>/ # research hand-offs, copied in by `desk intake`
+  intake/<date>-<topic>/ # research hand-offs, copied in by `drew intake`
   tracks/<project>/<slug>.md  # optional track descriptions (title, kind sprint|milestone|epic|theme, starts, ends, goal)
-  tracks/rules.yaml      # ordered rules for `desk migrate track`
+  tracks/rules.yaml      # ordered rules for `drew migrate track`
   glossary.md            # one `## Term` per entry; drives popovers and [[Term]] links
   DECISIONS.md           # process decisions, dated, append-only
   .desk/index.sqlite     # derived search index, gitignored, never the source of truth
 ```
 
-Create one with `desk init [path] [--owner name]`.
+Create one with `drew init [path] [--owner name]`.
 
 `desk.toml`:
 
@@ -86,7 +88,7 @@ track: Sprint 0006           # optional, non-empty string: the group inside the 
 assignee: codex              # optional: who executes it (main, james, codex, a project key, chaz, em, ... any name)
 blocks: [JRE-0043]           # optional: ids this ticket holds up (must exist)
 related: [JRE-0040]          # optional: ids worth reading (a missing one is a warning)
-cloned_from: JRE-0031        # optional: set by `desk clone`
+cloned_from: JRE-0031        # optional: set by `drew clone`
 evidence: "commit e125efb, 36 tests"   # optional one-liner; the Evidence section holds the long form
 effort_hours: [1, 2]         # optional [low, high]
 confidence: 0.8              # optional, 0..1
@@ -96,7 +98,7 @@ blocked_on: ""               # required when status is blocked
 source: intake/2026-11-07-em-round2/CLAUDE_CODE_HANDOFF.md#stage-2
 created: 2026-11-07
 updated: 2026-11-07
-done_at: 2026-11-20T16:42:10 # written by `desk done`, local time
+done_at: 2026-11-20T16:42:10 # written by `drew done`, local time
 ---
 
 ## Context
@@ -114,14 +116,14 @@ done_at: 2026-11-20T16:42:10 # written by `desk done`, local time
 ## Comments
 ```
 
-Headings are fixed so the CLI and the UI can find them. `## Prompt` (the text an agent or person pastes to execute the ticket), `## Attachments` and `## Evidence` (what proves done: commands, records, commits) are new in v0.2 and may be missing from older files; a write adds them. Any other `## Heading` in a file is kept on write, after the canonical ones, so a backfilled ticket loses nothing. A ticket is a static hand-off: everything needed to do it and to prove it is in the file. The worker writes **Report** (what changed, how it was verified, the commands run). The owner writes **Decision**, through `desk decide` or the UI, and Desk records it as a dated line: `- 2026-11-07 · james · approved · "Ship it after the DNS lands."`
+Headings are fixed so the CLI and the UI can find them. `## Prompt` (the text an agent or person pastes to execute the ticket), `## Attachments` and `## Evidence` (what proves done: commands, records, commits) are new in v0.2 and may be missing from older files; a write adds them. Any other `## Heading` in a file is kept on write, after the canonical ones, so a backfilled ticket loses nothing. A ticket is a static hand-off: everything needed to do it and to prove it is in the file. The worker writes **Report** (what changed, how it was verified, the commands run). The owner writes **Decision**, through `drew decide` or the UI, and Desk records it as a dated line: `- 2026-11-07 · james · approved · "Ship it after the DNS lands."`
 
 ### Rich bodies
 
 Every section is Markdown and the UI renders it with [markdown-it-py](https://github.com/executablebooks/markdown-it-py) (CommonMark plus tables and strikethrough) and the task-list plugin from `mdit-py-plugins`: paragraphs, emphasis, `### headings` (an `##` line starts a new section, so go one level deeper inside a section), ordered and bulleted lists, `- [x]` checkboxes drawn as checked boxes, tables, fenced code, links (open in a new tab), images. Raw HTML in a ticket is escaped, never passed through, and `javascript:` links are dropped.
 
-- **Attachments** live in `tickets/assets/<ID>/` and the UI serves them at `/assets/<ID>/<file>` (ids and file names are checked; nothing outside the ticket's folder is reachable). `desk attach ID path [--caption "text"]` copies the file in and appends `![caption](assets/ID/file)` (a plain link for non-images) to the ticket's Attachments. A second file with the same name gets a `-2` suffix; nothing is overwritten.
-- **Screen snaps**: `desk snap ID [--caption "text"]` captures the whole screen to `snap-<timestamp>.png` and attaches it. Windows uses PowerShell (`System.Drawing` `CopyFromScreen`), macOS `screencapture -x`, Linux ImageMagick `import` or `gnome-screenshot`; anything else is refused with a plain message.
+- **Attachments** live in `tickets/assets/<ID>/` and the UI serves them at `/assets/<ID>/<file>` (ids and file names are checked; nothing outside the ticket's folder is reachable). `drew attach ID path [--caption "text"]` copies the file in and appends `![caption](assets/ID/file)` (a plain link for non-images) to the ticket's Attachments. A second file with the same name gets a `-2` suffix; nothing is overwritten.
+- **Screen snaps**: `drew snap ID [--caption "text"]` captures the whole screen to `snap-<timestamp>.png` and attaches it. Windows uses PowerShell (`System.Drawing` `CopyFromScreen`), macOS `screencapture -x`, Linux ImageMagick `import` or `gnome-screenshot`; anything else is refused with a plain message.
 - **Mermaid**: a fenced ```` ```mermaid ```` block is drawn in the browser. `mermaid.min.js` 11.4.1 is vendored in `src/desk/ui/static/` (packaged with the wheel) and loaded only on ticket pages that contain a diagram; if the file is ever missing the page falls back to the same version on cdn.jsdelivr.net.
 
 ### Ticket types
@@ -138,11 +140,11 @@ Every section is Markdown and the UI renders it with [markdown-it-py](https://gi
 | `intake` | material handed in from outside |
 | `release` | ship a version |
 
-The old `slice` (now `feature`) and `chore` (now `task`) still read and validate, with the warning "legacy type; run drew migrate type"; `desk new` never offers them. `desk migrate type --dry-run|--apply` retires them by rule (first match wins; only legacy tickets move; `--apply` rewrites the one `type:` line and bumps nothing): Approve:/Choose:/Answer:/Provide:/Direction: titles become `decision`; `Docs:` titles or tags `docs`/`quickstart` become `docs`; tag `release` or a title starting `Release` becomes `release`; `Do:` titles and all other chores become `task`; slices titled `200% motion`, `200% look`, `200% feature`, `Brand:`, `Style pass`, `Readability` or tagged `upgrade` become `upgrade`; a slice with `Bug` in the title becomes `bug`; every other slice becomes `feature`. The UI shows the type as a short colour-coded chip.
+The old `slice` (now `feature`) and `chore` (now `task`) still read and validate, with the warning "legacy type; run drew migrate type"; `drew new` never offers them. `drew migrate type --dry-run|--apply` retires them by rule (first match wins; only legacy tickets move; `--apply` rewrites the one `type:` line and bumps nothing): Approve:/Choose:/Answer:/Provide:/Direction: titles become `decision`; `Docs:` titles or tags `docs`/`quickstart` become `docs`; tag `release` or a title starting `Release` becomes `release`; `Do:` titles and all other chores become `task`; slices titled `200% motion`, `200% look`, `200% feature`, `Brand:`, `Style pass`, `Readability` or tagged `upgrade` become `upgrade`; a slice with `Bug` in the title becomes `bug`; every other slice becomes `feature`. The UI shows the type as a short colour-coded chip.
 
 ### How to validate
 
-`## How to validate` sits right after Acceptance. It is written before the work starts, as part of planning: the steps a person or agent runs to confirm the Outcome once the work is claimed done (commands with expected output, URLs with what to look for, files with what they must contain). It is not Acceptance (what must be true) and not Evidence (what was observed). `desk new` writes the heading with a one-line hint comment fitted to the type; the hint does not count as steps. `desk report` and the UI hand-over refuse to move a ticket to `review` while the section is empty ("Write How to validate first"); `desk validate` warns about tickets already in review without one. The ticket page shows it beside Acceptance, and the review-week lines end with ` · validate: <first line>`.
+`## How to validate` sits right after Acceptance. It is written before the work starts, as part of planning: the steps a person or agent runs to confirm the Outcome once the work is claimed done (commands with expected output, URLs with what to look for, files with what they must contain). It is not Acceptance (what must be true) and not Evidence (what was observed). `drew new` writes the heading with a one-line hint comment fitted to the type; the hint does not count as steps. `drew report` and the UI hand-over refuse to move a ticket to `review` while the section is empty ("Write How to validate first"); `drew validate` warns about tickets already in review without one. The ticket page shows it beside Acceptance, and the review-week lines end with ` · validate: <first line>`.
 
 ## Projects, prefixes and renames
 
@@ -160,7 +162,7 @@ name: learningLabs
 
 A ticket id is valid when its prefix is the current `prefix` **or** the uppercased form of any alias, so a project can be renamed without rewriting history: ids are permanent.
 
-`desk rename-project <old-key> <new-key> [--prefix NEW] [--name "New name"]` does the rename in one move: `projects/<old>.md` becomes `<new>.md`, `key:` (and `prefix:`, the title) are updated, the old key and old prefix are appended to `aliases:`, and every ticket of the project gets `project: <new>`, a bumped `updated` and one comment line (`- <date> · desk · project renamed <old> -> <new>`). Ids never change; nothing is deleted; it refuses when `<new>` already exists. New tickets always take the current prefix.
+`drew rename-project <old-key> <new-key> [--prefix NEW] [--name "New name"]` does the rename in one move: `projects/<old>.md` becomes `<new>.md`, `key:` (and `prefix:`, the title) are updated, the old key and old prefix are appended to `aliases:`, and every ticket of the project gets `project: <new>`, a bumped `updated` and one comment line (`- <date> · desk · project renamed <old> -> <new>`). Ids never change; nothing is deleted; it refuses when `<new>` already exists. New tickets always take the current prefix.
 
 Everywhere tickets are shown (`list`, `board`, `show`, every UI page) they are grouped by their current project under its current name, and a ticket whose id prefix differs from the project's current prefix is marked `(formerly FR)` after the id.
 
@@ -180,18 +182,18 @@ The installed tool is a copy of the repo from the day it was installed, so a fix
 inbox → triage → ready → claimed → in_progress → review → approved → done
                                         ▲             │
                                         └── changes_requested ◄┘
-any open status → blocked (then `desk unblock` restores the previous status)
+any open status → blocked (then `drew unblock` restores the previous status)
 any open status → rejected (with a reason)
 ```
 
 On screen the statuses wear Drew's words: Sniffed (inbox), Thrown (ready), Fetching (in_progress), Dropped (review), Fetched (done), Stuck (blocked), Let go (rejected), Chewed back (stale). The files and the command line use the plain words.
 
-Rules the CLI and the UI both enforce, and `desk validate` checks in the files:
+Rules the CLI and the UI both enforce, and `drew validate` checks in the files:
 
-- Only `main` or the owner throws a ticket into `ready`; a project session claims it (`desk claim` refuses `main` and the owner as claimant).
+- Only `main` or the owner throws a ticket into `ready`; a project session claims it (`drew claim` refuses `main` and the owner as claimant).
 - `review` needs a non-empty Report.
 - `approved` needs the configured owner, unless the ticket's type is delegated (`[approval]`) and its size is within the limit.
-- A ticket cannot be `done` while any `depends_on` ticket is not `done`. `desk done` stamps `done_at` with the local time.
+- A ticket cannot be `done` while any `depends_on` ticket is not `done`. `drew done` stamps `done_at` with the local time.
 - `blocked` needs `blocked_on` (a ticket or a person) and a reason.
 - Decisions need words: approve, send back and reject all take a reason of at least four characters.
 - Dangling `depends_on` or `blocks`, unknown projects, bad enum values, a `tags` value that is not a list of strings, a bad `done_at` and missing required fields are errors. A size `l` outside triage, a `related` or `cloned_from` id that does not exist, are warnings.
@@ -202,43 +204,43 @@ Rules the CLI and the UI both enforce, and `desk validate` checks in the files:
 
 | Command | Who | What |
 | --- | --- | --- |
-| `desk init [path] [--owner]` | owner | Create a store |
-| `desk new --project jre --type slice [--priority p1 --size s --owner main --assignee codex --dod core,code --source path#sec] "title"` | main | Next id for the project, from the template; prints the path |
-| `desk clone ID [--project key] "new title"` | main | New ticket with the source's Context, Outcome, Acceptance (boxes cleared) and Prompt; sets `cloned_from` |
-| `desk stats [--since YYYY-MM-DD] [--project key] [--json]` | anyone | Total, done, in review (built but not proven), open; counts by status, project and type; created and done per week; a Decisions-per-week table (last 8 weeks) and `Review weeks: N created, M closed` |
-| `desk review new [--week YYYY-MM-DD] [--project management] [--owner james]` | owner / main | Create the week's **Ticket review** ticket (one per ISO week; task, ready, p1, `review_by` Friday, tags `management, review-week`). Acceptance is generated: one checkbox per ticket waiting on the owner, grouped by ask (Approve, Choose, Answer, Provide, Do, Review). Refuses a second one for the same week, or a store without a `management` profile |
-| `desk review sync [ID]` | owner / main | Regenerate the list between `<!-- review:start -->` and `<!-- review:end -->` (hand-written lines outside survive): decided tickets become `[x]`, new ones are added, vanished ones are kept as `(resolved)`. Writes the weekly KPI between `<!-- kpi:start -->` and `<!-- kpi:end -->` in Report: waiting at creation, added, decided this week, still waiting, median days in review, oldest waiting. Idempotent. The Today page links this week's review with "N waiting" |
-| `desk list [--project] [--status] [--owner] [--stale] [--all]` | anyone | Table of tickets (open ones by default), grouped by project |
-| `desk next --project jre [--json]` | project session | Highest-priority, oldest ready ticket, in full. `--json` is the SessionStart hook shape (`hookSpecificOutput.additionalContext`) |
-| `desk show ID` | anyone | Print the ticket (with a `(formerly OLD)` header line when the project's prefix has changed) |
-| `desk claim ID [--owner key-or-name]` | project session | `ready → claimed`; sets owner and branch |
-| `desk start ID` | project session | `claimed → in_progress` |
-| `desk report ID --file report.md` or `--text "..."` | project session | Writes Report, `→ review` |
-| `desk decide ID --approve "why"` or `--changes "why"` `[--as james]` | owner / main | Records the words in Decision; `→ approved` or `→ changes_requested` |
-| `desk done ID [--commit sha]` | project session | `approved → done`, after the merge; writes `done_at` |
-| `desk block ID --on "ticket or person" "reason"` | anyone | `→ blocked`, remembers where it came from |
-| `desk unblock ID [--to status]` | anyone | Back to the status before the block |
-| `desk reject ID "reason"` | owner / main | Let it go, with a reason |
-| `desk move ID --to status [--reason] [--as]` | main | Any other guarded move (`inbox → triage → ready`, `changes_requested → in_progress`) |
-| `desk comment ID "text" [--as name]` | anyone | Dated line under Comments |
-| `desk attach ID file [--caption "text"]` | anyone | Copy a file into `tickets/assets/ID/` and list it under Attachments |
-| `desk snap ID [--caption "text"]` | anyone | Capture the screen to a PNG and attach it |
-| `desk rename-project old new [--prefix NEW] [--name "..."]` | main | Rename a project; ids stay, the old key and prefix become aliases |
-| `desk validate` | pre-commit, CI | Schema, lifecycle rules, dependencies, hygiene warnings. Exit 1 on errors |
-| `desk index` | UI, pre-commit | Rebuild `.desk/index.sqlite` from the files |
-| `desk board [--project] [--all]` | owner | The board in the terminal |
-| `desk intake <folder-or-zip> --topic "x" --project key` | main | Copy a hand-off into `intake/<date>-<topic>/` and open an `intake` ticket. Refuses packages containing `PRIVATE_CONTEXT.md` or a `jeby-private` path |
-| `desk migrate track --dry-run\|--apply [--rules tracks/rules.yaml]` | owner / main | Assign `track:` from ordered rules (first match wins). The dry run prints ticket -> track and counts; `--apply` inserts one `track:` line per ticket and changes nothing else. Tickets that already have a track are left alone |
-| `desk doctor [--repo PATH]` | anyone | Installed version and commit, repo path and HEAD, tool and store paths, anything on the UI port. Exit 1 when the installed code is older than the repo |
-| `desk upgrade [--repo PATH]` | owner | Refuses while the UI port is in use (names the PID), else `uv tool install --force <repo>` |
-| `desk home` | anyone | Print the resolved store |
+| `drew init [path] [--owner]` | owner | Create a store |
+| `drew new --project jre --type slice [--priority p1 --size s --owner main --assignee codex --dod core,code --source path#sec] "title"` | main | Next id for the project, from the template; prints the path |
+| `drew clone ID [--project key] "new title"` | main | New ticket with the source's Context, Outcome, Acceptance (boxes cleared) and Prompt; sets `cloned_from` |
+| `drew stats [--since YYYY-MM-DD] [--project key] [--json]` | anyone | Total, done, in review (built but not proven), open; counts by status, project and type; created and done per week; a Decisions-per-week table (last 8 weeks) and `Review weeks: N created, M closed` |
+| `drew review new [--week YYYY-MM-DD] [--project management] [--owner james]` | owner / main | Create the week's **Ticket review** ticket (one per ISO week; task, ready, p1, `review_by` Friday, tags `management, review-week`). Acceptance is generated: one checkbox per ticket waiting on the owner, grouped by ask (Approve, Choose, Answer, Provide, Do, Review). Refuses a second one for the same week, or a store without a `management` profile |
+| `drew review sync [ID]` | owner / main | Regenerate the list between `<!-- review:start -->` and `<!-- review:end -->` (hand-written lines outside survive): decided tickets become `[x]`, new ones are added, vanished ones are kept as `(resolved)`. Writes the weekly KPI between `<!-- kpi:start -->` and `<!-- kpi:end -->` in Report: waiting at creation, added, decided this week, still waiting, median days in review, oldest waiting. Idempotent. The Today page links this week's review with "N waiting" |
+| `drew list [--project] [--status] [--owner] [--stale] [--all]` | anyone | Table of tickets (open ones by default), grouped by project |
+| `drew next --project jre [--json]` | project session | Highest-priority, oldest ready ticket, in full. `--json` is the SessionStart hook shape (`hookSpecificOutput.additionalContext`) |
+| `drew show ID` | anyone | Print the ticket (with a `(formerly OLD)` header line when the project's prefix has changed) |
+| `drew claim ID [--owner key-or-name]` | project session | `ready → claimed`; sets owner and branch |
+| `drew start ID` | project session | `claimed → in_progress` |
+| `drew report ID --file report.md` or `--text "..."` | project session | Writes Report, `→ review` |
+| `drew decide ID --approve "why"` or `--changes "why"` `[--as james]` | owner / main | Records the words in Decision; `→ approved` or `→ changes_requested` |
+| `drew done ID [--commit sha]` | project session | `approved → done`, after the merge; writes `done_at` |
+| `drew block ID --on "ticket or person" "reason"` | anyone | `→ blocked`, remembers where it came from |
+| `drew unblock ID [--to status]` | anyone | Back to the status before the block |
+| `drew reject ID "reason"` | owner / main | Let it go, with a reason |
+| `drew move ID --to status [--reason] [--as]` | main | Any other guarded move (`inbox → triage → ready`, `changes_requested → in_progress`) |
+| `drew comment ID "text" [--as name]` | anyone | Dated line under Comments |
+| `drew attach ID file [--caption "text"]` | anyone | Copy a file into `tickets/assets/ID/` and list it under Attachments |
+| `drew snap ID [--caption "text"]` | anyone | Capture the screen to a PNG and attach it |
+| `drew rename-project old new [--prefix NEW] [--name "..."]` | main | Rename a project; ids stay, the old key and prefix become aliases |
+| `drew validate` | pre-commit, CI | Schema, lifecycle rules, dependencies, hygiene warnings. Exit 1 on errors |
+| `drew index` | UI, pre-commit | Rebuild `.desk/index.sqlite` from the files |
+| `drew board [--project] [--all]` | owner | The board in the terminal |
+| `drew intake <folder-or-zip> --topic "x" --project key` | main | Copy a hand-off into `intake/<date>-<topic>/` and open an `intake` ticket. Refuses packages containing `PRIVATE_CONTEXT.md` or a `jeby-private` path |
+| `drew migrate track --dry-run\|--apply [--rules tracks/rules.yaml]` | owner / main | Assign `track:` from ordered rules (first match wins). The dry run prints ticket -> track and counts; `--apply` inserts one `track:` line per ticket and changes nothing else. Tickets that already have a track are left alone |
+| `drew doctor [--repo PATH]` | anyone | Installed version and commit, repo path and HEAD, tool and store paths, anything on the UI port. Exit 1 when the installed code is older than the repo |
+| `drew upgrade [--repo PATH]` | owner | Refuses while the UI port is in use (names the PID), else `uv tool install --force <repo>` |
+| `drew home` | anyone | Print the resolved store |
 
 Refusals print a plain reason and exit 1, so an agent sees exactly why. Output is UTF-8 on every platform, including Windows consoles.
 
 ## The UI
 
 ```bash
-DESK_HOME=/path/to/store desk-ui      # http://127.0.0.1:8765  (DESK_UI_PORT to change)
+DESK_HOME=/path/to/store drew-ui      # http://127.0.0.1:8765  (DESK_UI_PORT to change)
 ```
 
 Plain HTML forms over FastAPI and Jinja2; no build step. The only JavaScript is the vendored Mermaid, loaded on ticket pages that contain a diagram.
@@ -252,9 +254,9 @@ The UI calls the same operations as the CLI, so the same rules apply.
 
 ## Hooks for Claude Code
 
-- SessionStart: `desk next --project <key> --json` returns the next ready ticket as `additionalContext`.
-- Stop: `desk validate` (exit 1 on errors) is a cheap backstop; a plugin can add "a claimed ticket has no Report" on top.
-- pre-commit: `desk validate && desk index`.
+- SessionStart: `drew next --project <key> --json` returns the next ready ticket as `additionalContext`.
+- Stop: `drew validate` (exit 1 on errors) is a cheap backstop; a plugin can add "a claimed ticket has no Report" on top.
+- pre-commit: `drew validate && drew index`.
 
 ## Development
 
@@ -279,7 +281,7 @@ MIT, copyright JA Insights LLC.
 - `glossary.md` at the store root, one `## Term` per entry: the first use of each term on a page gets a dotted underline and a popover; `[[Term]]` always links to `/doc/glossary.md#term`.
 - `/doc/<path>` reads the file from where it lives, at request time, from any top-level folder of the store, including submodule folders such as `jeby Real Estate/docs/README.md` or `desk/docs/WHY.md`. Nothing is copied into Desk or the store. Every doc link shows two affordances: the in-app read-only view, and "Edit in VS Code" (`vscode://file/<absolute path>`).
 - When a project's profile names its repo folder (a `repo:` field or a `| Repo |` table row) and that repo has `docs/doc-ownership.yaml`, the ticket page lists the owning doc of every `docs_to_update` path and every code path in the body, links the `source:` field, and the project's `/doc/projects/<key>.md` page links its documentation index (`docs/README.md`, else `README.md#documentation-tree`). Desk reads these files; it never generates an index.
-- A doc path written in a ticket is resolved the same way for links, owning docs and `desk validate`: first against the store root, then against the ticket's project repo folder (`repo:` in the profile frontmatter, else the first path of the `| Repo |` row, cut at ` →` or `(`, else a known folder: jre `jeby Real Estate`, musicalgames `Games/MusicalGames`, algo `Algo`, temujin `Temujin`, desk `desk`, standards `standards`, jeby-us `jeby-us`). The first existing file wins and the link goes to `/doc/<resolved store-relative path>`, anchor kept. `source:` may hold several paths separated by `;` or `,`; each is resolved. `desk validate` warns on a path that resolves nowhere and names what it tried: `dead link (tried: docs/X.md, jeby Real Estate/docs/X.md)`.
+- A doc path written in a ticket is resolved the same way for links, owning docs and `drew validate`: first against the store root, then against the ticket's project repo folder (`repo:` in the profile frontmatter, else the first path of the `| Repo |` row, cut at ` →` or `(`, else a known folder: jre `jeby Real Estate`, musicalgames `Games/MusicalGames`, algo `Algo`, temujin `Temujin`, desk `desk`, standards `standards`, jeby-us `jeby-us`). The first existing file wins and the link goes to `/doc/<resolved store-relative path>`, anchor kept. `source:` may hold several paths separated by `;` or `,`; each is resolved. `drew validate` warns on a path that resolves nowhere and names what it tried: `dead link (tried: docs/X.md, jeby Real Estate/docs/X.md)`.
 - A glossary entry that points at a project's own document (`See [text](jeby Real Estate/docs/x.md#lot)`) makes the popover and `[[Term]]` go there instead of defining the term twice.
 - The About page reads `docs/WHY.md` from the repo (`DESK_REPO`, or the store's `desk/` folder). The wheel carries a build-time copy only as a fallback; the source tree has no second copy.
 - Every ticket page, and every `/doc/` page, ends with a "Mentioned in" list of the tickets whose bodies mention that ticket id or that path.
@@ -291,5 +293,5 @@ MIT, copyright JA Insights LLC.
 - Every comment has a kind (DESK-0125): Question (the default), Suggestion, Concern or FYI, chosen with the pills above the box (`drew comment ID "text" --kind Concern` on the command line), stored at the end of the comment line as `<!-- kind: Concern -->` and shown as a small label beside the author; comments written before kinds have none, and the 10-minute duplicate rule ignores the kind. `Ctrl Enter` in the box posts through the same single-shot path as the button.
 - Posting a comment is single-shot (DESK-0122): the first click turns Post into a spinner reading `Posting…`, locks the text, and ignores more clicks. Each post carries one key (the form's one-time token); `POST /ticket/<ID>/comment` with `Accept: application/json` stores at most one comment per key, answers a repeated key with the comment that is already there (`repeat: true`), and leaves the key good after a failure so Try again works. The reply carries the Comments again, so the page shows `Posted` (in a polite live region) and the new comment, highlighted for 2 s, without a reload. A failure (a non-2xx answer, or none within `data-timeout-ms`, 10 s) keeps the draft, shows `Couldn't post: Desk didn't answer. Your text is still here.` and turns the button into Try again; because the key is unchanged, Try again returns the comment if Desk stored it after all. A plain form post (no script) still works once per token.
 - Screenshots as evidence (DESK-0089, DESK-0124): paste an image into the comment box or into a Not accepted reason (or drop a file on it, or use the Attach form under the box). PNG, JPEG, WebP or GIF up to `[attachments] max_mb` (10 MB by default; an existing `desk.toml` keeps the value it was created with) uploads to `tickets/assets/<ID>/` through `ops.attach` as `YYYY-MM-DD-HHMM-name.ext` (`POST /ticket/<ID>/attach`, magic bytes checked, not the extension) and appears as a thumbnail with a remove button (`POST /ticket/<ID>/attach/remove`; a screenshot the ticket already uses stays). The comment form's `Evidence for` list names an Acceptance line: posting writes the images and `(Evidence for line N)` into the comment and `  > Evidence: assets/<ID>/<file>` under that line, where the page shows `N screenshots`. A Not accepted reason takes the same paste and saves the evidence under its line. Anything else is refused with a message naming the allowed types (a too-large file names the limit); `drew attach` stays the CLI path.
-- Done means comes from the Definition of Done, not from the ticket. The ticket page shows two blocks: **Acceptance (this ticket's outcome)** and **Done means (from the Definition of Done)**. The second renders, by reference and on every request, each module in the ticket's `dod:` from `standards/definition-of-done/<module>.md`; a project whose profile frontmatter has `dod_doc: <path in its repo>` (jRE: `dod_doc: docs/guides/DEFINITION_OF_DONE.md`) shows that file instead, and a repo that has `docs/guides/DEFINITION_OF_DONE.md` is picked up even without the line. Nothing is copied into tickets, each source links to `/doc/` and Edit in VS Code, and a `dod_doc` that points nowhere says so and falls back to the modules. **Rule: a ticket's Acceptance never restates DoD checks** (evidence attached, secrets, reduced motion, light and dark, decision recorded and the like live in the DoD files); `desk migrate acceptance --dry-run|--apply` removes the boilerplate lines earlier backfills wrote (exact text, or the text plus a generic ` in ...` tail with nothing ticket-specific in it) and prints each line and the count; `--apply` edits only the Acceptance section and leaves `updated` alone.
+- Done means comes from the Definition of Done, not from the ticket. The ticket page shows two blocks: **Acceptance (this ticket's outcome)** and **Done means (from the Definition of Done)**. The second renders, by reference and on every request, each module in the ticket's `dod:` from `standards/definition-of-done/<module>.md`; a project whose profile frontmatter has `dod_doc: <path in its repo>` (jRE: `dod_doc: docs/guides/DEFINITION_OF_DONE.md`) shows that file instead, and a repo that has `docs/guides/DEFINITION_OF_DONE.md` is picked up even without the line. Nothing is copied into tickets, each source links to `/doc/` and Edit in VS Code, and a `dod_doc` that points nowhere says so and falls back to the modules. **Rule: a ticket's Acceptance never restates DoD checks** (evidence attached, secrets, reduced motion, light and dark, decision recorded and the like live in the DoD files); `drew migrate acceptance --dry-run|--apply` removes the boilerplate lines earlier backfills wrote (exact text, or the text plus a generic ` in ...` tail with nothing ticket-specific in it) and prints each line and the count; `--apply` edits only the Acceptance section and leaves `updated` alone.
 - Forms (comment, decide, check, move) carry a one-time token and their button disables on click and reads `Sending...` with a spinner (class `post-once`, one snippet in base.html), so a double click cannot post twice, and the redirect back carries `?done=<kind>` which renders a confirmation line at the top of the page (review-week Approve and Send back included); a reused token gets a friendly page and nothing is written.
