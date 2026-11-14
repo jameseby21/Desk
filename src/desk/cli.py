@@ -1223,8 +1223,13 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--version", action=_Version, nargs=0, help="print the version and build commit")
     sub = p.add_subparsers(dest="cmd", required=True)
 
-    def actor(sp):
-        sp.add_argument("--as", dest="as_", help="who is acting (default: main)")
+    def actor(sp, writes=True):
+        """`--as` names you (anyone else is refused, DESK-0261); a write command also takes `--relaying <person>` to record that person's
+        words under your own name. `needs-me --as` and `whoami --as` only choose whose list or preview to show, so they have no --relaying."""
+        sp.add_argument("--as", dest="as_", help="you, as `drew whoami` names you; naming anyone else is refused (use --relaying)" if writes else "whose list to show")
+        if writes:
+            sp.add_argument("--relaying", help="record that you are relaying this person's words (for example james, from chat): the record names you as the writer, "
+                                              "'relaying <person>'s words of <today>', never the person")
 
     sp = sub.add_parser("init", help="create a store here (desk.toml, tickets/, projects/, intake/)")
     sp.add_argument("path", nargs="?")
@@ -1266,7 +1271,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     sp = sub.add_parser("whoami", help="how this command line would be recorded on a write: actor, kind (person, thread, session, subagent), instance, source and how it was established; a name that is only claimed is shown as claimed. Environment: DESK_ACTOR, DESK_ACTOR_KIND, DESK_INSTANCE, DESK_SUBAGENT_ID, DESK_PARENT_SESSION")
     sp.add_argument("--json", action="store_true")
-    actor(sp)
+    actor(sp, writes=False)
     sp.set_defaults(fn=cmd_whoami)
 
     sp = sub.add_parser("repeats", help="repeated asks (the owner asked for the same thing twice on a ticket within 7 days) and stale hand-offs (blocked_on names the owner, unchanged across two sweeps); --apply makes the repeated-ask tickets p0 with the tag emergency")
@@ -1472,7 +1477,7 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--seen", nargs="+", metavar="ID", help="Mark seen: clear these changes without acting (asks stay)")
     sp.add_argument("--seen-all", action="store_true", help="Mark all changes seen")
     sp.add_argument("--json", action="store_true")
-    actor(sp)
+    actor(sp, writes=False)
     sp.set_defaults(fn=cmd_needs_me)
 
     sp = sub.add_parser("validate", help="schema, lifecycle rules, dangling depends_on (exit 1 on errors)")
@@ -1578,8 +1583,12 @@ READ_ONLY = {"list", "show", "search", "validate", "board", "stats", "doctor", "
 
 def _identify(args):
     """DESK-0144: work out who is acting and keep it for the rest of the command, so every write (Comments lines, the write log) records
-    the actor, its kind, instance, source and how sure we are. `--as` is kept for agents and is recorded as claimed."""
-    from . import identity
+    the actor, its kind, instance, source and how sure we are. DESK-0261: nobody acts as anyone else. On a write command `--as` must name
+    the caller's own identity (as `drew whoami` resolves it) or the command stops; `--relaying <person>` records that the caller relays
+    that person's words, under the caller's own name."""
+    import dataclasses
+
+    from . import identity, people
 
     if args.cmd in READ_ONLY and args.cmd != "whoami":
         return None
@@ -1587,7 +1596,26 @@ def _identify(args):
         s = Store(find_home(args.home))
     except HomeNotFound:
         return None
-    return identity.CURRENT.set(identity.resolve_cli(s, getattr(args, "as_", None)))
+    claimed = getattr(args, "as_", None)
+    if not hasattr(args, "relaying"):  # whoami, needs-me: nothing is written, `--as` only picks what to show
+        return identity.CURRENT.set(identity.resolve_cli(s, claimed))
+    own = identity.resolve_cli(s, None)
+    if claimed and not identity.same_actor(s, claimed, own.name):
+        _die(f"Desk will not record you as {claimed}: you are {own.name} here (see `drew whoami`), and nobody acts as anyone else. "
+             f"To record {claimed}'s words, say so: add `--relaying {claimed}` (and drop `--as {claimed}`). The record then names you, relaying their words.")
+    actor = identity.resolve_cli(s, claimed)
+    relaying = (getattr(args, "relaying", None) or "").strip()
+    if relaying:
+        pe = people.load(s.home)
+        person = pe.get(relaying)
+        if person is None:
+            _die(f"--relaying {relaying}: Desk does not know that person (see `drew people`).")
+        if identity.same_actor(s, person.key, actor.name):
+            _die(f"--relaying {relaying}: that is you. Write it as yourself; --relaying is for another person's words.")
+        phrase = f"relaying {person.name}'s words of {dt.date.today().isoformat()}"
+        actor = dataclasses.replace(actor, relaying=person.key, relay_phrase=phrase)
+        args.as_ = actor.name  # the record names the real writer, never the person relayed
+    return identity.CURRENT.set(actor)
 
 
 def main(argv: list[str] | None = None) -> None:

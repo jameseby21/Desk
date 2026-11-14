@@ -3,11 +3,13 @@
 An actor has a name, a kind (person, thread = a coworker thread, session = a Claude Code session, subagent), an instance (a session or
 subagent id, or the machine for a person or a browser), a source (ui, cli, mcp) and how the identity was established. Establishing is
 honest about its limits: the operating-system user or the git user mapped to a person in people.yaml is *confirmed*; a name only claimed
-(`--as patch`, DESK_ACTOR, a device cookie, the owner assumed because nobody is named yet) is shown as *claimed*, never as confirmed.
+(DESK_ACTOR, `--as` naming yourself, a device cookie, the owner assumed because nobody is named yet) is shown as *claimed*, never as confirmed.
 
 CLI order: a subagent id, then a name given (`--as` or DESK_ACTOR), then a Claude Code shell (CLAUDECODE), then the OS user, then the
-git user.name. UI order: the OS user the server runs as, then the device cookie; the store owner may Act as someone else, and the record
-then reads `james (as chaz)`. A subagent is always itself (`subagent:<id>` with its parent), never Patch or James.
+git user.name. UI order: the OS user the server runs as, then the device cookie. Nobody acts as anyone else (DESK-0261): the command
+line refuses `--as <someone else>`, the browser's old `desk_act_as` cookie is ignored and logged, and words relayed from another person
+are recorded with `--relaying <person>`: the writer is named, "relaying James's words of <date>", never the relayed person.
+A subagent is always itself (`subagent:<id>` with its parent), never Patch or James.
 
 Environment a session or subagent can set so it is told apart: DESK_ACTOR, DESK_ACTOR_KIND (person, thread, session, subagent),
 DESK_INSTANCE (a session id or a short name), DESK_SUBAGENT_ID, DESK_PARENT_SESSION. CLAUDE_CODE_SESSION_ID is read when the host sets it."""
@@ -19,6 +21,7 @@ import getpass
 import hashlib
 import hmac
 import json
+import logging
 import os
 import platform
 import re
@@ -37,6 +40,7 @@ _KIND_OF = {"person": "person", "external": "person", "coworker": "thread", "age
 PROTECTED = {"patch", "main", "james"}  # a subagent is never recorded as one of these
 _TAG = re.compile(r"\s*<!-- by ([^>]*?) -->")
 LOG = "writes.jsonl"
+LOG_ = logging.getLogger("desk.identity")
 
 
 @dataclass(frozen=True)
@@ -47,8 +51,10 @@ class Actor:
     source: str = "cli"
     how: str = "claimed"
     confirmed: bool = False
-    as_: str = ""  # the person the owner is acting as
+    as_: str = ""  # legacy: the "(as chaz)" of records written before DESK-0261; Desk no longer sets it
     parent: str = ""  # a subagent's parent session
+    relaying: str = ""  # DESK-0261: the person key whose words this writer relays (the writer is still this actor)
+    relay_phrase: str = ""  # "relaying James's words of 2026-11-13", shown in the record next to the writer's own name
 
     def display(self) -> str:
         return f"{self.name} (as {self.as_})" if self.as_ else self.name
@@ -65,13 +71,15 @@ class Actor:
             parts.append(f"as={_safe(self.as_)}")
         if self.parent:
             parts.append(f"parent={_safe(self.parent)}")
+        if self.relaying:
+            parts.append(f"relaying={_safe(self.relaying)}")
         if extra:
             parts.append(extra)
         return "<!-- by " + " ".join(parts) + " -->"
 
     def as_dict(self) -> dict:
         return {"actor": self.name, "kind": self.kind, "instance": self.instance, "source": self.source, "how": self.how,
-                "confirmed": self.confirmed, "as": self.as_, "parent": self.parent}
+                "confirmed": self.confirmed, "as": self.as_, "parent": self.parent, "relaying": self.relaying}
 
 
 def _safe(v: str) -> str:
@@ -92,7 +100,8 @@ def describe(info: dict) -> str:
     if not info:
         return "not recorded"
     return f"{info.get('kind', '?')} · {info.get('src', '?')} · {info.get('via', '?').replace('-', ' ')} · {'confirmed' if info.get('ok') == '1' else 'claimed'}" + (
-        f" · as {info['as']}" if info.get("as") else "") + (f" · parent {info['parent']}" if info.get("parent") else "")
+        f" · as {info['as']}" if info.get("as") else "") + (f" · parent {info['parent']}" if info.get("parent") else "") + (
+        f" · relaying {info['relaying']}" if info.get("relaying") else "")
 
 
 # -- verified authors (DESK-0259) --------------------------------------------------------
@@ -184,6 +193,12 @@ def _kind_of(p: peoplemod.Person | None, default: str) -> str:
     return _KIND_OF.get(p.kind, default) if p else default
 
 
+def same_actor(store, claimed: str, own: str) -> bool:
+    """True when the name given with `--as` is the caller's own identity (a key, a display name or an alias such as `patch` for `main`)."""
+    pe = peoplemod.load(store.home)
+    return pe.resolve(claimed).lower() == pe.resolve(own).lower()
+
+
 def instance_here() -> str:
     return platform.node() or "this-machine"
 
@@ -221,7 +236,8 @@ def resolve_cli(store, claimed: str | None = None, env=None, user: str | None = 
 
 def resolve_ui(store, cookies: dict, user: str | None = None) -> Actor:
     """The actor behind a browser request. The server runs on this machine as the OS user; a device cookie names someone who is not
-    listed; with neither, the store owner is assumed and shown as claimed until someone is named."""
+    listed; with neither, the store owner is assumed and shown as claimed until someone is named. Nobody acts as anyone else (DESK-0261):
+    a `desk_act_as` cookie, left by the old menu or planted, is ignored and logged."""
     pe = peoplemod.load(store.home)
     device = _safe(cookies.get("desk_device", "")) or "browser"
     p = _person_for(pe, os_user() if user is None else user)
@@ -234,8 +250,8 @@ def resolve_ui(store, cookies: dict, user: str | None = None) -> Actor:
         else:
             base = Actor(store.owner, "person", device, "ui", "assumed-owner", False)
     act = (cookies.get("desk_act_as") or "").strip()
-    if act and base.confirmed and base.name == store.owner and pe.get(act) and pe.get(act).key != base.name:
-        return Actor(base.name, base.kind, base.instance, base.source, base.how, True, as_=pe.get(act).key)
+    if act:
+        LOG_.warning("desk_act_as cookie ignored: nobody acts as anyone (DESK-0261); the request is recorded as %s (asked for %r)", base.name, _safe(act))
     return base
 
 

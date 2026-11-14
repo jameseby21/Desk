@@ -145,7 +145,7 @@ def collect(store: Store, actor: str, since: dt.datetime, entries: list | None =
                     changes.append(f"comment by {e.author.lower()}")
                     break
             for ln in t.section("Decision").splitlines():
-                m = re.match(r"^- (\d{4}-\d{2}-\d{2}) · (\S+) · (approved|changes_requested)\b", ln.strip())
+                m = re.match(r"^- (\d{4}-\d{2}-\d{2}) · ([^\s,·]+)(?:, [^·]*)? · (approved|changes_requested)\b", ln.strip())
                 if m and dt.date.fromisoformat(m.group(1)) >= since.date() and m.group(2).lower() in staff:
                     changes.append(f"decision: {m.group(3)}")
                     break

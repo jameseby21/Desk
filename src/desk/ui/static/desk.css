@@ -302,8 +302,6 @@ details.refine-split>summary{cursor:pointer;font-weight:600}
 .rs-form label{display:flex;flex-direction:column;gap:3px;font-size:13.5px}
 
 /* who is acting (DESK-0144) */
-header .actas{margin:0;font-size:13px}
-header .actas select{font:inherit;padding:3px 6px}
 .by{font:500 12px var(--font-mono);color:var(--muted);margin-left:6px}
 .by.claimed{color:#8a5a00}
 .by.confirmed::after{content:" \2713"}

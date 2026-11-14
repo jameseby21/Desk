@@ -215,7 +215,7 @@ Rules the CLI and the UI both enforce, and `desk validate` checks in the files:
 | `desk claim ID [--owner key-or-name]` | project session | `ready → claimed`; sets owner and branch |
 | `desk start ID` | project session | `claimed → in_progress` |
 | `desk report ID --file report.md` or `--text "..."` | project session | Writes Report, `→ review` |
-| `desk decide ID --approve "why"` or `--changes "why"` `[--as james]` | owner / main | Records the words in Decision; `→ approved` or `→ changes_requested` |
+| `desk decide ID --approve "why"` or `--changes "why"` `[--as james] [--relaying james]` | owner / main (`--as` must be you; `--relaying` records that you relay their words) | Records the words in Decision; `→ approved` or `→ changes_requested` |
 | `desk done ID [--commit sha]` | project session | `approved → done`, after the merge; writes `done_at` |
 | `desk block ID --on "ticket or person" "reason"` | anyone | `→ blocked`, remembers where it came from |
 | `desk unblock ID [--to status]` | anyone | Back to the status before the block |

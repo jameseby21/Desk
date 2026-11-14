@@ -10,5 +10,5 @@
   <label>Kind<select name="new_kind"><option value="person">person</option><option value="coworker">coworker thread</option><option value="agent">agent</option></select></label>
   <button class="btn ball" type="submit">That is me</button>
 </form>
-<p class="muted">Only the store owner can later choose Act as to write as someone else; the record then reads <code>{{ owner }} (as chaz)</code>. A name that is only typed (<code>--as</code>, a script) is recorded as claimed, not confirmed.</p>
+<p class="muted">Nobody can write as someone else, not even the store owner. Words relayed from another person are recorded under the writer's own name (<code>drew ... --relaying</code>). A name that is only typed (a script, the <code>DESK_ACTOR</code> setting) is recorded as claimed, not confirmed.</p>
 {% endblock %}

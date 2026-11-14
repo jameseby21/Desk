@@ -1,4 +1,4 @@
-"""DESK-0259: verified authors. Protects: a comment is verified only when the actor's own token matches the stored hash; `--as chaz` without
+"""DESK-0259: verified authors (DESK-0261: `--as` must now name the caller, so each run names its own actor in DESK_ACTOR). Protects: a comment is verified only when the actor's own token matches the stored hash; `--as chaz` without
 the token is unverified; a session that already wrote as someone else and then writes as chaz is flagged; `drew validate --signoffs` lists
 all three states. Tokens are made in a temporary keys folder and never written to the store."""
 
@@ -45,17 +45,17 @@ def test_right_token_is_verified(store, keys, monkeypatch, capsys):
 def test_no_token_is_unverified_and_wrong_actor_token_too(store, keys, monkeypatch, capsys):
     t = ops.new(store, "Talk", "jre")
     ptok = _token(capsys, "patch")
-    _run(store, monkeypatch, ["comment", t.id, SIGN, "--as", "chaz"])
+    _run(store, monkeypatch, ["comment", t.id, SIGN, "--as", "chaz"], DESK_ACTOR="chaz")
     assert "via=claimed ok=0" in _line(store, t.id)
-    _run(store, monkeypatch, ["comment", t.id, "Sign-off (ux): other", "--as", "chaz"], DESK_ACTOR_TOKEN=ptok)
+    _run(store, monkeypatch, ["comment", t.id, "Sign-off (ux): other", "--as", "chaz"], DESK_ACTOR="chaz", DESK_ACTOR_TOKEN=ptok)
     assert "via=claimed ok=0" in _line(store, t.id) and "sig=" not in _line(store, t.id)
 
 
 def test_session_that_wrote_as_patch_then_as_chaz_is_flagged(store, keys, monkeypatch):
     t = ops.new(store, "Talk", "jre")
-    _run(store, monkeypatch, ["comment", t.id, "hello", "--as", "patch"], DESK_INSTANCE="sess-1")
+    _run(store, monkeypatch, ["comment", t.id, "hello", "--as", "patch"], DESK_ACTOR="patch", DESK_INSTANCE="sess-1")
     assert "impersonation" not in _line(store, t.id)
-    _run(store, monkeypatch, ["comment", t.id, SIGN, "--as", "chaz"], DESK_INSTANCE="sess-1")
+    _run(store, monkeypatch, ["comment", t.id, SIGN, "--as", "chaz"], DESK_ACTOR="chaz", DESK_INSTANCE="sess-1")
     assert "impersonation=suspected" in _line(store, t.id)
 
 
@@ -63,9 +63,9 @@ def test_validate_signoffs_prints_all_three_states(store, keys, monkeypatch, cap
     t = ops.new(store, "Talk", "jre")
     tok = _token(capsys, "chaz")
     _run(store, monkeypatch, ["comment", t.id, "Sign-off (design): good", "--as", "chaz"], DESK_ACTOR="chaz", DESK_ACTOR_TOKEN=tok, DESK_INSTANCE="sess-c")
-    _run(store, monkeypatch, ["comment", t.id, "Sign-off (legal): fine", "--as", "joe"])
-    _run(store, monkeypatch, ["comment", t.id, "note", "--as", "patch"], DESK_INSTANCE="sess-p")
-    _run(store, monkeypatch, ["comment", t.id, "Sign-off (money): ok", "--as", "big-d"], DESK_INSTANCE="sess-p")
+    _run(store, monkeypatch, ["comment", t.id, "Sign-off (legal): fine", "--as", "joe"], DESK_ACTOR="joe")
+    _run(store, monkeypatch, ["comment", t.id, "note", "--as", "patch"], DESK_ACTOR="patch", DESK_INSTANCE="sess-p")
+    _run(store, monkeypatch, ["comment", t.id, "Sign-off (money): ok", "--as", "big-d"], DESK_ACTOR="big-d", DESK_INSTANCE="sess-p")
     capsys.readouterr()
     with pytest.raises(SystemExit) as e:
         _run(store, monkeypatch, ["validate", "--signoffs"])

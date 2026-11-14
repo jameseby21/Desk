@@ -24,7 +24,8 @@ def _mk(store, title="Original", **meta):
     return store.get(t.id)
 
 
-def test_refine_adds_a_dated_acceptance_line_and_a_comment(store, capsys):
+def test_refine_adds_a_dated_acceptance_line_and_a_comment(store, capsys, monkeypatch):
+    monkeypatch.setenv("DESK_ACTOR", "james")  # DESK-0261: `--as` must be the caller
     t = _mk(store)
     main(["--home", str(store.home), "refine", t.id, "Also match ids in the middle", "--as", "james"])
     got = store.get(t.id)
@@ -56,7 +57,8 @@ def test_refine_refuses_empty_words_bad_dates_and_closed_tickets(store):
         ops.refine(store, store.get(t.id), "too late")
 
 
-def test_split_makes_a_linked_ticket_and_asks_for_the_completion_decision(store, capsys):
+def test_split_makes_a_linked_ticket_and_asks_for_the_completion_decision(store, capsys, monkeypatch):
+    monkeypatch.setenv("DESK_ACTOR", "james")  # DESK-0261: `--as` must be the caller
     old = _mk(store, "Search v1", priority="p1", dod=["core", "code"], assignee="main", review_by="2026-11-12")
     main(["--home", str(store.home), "split", old.id, "--title", "Search v2: saved searches", "--size", "m", "--due", "2026-11-20",
           "--details", "Saved searches came up after the first cut.", "--acceptance", "A saved search reopens from its link", "--as", "james"])

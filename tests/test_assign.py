@@ -14,7 +14,8 @@ def run(store, *argv):
     main(["--home", str(store.home), *argv])
 
 
-def test_assign_sets_fields_and_logs_a_comment(store, capsys):
+def test_assign_sets_fields_and_logs_a_comment(store, capsys, monkeypatch):
+    monkeypatch.setenv("DESK_ACTOR", "james")  # DESK-0261: `--as` must be the caller
     t = ops.new(store, "Hand me over", "jre")
     run(store, "assign", t.id, "--to", "chaz", "--note", "logo first", "--handoff", "https://docs.google.com/document/d/abc", "--as", "james")
     out = capsys.readouterr().out
