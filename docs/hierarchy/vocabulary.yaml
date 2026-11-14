@@ -1,0 +1,64 @@
+# The track vocabulary (DESK-0181, from the proposal on MGMT-0052 section 3). Owner-editable.
+# `drew migrate hierarchy` reads a copy of this file at <store>/tracks/vocabulary.yaml (or the path given with --vocabulary).
+#   tracks:    the vocabulary; a ticket whose track is already one of these is left alone.
+#   map:       old track value (exactly as written) -> a vocabulary track, or `from_type` for batches, sprints and weeks
+#              (the ticket's type decides, through `from_type` below).
+#   from_type: ticket type -> vocabulary track, for the `from_type` rows.
+# --apply keeps the old value verbatim on each ticket as `legacy_track:`; --undo puts it back. A value not in `map` is left
+# alone and listed by the dry run.
+tracks: [Feature, Bug fix, Debugging, Optimization, Security, Docs, Design, Research, Funding, Release, Decision, Operations]
+map:
+  # sprints, weeks, passes and source batches stop being tracks (they become sprint: or tags later); the type decides
+  Backlog: from_type
+  Ideas: from_type
+  Sprint 0006: from_type
+  200% pass: from_type
+  First real use: from_type
+  History: from_type
+  Audit findings: from_type
+  Roadmap: from_type
+  Week of Nov 10: from_type
+  Em rounds 1-3: from_type
+  # themes
+  Decisions and asks: Decision
+  Security baseline: Security
+  AppForge cases: Debugging
+  Funding round: Funding
+  Desk UI v1: Feature
+  Backseat Analyst reviews: Research
+  Brand and marks: Design
+  Brand: Design
+  Free report: Feature
+  90-day fight plan: Operations
+  Fight-plan slices: Operations
+  Wishlist: Feature
+  Standard docs: Docs
+  Story: Docs
+  Backseat Analyst v0: Feature
+  Backseat Analyst later: Feature
+  Quorum (parked): Feature
+  Site: Feature
+  Product: Feature
+  Editions and licensing: Release
+  Go-live: Release
+  Rollouts: Release
+  Desk speed and search: Optimization
+  Cosmology re-entry: Research
+  Sources: Research
+  Models: Research
+  Exploration: Research
+  Prioritization: Operations
+  Weekly review: Operations
+  Life: Operations
+from_type:
+  feature: Feature
+  upgrade: Optimization
+  bug: Bug fix
+  task: Operations
+  docs: Docs
+  decision: Decision
+  research: Research
+  intake: Operations
+  release: Release
+  slice: Feature
+  chore: Operations

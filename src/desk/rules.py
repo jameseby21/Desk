@@ -194,6 +194,9 @@ def validate_store(store: "Store") -> tuple[list[str], list[str]]:
             warnings.append(f"{t.id}: file name {t.path.name} does not start with the id")
     known = set(ids)
     by_id = {t.id: t for t in tickets}
+    from . import hierarchy
+
+    errors += hierarchy.profile_errors(store)  # DESK-0181: a company: key desk.toml does not declare is the only reference that can dangle
     for key in store.projects():
         if store.brand_for(key) is None:
             warnings.append(f"projects/{key}.md: no brand block (mark, accent, family); run `drew brand-check`")

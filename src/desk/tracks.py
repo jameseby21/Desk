@@ -141,7 +141,7 @@ def pct(done: int, total: int) -> int:
 def hierarchy(store: Store, tickets: list[Ticket]) -> list[dict]:
     """Project > track > ticket, every level in score order (DESK-0136): a project's or track's `score` is the priority rollup of its
     open tickets (the max ranks; sum and mean shown), `repeat_done` counts its done repeatable-process solutions (DESK-0214)."""
-    from . import priority
+    from . import companies, priority
     from .review import ask_of
     from .ticket import STATUSES
 
@@ -166,7 +166,8 @@ def hierarchy(store: Store, tickets: list[Ticket]) -> list[dict]:
             })
         tracks.sort(key=lambda tr: (tr["score"].key, tr["name"] == UNTRACKED, tr["name"].lower()))
         done = len([t for t in mine if t.status == "done"])
-        rows.append({"key": key, "title": store.project_title(key), "area": str(meta.get("area") or ""), "prefix": store.key_for(key), "aliases": store.aliases_for(key), "total": len(mine), "done": done,
+        co = companies.of(store, key)  # DESK-0181: the company (the profile's company:, else its area:)
+        rows.append({"key": key, "title": store.project_title(key), "area": co if co != companies.UNSORTED else "", "prefix": store.key_for(key), "aliases": store.aliases_for(key), "total": len(mine), "done": done,
                      "open": len([t for t in mine if t.is_open]), "pct": pct(done, len(mine)), "tracks": tracks,
                      "score": priority.rollup(sc, mine), "repeat_done": priority.repeatable_done(mine),
                      "counts": {st: len([t for t in mine if t.status == st]) for st in STATUSES}})

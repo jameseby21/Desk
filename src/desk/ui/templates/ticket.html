@@ -12,7 +12,7 @@
 {% if name in ['Context','Outcome','Prompt','Out of scope','Report','Evidence'] %}{% set ft = readflag(t.section(name)) %}{% if ft %}<span class="wallflag" data-wall="{{ name }}">{{ ft }}</span>{% endif %}{% endif %}
 {%- endmacro %}
 {% block body %}
-<p style="font-size:14px"><a href="/">Today</a> › <a href="/board?project={{ t.project }}">{{ titles.get(t.project, t.project) }}</a> › <code>{{ t.id }}</code>{% if formerly %} <span class="muted">(formerly {{ formerly }})</span>{% endif %}</p>
+<p style="font-size:14px"><a href="/">Today</a> ›{% if company %} <a href="/board?company={{ company.slug }}">{{ company.name }}</a> ›{% endif %} <a href="/board?project={{ t.project }}">{{ titles.get(t.project, t.project) }}</a> › <code>{{ t.id }}</code>{% if formerly %} <span class="muted">(formerly {{ formerly }})</span>{% endif %}</p>
 {% if part %}<p class="part-of" id="part-of">Part of <a href="/ticket/{{ part.id }}">{{ part.id }}: {{ part.meta.get('title') }}</a> <span class="muted">· {{ screen(part.status) }}</span></p>{% elif part_id == t.id %}<p class="part-of missing" id="part-of">This ticket names itself as its main ticket. Clear <code>parent:</code> or name the main ticket.</p>{% elif part_id %}<p class="part-of missing" id="part-of">Part of {{ part_id }}, which Desk cannot find. Check the id in <code>parent:</code>.</p>{% endif %}
 {% if error %}<div class="error">{{ error }}</div>{% endif %}
 {% if rejected %}<div class="rejected-note flagged" id="rejected-note"><span class="who"><span class="flag">&#10005; Rejected</span><span>{{ rejected.who }}{% if rejected.when %} &middot; {{ rejected.when }}{% endif %}</span></span><span class="reason" title="{{ rejected.reason }}">{{ rejected.reason }}</span></div>{% endif %}
@@ -284,6 +284,8 @@
       {% if t.meta.get('smallest_step') %}<div><span class="label">Smallest step on a rough week</span><div>{{ t.meta.get('smallest_step') }}</div></div>{% endif %}
       {% if t.meta.get('source') %}<div><span class="label">Source</span><div>{% for sd in source_doc %}{% if not loop.first %}; {% endif %}{% if sd.path %}<a class="docref" href="/doc/{{ sd.path|urlencode_path }}">{{ sd.text }}</a> <a class="vsc" href="{{ sd.edit_url }}">Edit in VS Code</a>{% else %}<code>{{ sd.text }}</code>{% endif %}{% endfor %}</div></div>{% endif %}
       {% if t.meta.get('docs_to_update') %}<div><span class="label">Docs to update</span><div>{% for d in t.meta.get('docs_to_update') %}{% set dl = doc_links.get(d) %}{% if dl %}<a class="docref" href="/doc/{{ dl.path|urlencode_path }}">{{ d }}</a> <a class="vsc" href="{{ dl.edit_url }}">Edit in VS Code</a>{% else %}<code>{{ d }}</code>{% endif %} {% endfor %}</div></div>{% endif %}
+      {% if company %}<div><span class="label">{{ company_level }}</span><div><a href="/board?company={{ company.slug }}">{{ company.name }}</a></div></div>{% endif %}
+      {% if t.meta.get('track') %}<div><span class="label">Track</span><div>{{ t.meta.get('track') }}{% if t.meta.get('legacy_track') %} <span class="muted">(was {{ t.meta.get('legacy_track') }})</span>{% endif %}</div></div>{% endif %}
       <div><span class="label">Project</span><div>{{ titles.get(t.project, t.project) }} <span class="chip">{{ t.project }}</span>{% if formerly %}<br><span class="muted">This ticket kept its original id; the project's prefix was {{ formerly }}.</span>{% endif %}</div></div>
       <div><span class="label">File</span><div><code>{{ t.path.name if t.path else '' }}</code></div></div>
     </div>
