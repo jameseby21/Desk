@@ -505,3 +505,30 @@ header .search-open kbd{position:absolute;right:10px;top:50%;transform:translate
 .cc-why{font:400 12px var(--font-body);margin:2px 0 4px;white-space:normal}.cc-why .score{margin-right:4px}
 .card .why{font-size:12.5px}
 a.rollup{color:var(--ink);font-weight:600;text-decoration:none}a.rollup:hover{text-decoration:underline}
+
+/* Ticket tiles (DESK-0260): one card per ticket in a responsive grid, the whole tile is the link. Tokens only; same calm borders as .ccard and .card. */
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,300px),1fr));gap:14px}
+@media (min-width:1100px){.tiles{grid-template-columns:repeat(3,minmax(0,1fr))}}
+.tile{display:flex;flex-direction:column;gap:8px;min-width:0;padding:16px 18px;background:var(--card);border:1px solid var(--line);border-radius:14px;color:var(--ink);text-decoration:none;transition:border-color .12s,transform .12s}
+.tile:hover{border-color:var(--ink);color:var(--ink);transform:translateY(-1px)}
+.tile:focus-visible{outline:3px solid var(--focus);outline-offset:2px;border-color:var(--ink)}
+.tl-top{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
+.tl-id{font:500 12px/1.3 var(--font-mono);letter-spacing:.06em;color:var(--muted)}
+.tl-note{font:600 12.5px/1.3 var(--font-body);color:var(--ink);background:var(--ball);border-radius:6px;padding:2px 8px;text-align:right}
+.tl-title{font:700 17px/1.3 var(--font-head);overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:3;line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.tl-ctx,.cc-ctx{font-size:13.5px;line-height:1.45;color:var(--muted);overflow-wrap:anywhere;display:-webkit-box;-webkit-line-clamp:3;line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.tl-extra{font-size:13px;color:var(--muted)}
+.tl-foot{display:flex;flex-wrap:wrap;align-items:center;gap:8px 10px;margin-top:auto;padding-top:6px;font-size:13px}
+.tl-status{font:500 12px/1 var(--font-mono);padding:5px 9px;border-radius:999px;border:1px solid var(--line);color:var(--muted);white-space:nowrap}
+.tl-status[data-status=review]{background:var(--ball);border-color:var(--ink);color:#141414}
+.tl-status[data-status=blocked],.tl-status[data-status=changes_requested]{background:var(--red);border-color:var(--red);color:var(--on-red)}
+.tl-prio{font:600 12.5px/1 var(--font-body);color:var(--muted)}
+.tl-prio.tl-p0{color:var(--red)}
+.tl-who{margin-left:auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tile.late{border-color:var(--red)}.tile.late .tl-note{background:var(--red);color:var(--on-red)}
+.imm .tile{border-color:var(--ink)}
+.ccard{transition:border-color .12s}.ccard-link:hover .ccard{border-color:var(--ink)}.ccard-link:focus-visible{outline:3px solid var(--focus);outline-offset:2px;border-radius:10px}
+.cc-ctx{font-size:12.5px;margin:0 0 6px;-webkit-line-clamp:2;line-clamp:2}
+.cc-foot .tl-prio{font-size:12px}
+.tl-id{min-width:0;display:flex;gap:4px;align-items:baseline;white-space:nowrap}.tl-id .tr-place{max-width:26ch;min-width:0}
+.tl-top,.tl-id{flex-wrap:wrap}.tl-id .tr-place{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100%}
