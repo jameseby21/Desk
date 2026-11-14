@@ -1,0 +1,34 @@
+# File -> owning documentation section (standards rule 20).
+#   glob  repo-relative, forward slashes; ** crosses folders, * does not, {a,b} alternates.
+#   doc   the document, optionally path#anchor (a heading slug in that file).
+# When a file changes, its owning section changes in the same commit, or the commit says
+# `Docs: none - <reason>`. The last matching rule wins. Desk reads it (desk.docs.ownership_rules)
+# to show a ticket's owning docs; no commit hook enforces it yet.
+
+# ---- package, build and install
+- {glob: "pyproject.toml",                     doc: "docs/QUICKSTART.md#install"}
+- {glob: "uv.lock",                            doc: "docs/QUICKSTART.md#prerequisites-with-minimum-versions"}
+- {glob: "hatch_build.py",                     doc: "docs/COMMANDS.md#build-release-docs"}
+- {glob: "src/desk/{version.py,buildstamp.py}",   doc: "README.md#refreshing-desk"}
+
+# ---- command line and store
+- {glob: "src/desk/**/*.py",                   doc: "README.md#commands"}
+- {glob: "src/desk/cli.py",                    doc: "docs/COMMANDS.md"}
+- {glob: "src/desk/{store.py,config.py,yamlio.py}",  doc: "README.md#the-store-desk_home"}
+- {glob: "src/desk/{ticket.py,retype.py,rules.py}",  doc: "README.md#a-ticket"}
+- {glob: "src/desk/{ops.py,review.py,asks.py}",      doc: "README.md#lifecycle"}
+- {glob: "src/desk/{docs.py,words.py}",           doc: "README.md#doc-links-glossary-and-backlinks"}
+- {glob: "src/desk/{brand.py,style.py}",          doc: "README.md#ui-links-checkboxes-and-brand"}
+
+# ---- web UI
+- {glob: "src/desk/ui/**",                     doc: "README.md#the-ui"}
+- {glob: "src/desk/ui/static/mascots/**",      doc: "src/desk/ui/static/mascots/README.md"}
+
+# ---- tests and benchmarks
+- {glob: "tests/**",                           doc: "README.md#development"}
+- {glob: "src/desk/bench/**",                  doc: "README.md#development"}
+
+# ---- top-level documents own themselves
+- {glob: "README.md",                          doc: "README.md"}
+- {glob: "docs/*.md",                          doc: "docs/QUICKSTART.md#next"}
+- {glob: "LICENSE",                            doc: "README.md#license"}
