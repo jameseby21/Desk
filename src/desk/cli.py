@@ -1612,7 +1612,7 @@ def _identify(args):
             _die(f"--relaying {relaying}: Desk does not know that person (see `drew people`).")
         if identity.same_actor(s, person.key, actor.name):
             _die(f"--relaying {relaying}: that is you. Write it as yourself; --relaying is for another person's words.")
-        phrase = f"relaying {person.name}'s words of {dt.date.today().isoformat()}"
+        phrase = f"relaying {person.key}'s words of {dt.date.today().isoformat()}"  # the key, never the name: a private name stays off the record (rule 30)
         actor = dataclasses.replace(actor, relaying=person.key, relay_phrase=phrase)
         args.as_ = actor.name  # the record names the real writer, never the person relayed
     return identity.CURRENT.set(actor)

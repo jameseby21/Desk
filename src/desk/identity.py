@@ -54,7 +54,8 @@ class Actor:
     as_: str = ""  # legacy: the "(as chaz)" of records written before DESK-0261; Desk no longer sets it
     parent: str = ""  # a subagent's parent session
     relaying: str = ""  # DESK-0261: the person key whose words this writer relays (the writer is still this actor)
-    relay_phrase: str = ""  # "relaying James's words of 2026-11-13", shown in the record next to the writer's own name
+    relay_phrase: str = ""  # "relaying james's words of 2026-11-13" (the key; the UI shows the name), next to the writer's own name
+    claimed: str = ""  # DESK-0261: a name typed into a web request's `who` field; recorded as a claim, never as the author
 
     def display(self) -> str:
         return f"{self.name} (as {self.as_})" if self.as_ else self.name
@@ -73,6 +74,8 @@ class Actor:
             parts.append(f"parent={_safe(self.parent)}")
         if self.relaying:
             parts.append(f"relaying={_safe(self.relaying)}")
+        if self.claimed:
+            parts.append(f"claimed={_safe(self.claimed)}")
         if extra:
             parts.append(extra)
         return "<!-- by " + " ".join(parts) + " -->"

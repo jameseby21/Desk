@@ -2,6 +2,9 @@
 {% block title %}Desk · Who are you{% endblock %}
 {% block body %}
 <h1>Who are you?</h1>
+{% if linked %}
+<p>This computer's user name, <code>{{ os_user }}</code>, is linked to <code>{{ linked }}</code>. A web page never changes that link: the store owner edits <code>os_users</code> in <code>people.yaml</code> on the command line.</p>
+{% else %}
 <p>Desk records who made every change. It knows this computer's user name, <code>{{ os_user }}</code>, but not which person that is. Say so once and it is written into <code>people.yaml</code>; you will not be asked again.</p>
 <form class="post-once card section" method="post" action="/whoami" data-progress="none" style="display:flex;flex-direction:column;gap:10px;max-width:520px">
   <input type="hidden" name="token" value="{{ token() }}">
@@ -10,5 +13,6 @@
   <label>Kind<select name="new_kind"><option value="person">person</option><option value="coworker">coworker thread</option><option value="agent">agent</option></select></label>
   <button class="btn ball" type="submit">That is me</button>
 </form>
+{% endif %}
 <p class="muted">Nobody can write as someone else, not even the store owner. Words relayed from another person are recorded under the writer's own name (<code>drew ... --relaying</code>). A name that is only typed (a script, the <code>DESK_ACTOR</code> setting) is recorded as claimed, not confirmed.</p>
 {% endblock %}

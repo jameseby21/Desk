@@ -27,8 +27,8 @@ _SAFE_NAME = re.compile(r"[^A-Za-z0-9._-]+")
 
 def _stamp(actor: str, what: str, at_time: bool = False, now: dt.datetime | None = None, decision: bool = False) -> str:
     """One record line. When the writer relays another person's words (`--relaying`, DESK-0261) the line says so beside the writer's own
-    name, never as the relayed person: a Decision reads `<date> · patch, relaying James's words of <date> · approved`, a Comments line
-    `<time> · patch · relaying James's words of <date>: <text>`. Lines Desk writes itself (actor `desk`) are not relayed."""
+    name, never as the relayed person: a Decision reads `<date> · patch, relaying james's words of <date> · approved`, a Comments line
+    `<time> · patch · relaying james's words of <date>: <text>` (the person's key; `relay_names` shows the name on screen). Lines Desk writes itself (actor `desk`) are not relayed."""
     when = (now or dt.datetime.now()).strftime("%Y-%m-%d %H:%M") if at_time else today()
     ident = identity.CURRENT.get()
     if ident is not None and ident.relay_phrase and actor != "desk":
@@ -37,6 +37,18 @@ def _stamp(actor: str, what: str, at_time: bool = False, now: dt.datetime | None
         else:
             what = f"{ident.relay_phrase}: {what}"
     return f"- {when} · {actor} · {what}"
+
+
+_RELAYED = re.compile(r"\brelaying ([\w:.-]+)'s words of ")
+
+
+def relay_names(text: str, pe) -> str:
+    """View time only (DESK-0261): `relaying james's words of` -> `relaying James's words of`. The record keeps the key; a private
+    person (the private people file) stays a key on screen too, as in DESK-0254."""
+    def name(m):
+        p = pe.get(m.group(1))
+        return m.group(0) if p is None or p.private else f"relaying {p.name}'s words of "
+    return _RELAYED.sub(name, text or "")
 
 
 DUPLICATE_WINDOW = dt.timedelta(minutes=10)  # byte-for-byte repeats (case and spacing aside) by one author

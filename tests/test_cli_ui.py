@@ -55,4 +55,4 @@ def test_ui_pages_and_decide(store):
     client.post(f"/ticket/{t.id}/decide", data={"token": client.app.state.tokens.issue(), "action": "approve", "words": "Approve: ship it."}, follow_redirects=False)
     assert store.get(t.id).status == "approved"
     client.post(f"/ticket/{t.id}/comment", data={"token": client.app.state.tokens.issue(), "text": "Nice.", "who": "em"})
-    assert "· em · Nice." in store.get(t.id).section("Comments")
+    assert "claimed by em, unverified: Nice." in store.get(t.id).section("Comments")  # DESK-0261: a typed name is a claim, never the author

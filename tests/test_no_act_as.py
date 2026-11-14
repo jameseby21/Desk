@@ -100,7 +100,7 @@ def test_relaying_decide_names_the_writer_and_quotes_the_person(store, monkeypat
     got = store.get(t.id)
     assert got.status == "approved"
     (line,) = got.section("Decision").splitlines()
-    assert re.fullmatch(r'- \d{4}-\d{2}-\d{2} · patch, relaying James\'s words of \d{4}-\d{2}-\d{2} · approved · "Option A\."', line), line
+    assert re.fullmatch(r'- \d{4}-\d{2}-\d{2} · patch, relaying james\'s words of \d{4}-\d{2}-\d{2} · approved · "Option A\."', line), line
     assert "· james ·" not in line  # never stamped as the relayed person
     row = identity.read_log(store.home, t.id)[-1]
     assert row["actor"] == "patch" and row["relaying"] == "james"
@@ -112,7 +112,7 @@ def test_relaying_comment_reads_as_the_writer_relaying_and_never_as_the_person(s
     main(["--home", str(store.home), "comment", t.id, "Ship it", "--relaying", "james"])
     (line,) = store.get(t.id).section("Comments").splitlines()
     who, rest = line.split(" · ", 2)[1], line.split(" · ", 2)[2]
-    assert who == "patch" and rest.startswith("relaying James's words of ") and "Ship it" in rest
+    assert who == "patch" and rest.startswith("relaying james's words of ") and "Ship it" in rest
     assert ops.comment_identity(rest)["relaying"] == "james"
     assert not rest.lstrip().startswith("Sign-off")  # a relayed line is never a sign-off by the relayed person
 
@@ -130,3 +130,74 @@ def test_old_records_keep_their_stamps(store):
     """Protects: history. A line written by the old menu still parses and shows who it says."""
     info, text = identity.parse_tag("Approved <!-- by kind=person src=ui via=os-user ok=1 as=lily -->")
     assert info["as"] == "lily" and text == "Approved"
+
+
+# -- review pass 3 (DESK-0261): the paths the first cut left open -----------------------------
+
+def test_whoami_relinks_from_the_web_are_refused_once_the_os_user_is_linked(store, monkeypatch):
+    """Protects: a page the owner's browser loads (coworker threads drive it) re-pointing the owner's OS user at another person, after
+    which every write from this machine would read as that person, confirmed. Only the first run may link; a relink is the owner's
+    edit of people.yaml on the command line."""
+    c = _owner_browser(store, monkeypatch)  # first run done: jeby is james
+    before = (store.home / "people.yaml").read_bytes()
+    for data in ({"pick": "lily"}, {"new_name": "Someone Else", "new_kind": "person"}):
+        r = c.post("/whoami", data={"token": c.app.state.tokens.issue(), **data}, follow_redirects=False)
+        assert r.status_code == 403, data
+        assert "desk_who" not in r.headers.get("set-cookie", "")
+    assert (store.home / "people.yaml").read_bytes() == before
+    assert identity.resolve_cli(store, None, env={}, user="jeby").name == "james"
+    page = c.get("/whoami").text
+    assert 'action="/whoami"' not in page and "people.yaml" in page  # no pick form once linked; the page says where a change is made
+
+
+def _private_person(tmp_path, monkeypatch):
+    priv = tmp_path / "priv" / "people.yaml"
+    priv.parent.mkdir()
+    priv.write_text("people:\n  - key: family-investor\n    name: Quentin Zzyzx-Fictional\n", encoding="utf-8")
+    monkeypatch.setenv("DESK_PRIVATE_PEOPLE", str(priv))
+    return "Quentin Zzyzx-Fictional"
+
+
+def test_relaying_stores_the_key_and_a_private_name_never_reaches_a_ticket_or_the_write_log(store, monkeypatch, tmp_path):
+    """Protects: rule 30. `--relaying <private person>` wrote that person's real name into a committed ticket file."""
+    secret = _private_person(tmp_path, monkeypatch)
+    t = _mk(store)
+    monkeypatch.setenv("DESK_ACTOR", "patch")
+    main(["--home", str(store.home), "comment", t.id, "Said in chat", "--relaying", "family-investor"])
+    main(["--home", str(store.home), "refine", t.id, "Also this", "--relaying", "family-investor"])
+    text = store.get(t.id).path.read_text(encoding="utf-8")
+    assert "relaying family-investor's words of " in text
+    assert secret not in text and "Quentin" not in text
+    log = (store.home / ".desk" / identity.LOG).read_text(encoding="utf-8")
+    assert secret not in log and "Quentin" not in log
+    page = TestClient(create_app(store.home)).get(f"/ticket/{t.id}").text
+    assert re.search(r"relaying family-investor(&#39;|')s words of", page)  # a private person stays a key on screen too (DESK-0254)
+
+
+def test_relaying_shows_the_display_name_only_at_view_time(store, monkeypatch):
+    t = _mk(store)
+    monkeypatch.setenv("DESK_ACTOR", "patch")
+    main(["--home", str(store.home), "comment", t.id, "Ship it", "--relaying", "james"])
+    assert "relaying james's words of " in store.get(t.id).section("Comments")
+    monkeypatch.delenv("DESK_ACTOR")
+    page = TestClient(create_app(store.home)).get(f"/ticket/{t.id}").text
+    assert "relaying James&#39;s words of " in page or "relaying James's words of " in page
+
+
+def test_a_name_typed_in_the_who_field_is_a_marked_claim_and_never_a_sign_off(store, monkeypatch):
+    """Protects: a fetch from the owner's browser posting 'Sign-off (security): fine' as bigd through the old `who` field."""
+    from desk import signoffs
+
+    t = _mk(store)
+    c = _owner_browser(store, monkeypatch)
+    r = c.post(f"/ticket/{t.id}/comment", data={"token": c.app.state.tokens.issue(), "text": "Sign-off (security): fine", "who": "bigd"}, headers=JSON)
+    assert r.status_code == 200
+    (line,) = store.get(t.id).section("Comments").splitlines()
+    who, rest = line.split(" · ", 2)[1], line.split(" · ", 2)[2]
+    assert who == "james"  # the real poster, never the typed name
+    words = ops.split_comment_kind(rest)[1]
+    assert words.startswith("claimed by bigd, unverified: ") and not words.startswith("Sign-off")
+    info = ops.comment_identity(rest)
+    assert info["ok"] == "0" and info["via"] == "claimed-in-request" and info["claimed"] == "bigd"
+    assert [r for r in signoffs.rows(store) if r[3] == signoffs.VERIFIED] == []
+    assert all(r[2] != "bigd" for r in signoffs.rows(store))

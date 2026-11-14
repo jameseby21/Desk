@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import dataclasses
 import datetime as dt
 import html
 import os
@@ -286,6 +287,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
                 check = {**check, "token": tokens.issue}
             owner_t = t if t is not None else kw.get("t")
             project = getattr(owner_t, "project", "") or ""
+            text = ops.relay_names(text, peoplemod.load(st.home))  # the record holds the person's key; the name is shown only here
             return md_html(text, known=known, check=check, actions=actions, docs=exists, ids=doc,
                            resolve=lambda p: docsmod.resolve_for(st, project, p)[0],
                            glossary={} if doc == 'glossary' else gloss, seen=seen, censor=censor, mask=censor is not None)
@@ -1160,22 +1162,30 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
     post_lock = threading.Lock()
 
     def comment_as(request: Request, s: Store, t, text: str, who: str, kind: str):
-        """Write a comment as the person behind the request. A name sent in the old `who` field is honoured for callers that are not the
-        page (a script), but is recorded as claimed, not confirmed (DESK-0144); the page itself has no author field."""
+        """Write a comment as the person behind the request; the page itself has no author field. A different name sent in the old `who`
+        field (a script) never becomes the author (DESK-0261): the real poster is, the words read `claimed by <name>, unverified: ...`, and
+        the tag says `via=claimed-in-request ok=0 claimed=<name>`, so the line can never be, or count as, that person's Sign-off."""
         me = acting(request)
         claimed = " ".join((who or "").split())
-        if claimed and claimed.lower() not in (me.name.lower(), me.display().lower()):
-            token = idmod.CURRENT.set(idmod.Actor(claimed, "person", me.instance, "ui", "claimed-in-request", False))
+        if claimed and not any(peoplemod.same_person(claimed, n) for n in (me.name, me.display())):  # `james1` is still me (DESK-0142)
+            name = idmod._safe(claimed) or "someone"
+            token = idmod.CURRENT.set(dataclasses.replace(me, how="claimed-in-request", confirmed=False, claimed=name))
             try:
-                return ops.comment(s, t, text, actor=claimed, kind=kind)
+                return ops.comment(s, t, f"claimed by {name}, unverified: {text.strip()}", actor=me.display(), kind=kind)
             finally:
                 idmod.CURRENT.reset(token)
         return ops.comment(s, t, text, actor=me.display(), kind=kind)
 
+    def linked_to(s: Store, user: str) -> str:
+        """The key of the person this OS user is already linked to in people.yaml (`os_users`), or ''. Keys only, never a display name."""
+        u = (user or "").lower()
+        return next((p.key for p in peoplemod.load(s.home).list if u and u in (x.lower() for x in p.os_users)), "")
+
     @app.get("/whoami", response_class=HTMLResponse)
     def whoami_page(request: Request):
         s = store()
-        return templates.TemplateResponse(request, "whoami.html", ctx(request, s, os_user=idmod.os_user(), people=peoplemod.load(s.home).list, s=s))
+        user = idmod.os_user()
+        return templates.TemplateResponse(request, "whoami.html", ctx(request, s, os_user=user, linked=linked_to(s, user), people=peoplemod.load(s.home).list, s=s))
 
     @app.post("/whoami")
     def post_whoami(request: Request, pick: str = Form(""), new_name: str = Form(""), new_kind: str = Form("person"), token: str = Form("")):
@@ -1184,6 +1194,11 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
             return _spent("")
         s = store()
         user = idmod.os_user()
+        linked = linked_to(s, user)
+        if linked:  # DESK-0261: only the first run links; a page (which threads can drive) never re-points the OS user at someone else
+            return HTMLResponse(f"<p>This computer's user is already linked to {html.escape(linked)}. Desk does not change that from a web page: "
+                                f"the store owner edits <code>os_users</code> in people.yaml on the command line.</p><p><a href=\"/\">Back</a></p>",
+                                status_code=403)
         try:
             if new_name.strip():
                 key = re.sub(r"[^a-z0-9]+", "-", new_name.strip().lower()).strip("-")

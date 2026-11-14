@@ -148,7 +148,7 @@ def test_a_name_in_the_request_is_only_a_claim(store, monkeypatch):
     c.post(f"/ticket/{t.id}/comment", data={"token": c.app.state.tokens.issue(), "text": "Said by a script", "who": "em"})
     (line,) = store.get(t.id).section("Comments").splitlines()
     info = ops.comment_identity(line.split(" · ", 2)[2])
-    assert "· em ·" in line and info["ok"] == "0" and info["via"] == "claimed-in-request"
+    assert "· james · claimed by em, unverified: Said by a script" in line and info["ok"] == "0" and info["via"] == "claimed-in-request"  # DESK-0261: the poster, never em
 
 
 def test_unnamed_machine_is_assumed_to_be_the_owner_and_shown_as_claimed_with_a_banner(store, monkeypatch):
@@ -184,8 +184,14 @@ def test_first_run_can_add_a_new_person(store, monkeypatch):
     c.post("/whoami", data={"token": c.app.state.tokens.issue(), "new_name": "Ann Lee", "new_kind": "person"}, follow_redirects=False)
     p = people.load(store.home).get("ann-lee")
     assert p and p.name == "Ann Lee" and p.os_users == ["ann"] and people.load(store.home).get("james")  # the rest of the team is kept
-    bad = c.post("/whoami", data={"token": c.app.state.tokens.issue(), "pick": "nobody"}, follow_redirects=False)
-    assert bad.status_code == 422
+    again = c.post("/whoami", data={"token": c.app.state.tokens.issue(), "pick": "nobody"}, follow_redirects=False)
+    assert again.status_code == 403  # DESK-0261: ann is linked now, so the web never relinks (an unknown pick on first run is 422, below)
+
+
+def test_first_run_with_an_unknown_person_is_422(store, monkeypatch):
+    monkeypatch.setattr(identity, "os_user", lambda: "someone-new")
+    c = TestClient(create_app(store.home))
+    assert c.post("/whoami", data={"token": c.app.state.tokens.issue(), "pick": "nobody"}, follow_redirects=False).status_code == 422
 
 
 def test_every_form_in_the_new_screens_names_its_progress_steps(store):
