@@ -486,7 +486,7 @@ def comment(store: Store, t: Ticket, text: str, actor: str | None = None, kind: 
     extra = ""
     if ident is not None and ident.how == "verified":  # DESK-0259: signed with the actor's own token
         when = (now or dt.datetime.now()).strftime("%Y-%m-%d %H:%M")
-        extra = "sig=" + identity.sign(who, t.id, when, text.strip(), os.environ.get("DESK_ACTOR_TOKEN", ""))
+        extra = "sig=" + identity.sign(who, t.id, when, text.strip(), os.environ.get("DESK_ACTOR_KEY", ""))
         now = dt.datetime.strptime(when, "%Y-%m-%d %H:%M")
     elif ident is not None and _session_signed_as_another(store, ident.instance, who):
         extra = "impersonation=suspected"

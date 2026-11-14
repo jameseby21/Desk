@@ -405,14 +405,22 @@ def cmd_validate(args):
 
 
 def cmd_token(args):
+    """DESK-0259/0262: register an actor's public key. Only the owner at their own terminal may; every issue or rotation is logged."""
     from . import identity
 
+    s = _store(args)
+    ok, why, who = identity.may_issue(s)
+    if not ok:
+        _die(why)
     try:
-        tok = identity.issue_token(args.actor, rotate=args.rotate)
-    except ValueError as e:
+        fp, made = identity.issue_key(args.actor, rotate=args.rotate, out=args.out, pubkey=args.pubkey)
+    except (ValueError, OSError) as e:
         _die(str(e))
-    print(f"Token for {args.actor} (shown once; keep it in that actor's own environment, never in the repo):\n{tok}")
-    print(f"Set DESK_ACTOR={args.actor} and DESK_ACTOR_TOKEN=<token>. Only its hash is stored, in {identity.keys_dir()}.")
+    identity.log_key_event(s.home, "key-rotate" if args.rotate else "key-issue", args.actor, fp, who)
+    print(f"Public key for {args.actor} stored in {identity.keys_dir()} ({fp}). Desk keeps public keys only.")
+    if made:
+        print(f"Private key written to {made}: it belongs to {args.actor} alone; never put it in a repo, a store or the key directory.")
+    print(f"The actor sets DESK_ACTOR={args.actor} and DESK_ACTOR_KEY=<path to its private key> in its own environment.")
 
 
 def cmd_brand_check(args):
@@ -1478,9 +1486,11 @@ def build_parser() -> argparse.ArgumentParser:
     sp = sub.add_parser("validate", help="schema, lifecycle rules, dangling depends_on (exit 1 on errors)")
     sp.add_argument("--signoffs", action="store_true", help="list every sign-off with its state: verified, unverified or impersonation suspected (exit 1 unless all are verified)")
     sp.set_defaults(fn=cmd_validate)
-    sp = sub.add_parser("token", help="issue a secret token for an actor (printed once; only its hash is stored, outside the repo)")
+    sp = sub.add_parser("token", help="owner only: register an actor's SSH public key for signed comments (Desk stores public keys only)")
     sp.add_argument("actor", help="the actor's key in people.yaml")
-    sp.add_argument("--rotate", action="store_true", help="replace an existing token (the old one stops working)")
+    sp.add_argument("--rotate", action="store_true", help="replace an existing key (the old one stops working)")
+    sp.add_argument("--out", type=Path, help="make a new Ed25519 pair and write the private key here, for the actor to keep")
+    sp.add_argument("--pubkey", type=Path, help="register the actor's own OpenSSH public key file instead of making a pair")
     sp.set_defaults(fn=cmd_token)
 
     sp = sub.add_parser("brand-check", help="projects with no brand block or a missing mark file; --create opens a ticket for each")

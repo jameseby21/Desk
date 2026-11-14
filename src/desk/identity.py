@@ -16,14 +16,13 @@ from __future__ import annotations
 
 import contextvars
 import getpass
-import hashlib
-import hmac
 import json
 import os
 import platform
 import re
-import secrets
+import shutil
 import subprocess
+import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -95,62 +94,161 @@ def describe(info: dict) -> str:
         f" · as {info['as']}" if info.get("as") else "") + (f" · parent {info['parent']}" if info.get("parent") else "")
 
 
-# -- verified authors (DESK-0259) --------------------------------------------------------
-# An actor's secret token lives in that actor's own environment (DESK_ACTOR_TOKEN). Desk keeps only K = sha256(token), in a file outside
-# every repo and store (`DESK_KEYS_DIR`, else `~/.desk/actor-keys/`). A comment is signed with HMAC(K, actor, ticket, time, words), so the
-# signature can be checked again later by whoever holds the key file, and the token itself is never written anywhere.
+# -- verified authors (DESK-0259, DESK-0262) ---------------------------------------------
+# Asymmetric signatures, so nothing Desk stores can sign. Each actor holds its own SSH private key (DESK_ACTOR_KEY = the path to it, in
+# that actor's environment only); Desk keeps only public keys, `<actor>.pub` in `DESK_KEYS_DIR` or `~/.desk/actor-keys/`. A comment is
+# signed with `ssh-keygen -Y sign` over (actor, ticket, time, words) and checked with `ssh-keygen -Y verify` against the stored public key.
+# Why ssh-keygen and not Ed25519 through the `cryptography` package: that package is not a Desk dependency, and OpenSSH ships with Windows
+# 10/11, macOS and Linux, so nothing new is installed. The earlier scheme (an HMAC keyed by sha256(token), kept in the key directory) let
+# anyone who could read that directory forge a verified sign-off (pass 3 review, desk-pr14).
+# Issuing or replacing a key is for the store owner at their own terminal only (`may_issue`); every issue or rotation is logged.
+
+NAMESPACE = "desk-comment"
+_ARMOR = ("-----BEGIN SSH SIGNATURE-----", "-----END SSH SIGNATURE-----")
+_SESSION_ENV = ("CLAUDECODE", "CLAUDE_CODE_SESSION_ID", "CLAUDE_SESSION_ID", "DESK_ACTOR", "DESK_SUBAGENT_ID", "DESK_ACTOR_KEY")
+
 
 def keys_dir(env=None) -> Path:
     env = os.environ if env is None else env
     return Path(env.get("DESK_KEYS_DIR") or (Path.home() / ".desk" / "actor-keys"))
 
 
-def _key_file(actor: str, env=None) -> Path:
-    return keys_dir(env) / (_safe(actor.lower()) + ".key")
+def _principal(actor: str) -> str:
+    return _safe((actor or "").lower())
 
 
-def _key_of(token: str) -> str:
-    return hashlib.sha256(token.encode("utf-8")).hexdigest()
+def _pub_file(actor: str, env=None) -> Path:
+    return keys_dir(env) / (_principal(actor) + ".pub")
 
 
-def issue_token(actor: str, env=None, rotate: bool = False) -> str:
-    """A new secret token for `actor`, returned once; only its hash is stored (outside the repo)."""
-    if not _safe(actor):
-        raise ValueError("Name the actor (a key from people.yaml).")
-    f = _key_file(actor, env)
-    if f.exists() and not rotate:
-        raise ValueError(f"{actor} already has a token; pass --rotate to replace it (the old one stops working).")
-    token = secrets.token_urlsafe(32)
-    f.parent.mkdir(parents=True, exist_ok=True)
-    f.write_text(_key_of(token), encoding="utf-8")
+def _keygen() -> str:
+    return shutil.which("ssh-keygen") or ""
+
+
+def _run_keygen(args: list[str], data: bytes | None = None) -> subprocess.CompletedProcess | None:
+    kg = _keygen()
+    if not kg:
+        return None
     try:
-        os.chmod(f, 0o600)
+        return subprocess.run([kg, *args], input=data if data is not None else b"", capture_output=True, timeout=20)
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+
+def _pub_of(text: str) -> str:
+    """`<type> <base64>` of an OpenSSH public key line, without its comment; '' when it is not one."""
+    parts = (text or "").split()
+    return f"{parts[0]} {parts[1]}" if len(parts) >= 2 and re.fullmatch(r"(ssh|ecdsa|sk)-[\w@.-]+", parts[0]) else ""
+
+
+def _payload(actor: str, ticket_id: str, when: str, text: str) -> bytes:
+    return f"{actor.lower()}\n{ticket_id}\n{when}\n{text}".encode("utf-8")
+
+
+def may_issue(store, env=None, user: str | None = None) -> tuple[bool, str, "Actor"]:
+    """(allowed, reason, who asked): only the store owner, confirmed by the OS user and not inside any agent session, issues or rotates
+    keys. The environment check stops a session that says what it is; one that strips its environment still leaves a line in the log."""
+    env = os.environ if env is None else env
+    a = resolve_cli(store, None, env=env, user=user)
+    held = [k for k in _SESSION_ENV if env.get(k)]
+    if held:
+        return False, f"Refused: keys are issued only by the owner at their own terminal, not from a session ({', '.join(held)} is set).", a
+    if not (a.how == "os-user" and a.confirmed and a.name.lower() == (store.owner or "").lower()):
+        return False, (f"Refused: only the store owner ({store.owner}), confirmed by the OS user in people.yaml, issues keys; "
+                       f"this is {a.name} ({a.short()})."), a
+    return True, "", a
+
+
+def issue_key(actor: str, env=None, rotate: bool = False, out: Path | None = None, pubkey: Path | None = None) -> tuple[str, Path | None]:
+    """Store `actor`'s public key; return (its fingerprint, the private key path when one was made). With `pubkey` the actor's own public
+    key is registered; otherwise a new Ed25519 pair is made with ssh-keygen and the private key written to `out`, never into the key dir."""
+    if not _principal(actor):
+        raise ValueError("Name the actor (a key from people.yaml).")
+    if not _keygen():
+        raise ValueError("ssh-keygen was not found on PATH; install OpenSSH (it ships with Windows 10/11, macOS and Linux).")
+    f = _pub_file(actor, env)
+    if f.exists() and not rotate:
+        raise ValueError(f"{actor} already has a key; pass --rotate to replace it (the old one stops working).")
+    made = None
+    if pubkey is not None:
+        line = _pub_of(Path(pubkey).read_text(encoding="utf-8", errors="replace"))
+        if not line:
+            raise ValueError(f"{pubkey} is not an OpenSSH public key.")
+    else:
+        if out is None:
+            raise ValueError("Pass --out PATH (where the actor's private key is written) or --pubkey FILE (the actor's own public key).")
+        out = Path(out).resolve()
+        pub_out = out.with_name(out.name + ".pub")
+        if out.exists() or pub_out.exists():
+            raise ValueError(f"{out} already exists; choose a new path.")
+        if keys_dir(env).resolve() in out.parents:
+            raise ValueError("The private key may not be written into the key directory; Desk keeps public keys only.")
+        out.parent.mkdir(parents=True, exist_ok=True)
+        r = _run_keygen(["-q", "-t", "ed25519", "-N", "", "-C", f"desk:{_principal(actor)}", "-f", str(out)])
+        if r is None or r.returncode != 0:
+            raise ValueError("ssh-keygen could not make a key: " + (r.stderr.decode(errors="replace").strip() if r else "not run"))
+        line = _pub_of(pub_out.read_text(encoding="utf-8"))
+        pub_out.unlink(missing_ok=True)  # the public half lives in the key dir only
+        made = out
+    f.parent.mkdir(parents=True, exist_ok=True)
+    f.write_text(line + "\n", encoding="utf-8")
+    r = _run_keygen(["-l", "-f", str(f)])
+    words = r.stdout.decode(errors="replace").split() if r is not None and r.returncode == 0 else []
+    return (words[1] if len(words) > 1 else ""), made
+
+
+def log_key_event(home: Path, event: str, actor: str, fingerprint: str, by: "Actor") -> None:
+    """One line in `.desk/writes.jsonl` for every key issued or rotated: when, what, for whom, the key fingerprint and who asked."""
+    try:
+        p = Path(home) / ".desk" / LOG
+        p.parent.mkdir(parents=True, exist_ok=True)
+        row = {"ts": time.strftime("%Y-%m-%dT%H:%M:%S"), "ticket": "", "event": event, "for": _principal(actor),
+               "fingerprint": fingerprint, **by.as_dict()}
+        with p.open("a", encoding="utf-8") as fh:
+            fh.write(json.dumps(row, ensure_ascii=False) + "\n")
     except OSError:
         pass
-    return token
 
 
-def token_matches(actor: str, token: str, env=None) -> bool:
-    if not token or not actor:
+def key_matches(actor: str, key_path: str, env=None) -> bool:
+    """True when the private key at `key_path` is the one whose public half is stored for `actor`."""
+    if not key_path or not actor:
         return False
     try:
-        return hmac.compare_digest(_key_file(actor, env).read_text(encoding="utf-8").strip(), _key_of(token))
+        want = _pub_of(_pub_file(actor, env).read_text(encoding="utf-8"))
     except OSError:
         return False
+    r = _run_keygen(["-y", "-f", str(key_path)])
+    return bool(want) and r is not None and r.returncode == 0 and _pub_of(r.stdout.decode(errors="replace")) == want
 
 
-def sign(actor: str, ticket_id: str, when: str, text: str, token: str) -> str:
-    return hmac.new(_key_of(token).encode(), f"{actor.lower()}\n{ticket_id}\n{when}\n{text}".encode("utf-8"), "sha256").hexdigest()[:32]
+def sign(actor: str, ticket_id: str, when: str, text: str, key_path: str) -> str:
+    """The SSH signature of (actor, ticket, time, words) with the actor's private key, as one base64 word; '' when it cannot be made."""
+    if not key_path:
+        return ""
+    r = _run_keygen(["-Y", "sign", "-f", str(key_path), "-n", NAMESPACE], _payload(actor, ticket_id, when, text))
+    if r is None or r.returncode != 0:
+        return ""
+    return "".join(ln.strip() for ln in r.stdout.decode("ascii", errors="replace").splitlines() if ln.strip() and not ln.startswith("-----"))
 
 
 def check_signature(actor: str, ticket_id: str, when: str, text: str, sig: str, env=None) -> bool:
-    """True when the stored key for `actor` reproduces `sig`; False when it does not or the key is not on this machine."""
+    """True when `sig` verifies against the public key stored for `actor`; False otherwise, or when the key or ssh-keygen is missing."""
+    if not sig or not re.fullmatch(r"[A-Za-z0-9+/=]+", sig):
+        return False
     try:
-        k = _key_file(actor, env).read_text(encoding="utf-8").strip()
+        pub = _pub_of(_pub_file(actor, env).read_text(encoding="utf-8"))
     except OSError:
         return False
-    want = hmac.new(k.encode(), f"{actor.lower()}\n{ticket_id}\n{when}\n{text}".encode("utf-8"), "sha256").hexdigest()[:32]
-    return bool(sig) and hmac.compare_digest(want, sig)
+    if not pub:
+        return False
+    with tempfile.TemporaryDirectory(prefix="desk-verify-") as d:
+        allowed, sf = Path(d) / "allowed_signers", Path(d) / "sig"
+        allowed.write_text(f'{_principal(actor)} namespaces="{NAMESPACE}" {pub}\n', encoding="utf-8")
+        sf.write_text("\n".join([_ARMOR[0], *[sig[i:i + 70] for i in range(0, len(sig), 70)], _ARMOR[1]]) + "\n", encoding="ascii")
+        r = _run_keygen(["-Y", "verify", "-f", str(allowed), "-I", _principal(actor), "-n", NAMESPACE, "-s", str(sf)],
+                        _payload(actor, ticket_id, when, text))
+    return r is not None and r.returncode == 0
 
 
 # -- finding who ------------------------------------------------------------------------
@@ -203,7 +301,7 @@ def resolve_cli(store, claimed: str | None = None, env=None, user: str | None = 
     if named:
         p = pe.get(named)
         kind = kind_env if kind_env in KINDS else _kind_of(p, "session" if named.lower() in PROTECTED - {"james"} else "person")
-        if token_matches(named, env.get("DESK_ACTOR_TOKEN", ""), env):  # DESK-0259: the secret proves it, the name alone never does
+        if key_matches(named, env.get("DESK_ACTOR_KEY", ""), env):  # DESK-0259/0262: the actor's own private key proves it, never the name
             return Actor(named, kind, inst or (instance_here() if kind == "person" else ""), "cli", "verified", True)
         return Actor(named, kind, inst or (instance_here() if kind == "person" else ""), "cli", how_named, False)
     if env.get("CLAUDECODE"):  # a Claude Code shell that did not say which session it is: not James, not confirmed
