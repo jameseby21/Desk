@@ -1,6 +1,6 @@
 """DESK-0144: who is acting. Protects: every write records the actor with kind, instance, source and how the identity was established;
 a name that is only claimed is shown as claimed; two Claude Code sessions writing one ticket are told apart; a subagent is never Patch or
-James; the page has no author field; only the owner can Act as, and the record then reads 'james (as chaz)'."""
+James; the page has no author field; nobody acts as anyone (decision 110, tests/test_act_as_hotfix.py)."""
 
 import json
 
@@ -184,29 +184,6 @@ def test_first_run_can_add_a_new_person(store, monkeypatch):
     assert p and p.name == "Ann Lee" and p.os_users == ["ann"] and people.load(store.home).get("james")  # the rest of the team is kept
     bad = c.post("/whoami", data={"token": c.app.state.tokens.issue(), "pick": "nobody"}, follow_redirects=False)
     assert bad.status_code == 422
-
-
-def test_act_as_is_owner_only_and_the_record_reads_james_as_chaz(store, monkeypatch):
-    monkeypatch.setattr(identity, "os_user", lambda: "jeby")
-    _named(store)
-    t = _mk(store)
-    c = TestClient(create_app(store.home))
-    assert 'name="person"' in c.get("/").text  # the owner sees the menu
-    r = c.post("/act-as", data={"token": c.app.state.tokens.issue(), "person": "chaz", "back": f"/ticket/{t.id}"}, follow_redirects=False)
-    assert r.status_code == 303 and "desk_act_as=chaz" in r.headers["set-cookie"]
-    c.post(f"/ticket/{t.id}/comment", data={"token": c.app.state.tokens.issue(), "text": "As Chaz"}, headers=JSON)
-    (line,) = store.get(t.id).section("Comments").splitlines()
-    info = ops.comment_identity(line.split(" · ", 2)[2])
-    assert "· james (as chaz) ·" in line and info["as"] == "chaz" and info["ok"] == "1"
-    assert "person · ui · os user · confirmed · as chaz" in c.get(f"/ticket/{t.id}").text
-    assert identity.read_log(store.home, t.id)[-1]["as"] == "chaz"
-    other = TestClient(create_app(store.home))
-    other.cookies.set("desk_act_as", "chaz")
-    monkeypatch.setattr(identity, "os_user", lambda: "someone-else")  # not the owner on this machine
-    refused = other.post("/act-as", data={"token": other.app.state.tokens.issue(), "person": "chaz"}, follow_redirects=False)
-    assert refused.status_code == 403
-    other.post(f"/ticket/{t.id}/comment", data={"token": other.app.state.tokens.issue(), "text": "Not as Chaz"}, headers=JSON)
-    assert "(as chaz)" not in store.get(t.id).section("Comments").splitlines()[-1]  # the cookie means nothing without the owner's identity
 
 
 def test_every_form_in_the_new_screens_names_its_progress_steps(store):
