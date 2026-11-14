@@ -9,3 +9,5 @@ build/
 jeby-private/
 src/desk/_build.py
 src/desk/ui/content/
+.env
+.env.*
