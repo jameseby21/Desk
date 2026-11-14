@@ -17,7 +17,7 @@ JSON = {"Accept": "application/json"}
 
 def _validate(store, capsys):
     with pytest.raises(SystemExit) as e:
-        main(["--home", str(store.home), "validate"])
+        main(["--home", str(store.home), "validate", "--verbose"])  # DESK-0265: the default output groups warnings by kind; this test reads the per-ticket line
     return e.value.code, capsys.readouterr().out
 
 

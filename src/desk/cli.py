@@ -384,14 +384,30 @@ def cmd_comment(args):
 
 
 def cmd_validate(args):
+    """DESK-0265: one line per warning kind (count, three newest ids); `--verbose` prints every line; `--gate KIND` makes a kind an error."""
+    from . import warnkinds
+
+    gates = args.gate or []
+    unknown = [g for g in gates if g not in warnkinds.kind_keys()]
+    if unknown:
+        _die(f"unknown --gate kind {', '.join(unknown)}; the kinds are: {', '.join(warnkinds.kind_keys())}")
     s = _store(args)
     errors, warnings = validate_store(s)
-    for w in warnings:
-        print(f"warning: {w}")
+    gated, warnings = warnkinds.split_gated(warnings, gates)
+    errors = errors + gated
+    tickets = s.tickets()
+    if args.verbose:
+        for w in warnings:
+            print(f"warning: {w}")
+    else:
+        groups = warnkinds.group(warnings, {t.id: t for t in tickets})
+        for g in groups:
+            print(warnkinds.render(g))
+        if groups:
+            print("hint: --verbose prints every warning line; --gate KIND (the word in [brackets]) turns that kind into an error for this run")
     for e in errors:
         print(f"error: {e}")
-    n = len(s.tickets())
-    print(f"{n} ticket(s), {len(errors)} error(s), {len(warnings)} warning(s)")
+    print(f"{len(tickets)} ticket(s), {len(errors)} error(s), {len(warnings)} warning(s)")
     sys.exit(1 if errors else 0)
 
 
@@ -1455,7 +1471,9 @@ def build_parser() -> argparse.ArgumentParser:
     actor(sp)
     sp.set_defaults(fn=cmd_needs_me)
 
-    sp = sub.add_parser("validate", help="schema, lifecycle rules, dangling depends_on (exit 1 on errors)")
+    sp = sub.add_parser("validate", help="schema, lifecycle rules, dangling depends_on (exit 1 on errors); warnings print one line per kind")
+    sp.add_argument("--verbose", action="store_true", help="print every warning line, one per ticket, as before")
+    sp.add_argument("--gate", action="append", metavar="KIND", help="make one warning kind an error for this run (repeatable); the kind is the word in [brackets] on a grouped line, such as commands")
     sp.set_defaults(fn=cmd_validate)
 
     sp = sub.add_parser("brand-check", help="projects with no brand block or a missing mark file; --create opens a ticket for each")
