@@ -39,3 +39,9 @@ def _no_ambient_identity(monkeypatch):
     """The tests run inside a Claude Code session whose environment names it; nothing of that may leak into what a test records (DESK-0144)."""
     for var in ("CLAUDECODE", "CLAUDE_CODE_SESSION_ID", "CLAUDE_SESSION_ID", "DESK_ACTOR", "DESK_ACTOR_KIND", "DESK_INSTANCE", "DESK_SUBAGENT_ID", "DESK_PARENT_SESSION"):
         monkeypatch.delenv(var, raising=False)
+
+
+@pytest.fixture(autouse=True)
+def _testclient_host_is_allowed(monkeypatch):
+    """TestClient's default Host is `testserver`; Desk answers only this computer's names and the bind address (DESK-0074), so tests name it as the bind address."""
+    monkeypatch.setenv("DESK_UI_HOST", "testserver")

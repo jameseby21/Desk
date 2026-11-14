@@ -57,7 +57,7 @@ def test_ctrl_c_stops_the_real_server_within_two_seconds_with_a_stream_open(stor
     """Protects: DESK-0169. Starts drew-ui's main() on a free port, opens an event stream, sends CTRL_BREAK (Ctrl+C for a child in its own
     process group) and times the exit. The process is stopped by its PID if it does not leave."""
     port = _free_port()
-    env = {**os.environ, "DESK_HOME": str(store.home), "DESK_UI_PORT": str(port), "PYTHONPATH": SRC}
+    env = {**{k: v for k, v in os.environ.items() if k != "DESK_UI_HOST"}, "DESK_HOME": str(store.home), "DESK_UI_PORT": str(port), "PYTHONPATH": SRC}
     proc = subprocess.Popen([sys.executable, "-c", "from desk.ui.app import main; main()"], env=env, creationflags=subprocess.CREATE_NEW_PROCESS_GROUP,
                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     try:
@@ -69,7 +69,7 @@ def test_ctrl_c_stops_the_real_server_within_two_seconds_with_a_stream_open(stor
                 time.sleep(0.2)
         else:
             pytest.fail("the server did not start")
-        c.sendall(b"GET /events HTTP/1.1\r\nHost: x\r\nAccept: text/event-stream\r\n\r\n")
+        c.sendall(b"GET /events HTTP/1.1\r\nHost: 127.0.0.1\r\nAccept: text/event-stream\r\n\r\n")
         time.sleep(1.0)
         assert b"200" in c.recv(200).split(b"\r\n")[0]  # the stream is open
         t0 = time.time()

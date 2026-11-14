@@ -164,6 +164,47 @@ def why_text(home: Path) -> str:
     return "WHY.md not found: set DESK_REPO to your Desk repo."
 
 
+class SameSiteMiddleware:
+    """Pure ASGI (DESK-0074). Desk answers only requests addressed to this computer: the Host header must be 127.0.0.1, localhost, [::1] or the
+    configured bind address (DESK_UI_HOST), any port; anything else gets 400, which closes DNS rebinding (an attacker's domain pointed at
+    127.0.0.1 sends its own name as Host). A state-changing request (not GET, HEAD, OPTIONS) whose Origin or Referer is not on that
+    allowlist is refused with 403 too. No Origin (the CLI, a script) passes."""
+
+    SAFE = {"GET", "HEAD", "OPTIONS"}
+
+    def __init__(self, app):
+        self.app = app
+
+    @staticmethod
+    def _allowed(hostname: str) -> bool:
+        hostname = hostname.lower().strip("[]")
+        return hostname in ("127.0.0.1", "localhost", "::1") or (bool(hostname) and hostname == os.environ.get("DESK_UI_HOST", "").lower().strip("[]"))
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] in ("http", "websocket"):
+            from urllib.parse import urlsplit
+
+            h = {k.decode("latin-1"): v.decode("latin-1") for k, v in scope.get("headers", [])}
+            try:
+                host_ok = self._allowed(urlsplit("//" + h.get("host", "")).hostname or "")
+            except ValueError:
+                host_ok = False
+            if not host_ok:
+                resp = JSONResponse({"ok": False, "message": "Refused: Desk only answers requests addressed to this computer (127.0.0.1 or localhost)."}, status_code=400)
+                return await resp(scope, receive, send) if scope["type"] == "http" else await send({"type": "websocket.close", "code": 1008})
+            if scope["type"] == "http" and scope["method"] not in self.SAFE:
+                for name in ("origin", "referer"):
+                    if name in h:
+                        try:
+                            ok = self._allowed(urlsplit(h[name]).hostname or "")
+                        except ValueError:
+                            ok = False
+                        if not ok:
+                            resp = JSONResponse({"ok": False, "message": "Refused: this request came from another site, not from Desk."}, status_code=403)
+                            return await resp(scope, receive, send)
+        await self.app(scope, receive, send)
+
+
 class IdentityMiddleware:
     """Pure ASGI. Works out who is behind each request (DESK-0144) and keeps it for the request: `scope["state"]["actor"]` for the routes
     and `identity.CURRENT` for every write. A browser that has no device cookie gets one, which names the browser as the instance."""
@@ -234,6 +275,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
     app.state.stopping = False
     app.add_middleware(timing.TimingMiddleware)
     app.add_middleware(IdentityMiddleware, find_store=lambda: Store(home or find_home()))
+    app.add_middleware(SameSiteMiddleware)  # outermost: a cross-site post is refused before anything else looks at it
     tokens = Tokens()
     app.state.tokens = tokens
     shown = {"censor": None, "style": "plain"}  # per request: the profanity filter (None when switched off) and the style that picks the words on screen
@@ -1410,14 +1452,35 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
     return app
 
 
+LOOPBACK = ("127.0.0.1", "localhost", "::1")
+
+
+def bind_address(argv: list[str]) -> tuple[str, str | None]:
+    """The address the server listens on and a warning for the owner (DESK-0074). Default 127.0.0.1 (this computer only);
+    `--host ADDR` or DESK_UI_HOST changes it, and any address that is not loopback returns a warning."""
+    host = os.environ.get("DESK_UI_HOST", "127.0.0.1")
+    if "--host" in argv and argv.index("--host") + 1 < len(argv):
+        host = argv[argv.index("--host") + 1]
+    if host in LOOPBACK:
+        return host, None
+    return host, (f"WARNING: Desk is listening on {host}, not only on this computer. Desk has no login: anyone who can reach this address can read and change every ticket. "
+                  "Use it only on a network you trust, or drop --host / DESK_UI_HOST to go back to 127.0.0.1.")
+
+
 def main() -> None:
+    import sys
+
     import uvicorn
 
     home = find_home(os.environ.get("DESK_HOME"))
     port = int(os.environ.get("DESK_UI_PORT", "8765"))
-    print(f"Desk UI on http://127.0.0.1:{port}  (store: {home})")
+    host, warning = bind_address(sys.argv[1:])
+    os.environ["DESK_UI_HOST"] = host  # the host allowlist reads it
+    if warning:
+        print(warning, file=sys.stderr)
+    print(f"Desk UI on http://{'127.0.0.1' if host == '0.0.0.0' else host}:{port}  (store: {home})")
     Store.background_flush = True  # commit on a timer after the idle time, and now if something was left pending
     Store(home).flush()
     Store(home).schedule_flush()
     # timeout_graceful_shutdown: Ctrl+C waits at most this long for open connections (event streams) before it cuts them (DESK-0169)
-    uvicorn.run(create_app(home), host="127.0.0.1", port=port, log_level="warning", timeout_graceful_shutdown=1)
+    uvicorn.run(create_app(home), host=host, port=port, log_level="warning", timeout_graceful_shutdown=1)
