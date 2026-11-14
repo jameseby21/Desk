@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}Desk · Sprints{% endblock %}
+{% block body %}
+<h1>Sprints</h1>
+<p class="muted">Named, parallel, across projects. Create one with <code>drew sprint new 'sprint 6 2026' --start 2026-11-09 --end 2026-11-22 --project desk</code>; put a ticket in with <code>drew move &lt;ID&gt; --sprint 'sprint 6 2026'</code>.</p>
+<ul class="mentions">
+{% for slug, name, total, open in rows %}{% set d = defs.get(slug) %}
+  <li><a href="/sprint/{{ slug }}"><b>{{ name }}</b></a> <span class="muted">{{ total }} ticket{{ 's' if total != 1 }}, {{ open }} open{% if d and d.start %} · {{ d.start }} to {{ d.end }}{% endif %}</span></li>
+{% else %}<li class="muted">No sprints yet.</li>{% endfor %}
+</ul>
+{% endblock %}

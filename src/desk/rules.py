@@ -6,6 +6,7 @@ import datetime as dt
 import re
 from typing import TYPE_CHECKING
 
+from . import commands, ladder, people
 from .store import id_parts
 from .ticket import CLOSED, ID_LISTS_LOOSE, ID_LISTS_STRICT, PRIORITIES, REQUIRED, LEGACY_TYPES, SIZES, STATUSES, TYPES, Ticket, canon_type, parse_checks, validate_steps
 
@@ -89,7 +90,9 @@ def validate_ticket(t: Ticket, store: "Store", known_ids: set[str] | None = None
             errors.append(f"{where}: tags must be a list of strings")
     if "track" in m and (not isinstance(m["track"], str) or not m["track"].strip()):
         errors.append(f"{where}: track must be a non-empty string when present")
-    for field_ in ("assignee", "handoff", "cloned_from", "evidence"):
+    if "sprint" in m and (not isinstance(m["sprint"], str) or not m["sprint"].strip()):
+        errors.append(f"{where}: sprint must be a non-empty string when present")
+    for field_ in ("assignee", "assigned_by", "handoff", "cloned_from", "split_from", "evidence"):
         if field_ in m and m[field_] not in (None, "") and not isinstance(m[field_], str):
             errors.append(f"{where}: {field_} must be a string")
     if "assigned_at" in m and m["assigned_at"] not in (None, "") and not _datetime_ok(m["assigned_at"]):
@@ -176,20 +179,67 @@ def validate_store(store: "Store") -> tuple[list[str], list[str]]:
     for key in store.projects():
         if store.brand_for(key) is None:
             warnings.append(f"projects/{key}.md: no brand block (mark, accent, family); run `drew brand-check`")
+    req = store.assignee_required_from
     for t in tickets:
         e, w = validate_ticket(t, store, known)
         errors += e
         warnings += w
+        if t.is_open and not " ".join(str(t.meta.get("assignee") or "").split()):  # blank is James's "not yet scanned" marker (DESK-0167)
+            (errors if req and dt.date.today() >= req else warnings).append(f"{t.id}: no assignee (James has not scanned this)")
         from .docs import dead_links  # local import: docs depends on ticket only, keep rules import-light
 
         for link, tried in dead_links(store, t):
             warnings.append(f"{t.id}: doc link `{link}`: dead link (tried: {', '.join(tried)})")
+        warnings += commands.warnings(t)  # DESK-0177: a ready ticket names its commands; ui work in review shows a screenshot
+        warnings += ladder.warnings(t)  # DESK-0139: a wall of text, or a field that should be a linked file
         if t.status == "done":
             for dep in t.meta.get("depends_on") or []:
                 d = by_id.get(str(dep))
                 if d and d.status != "done":
                     errors.append(f"{t.id}: is done but depends on {dep} which is {d.status}")
+    from . import sprints as sprintmod
+
+    known_sprints = sprintmod.names(store)
+    for t in tickets:  # DESK-0147: a sprint field must name a sprint in sprints.yaml
+        w = sprintmod.unknown_warning(t, known_sprints)
+        if w:
+            warnings.append(w)
+    pe = people.load(store.home)
+    for t in tickets:  # DESK-0151: user-facing work is designed by Chaz first
+        w = ui_design_warning(t, by_id, pe)
+        if w:
+            warnings.append(w)
+
+    from . import repeats as repeatmod
+
+    for r in repeatmod.repeats(store, tickets):  # DESK-0158: repetition is an emergency
+        warnings.append(r.message(store.owner))
+    for t, at in repeatmod.stale_handoffs(store, tickets):
+        warnings.append(repeatmod.stale_message(store, t, at))
+
+    from .dispatch import undispatched, warning as undispatched_warning  # local import: dispatch reads people and the store
+
+    for t, hours in undispatched(store, tickets=tickets):  # DESK-0166: ready, unblocked, Patch's, nobody started
+        warnings.append(undispatched_warning(store, t, hours))
     return errors, warnings
+
+
+_DESIGN_NONE = re.compile(r"^\s*design:\s*none\s*-\s*\S", re.I | re.M)
+
+
+def ui_design_warning(t: Ticket, by_id: dict, pe) -> str | None:
+    """A ready, claimed or in-progress ticket with `ui` in its dod needs a ticket assigned to Chaz among its depends_on or related
+    (the design), unless it is a bug, is itself Chaz's, or its Context says `design: none - <reason>`."""
+    if t.status not in ("ready", "claimed", "in_progress") or "ui" not in [str(x) for x in (t.meta.get("dod") or [])]:
+        return None
+    if canon_type(str(t.meta.get("type"))) == "bug" or pe.resolve(str(t.meta.get("assignee") or "")) == "chaz" or _DESIGN_NONE.search(t.section("Context")):
+        return None
+    for ref in [*(t.meta.get("depends_on") or []), *(t.meta.get("related") or [])]:
+        other = by_id.get(str(ref))
+        if other is not None and pe.resolve(str(other.meta.get("assignee") or "")) == "chaz":
+            return None
+    return (f"{t.id}: ui work with no Chaz design ticket linked (user-facing work is designed by Chaz first); add a ticket assigned to chaz to "
+            "depends_on or related, or write `design: none - <reason>` in Context")
 
 
 def _words(reason: str | None) -> str:

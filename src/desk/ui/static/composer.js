@@ -72,3 +72,10 @@
   });
   form.addEventListener("submit", function (e) { e.preventDefault(); e.stopImmediatePropagation(); send(); }, true);
 })();
+/* The composer sits in a fold (DESK-0139): a link to it (#composer, #add-comment) or an error opens it. */
+(function () {
+  var d = document.getElementById("add-comment");
+  if (!d) return;
+  function open() { if (/^#(composer|add-comment|comment-text)$/.test(location.hash)) d.open = true; }
+  open(); window.addEventListener("hashchange", open);
+})();

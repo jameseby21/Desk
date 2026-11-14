@@ -1,27 +1,85 @@
 {% extends "base.html" %}
-{% from "_chips.html" import bar, abar %}
+{% from "_filters.html" import dropdown %}
+{% from "_bcols.html" import columns with context %}
+{% macro counts_line(c, n_open) -%}
+{{ n_open }} open{% if c['ready'] %} · {{ c['ready'] }} {{ screen('ready')|lower }}{% endif %}{% if c['in_progress'] or c['claimed'] %} · {{ c['in_progress'] + c['claimed'] }} {{ screen('in_progress')|lower }}{% endif %}{% if c['review'] %} · {{ c['review'] }} dropped{% endif %}{% if c['blocked'] %} · {{ c['blocked'] }} stuck{% endif %}
+{%- endmacro %}
+{% macro top_chip(top) -%}{% if top %}<span class="chip {% if top == 'p0' %}red{% elif top == 'p1' %}ball{% endif %}" title="Highest priority among the open tickets here">top {{ top }}</span>{% endif %}{%- endmacro %}
 {% block title %}Desk · Board{% endblock %}
 {% block body %}
 <div class="row" style="justify-content:space-between">
-  <h1>The board{% if project %} · {{ titles.get(project, project) }} <span class="chip">{{ project }}</span>{% endif %}</h1>
-  <div class="row"><a class="btn" href="/board">All</a>{% for p in projects %}<a class="btn{% if p == project %} ball{% endif %}" href="/board?project={{ p }}" title="{{ titles.get(p, p) }}">{{ p }}</a>{% endfor %}</div>
+  <div><h1 style="margin:0">Board</h1>
+    <p class="muted" style="margin:2px 0 0">{{ total }} ticket{{ 's' if total != 1 }} match{{ '' if total != 1 else 'es' }}{% if tokens %} the filter{% endif %} · {{ open_n }} open</p></div>
+  <div class="row"><span class="label">Group by</span>
+    <a class="btn{% if by == 'track' %} ball{% endif %}" href="{{ links.track }}">Tracks</a><a class="btn{% if by == 'sprint' %} ball{% endif %}" href="{{ links.sprint }}">Sprints</a>
+    <a class="btn" href="{{ links.expand }}">Expand all</a><a class="btn" href="{{ links.collapse }}">Collapse all</a></div>
 </div>
-{{ abar(achips, assignee, abase, aextra) }}
-{{ bar(chips, track, chip_base, chip_extra) }}
-<div class="board">
-{% for st, items in cols %}
-  {% if items or st in ['ready','in_progress','review'] %}
-  <div class="col">
-    <h3><span>{{ screen(st) }} <span class="muted" style="font-weight:400">{{ st }}</span></span><span>{{ items|length }}</span></h3>
-    {% for t in items %}
-    <a href="/ticket/{{ t.id }}" style="text-decoration:none"><div class="card">
-      <span class="chip">{{ t.id }}</span>{% if s.formerly(t) %} <span class="muted formerly">(formerly {{ s.formerly(t) }})</span>{% endif %} <span class="chip">{{ t.meta.get('priority') }}</span> <span class="chip ty ty-{{ t.meta.get('type') }}">{{ t.meta.get('type') }}</span>{% if s.is_stale(t) %} <span class="chip red">{{ screen('stale') }}</span>{% endif %}
-      <div style="font-weight:600;margin-top:6px">{{ t.meta.get('title') }}</div>
-      <div class="muted" style="font-size:12.5px" title="{{ titles.get(t.project, t.project) }}">{{ t.project }} · {{ t.meta.get('owner') }}</div>
-    </div></a>
-    {% endfor %}
+<div class="row filters" id="filters">
+  {% for name, label, plural in (('project', 'Project', 'projects'), ('assignee', 'Assignee', 'people'), ('track', 'Track', 'tracks'), ('sprint', 'Sprint', 'sprints')) %}{% if show[name] or name in ('project','assignee','track') %}
+  {{ dropdown(label, name, opts[name], plural, tokens|selectattr('facet', 'equalto', name)|map(attribute='label')|list, fhidden, clear[name]) }}{% endif %}{% endfor %}
+  {% for tk in tokens %}<a class="tok" href="{{ tk.href }}" title="Remove {{ tk.label }}">{{ tk.label }} <span aria-hidden="true">&times;</span><span class="vh"> remove</span></a>{% endfor %}
+  <span class="views">Views: <a href="{{ mine_url }}">Mine</a>{% if tokens %} <a href="{{ '/board' ~ ('?by=sprint' if by == 'sprint' else '') }}">Clear all</a>{% endif %}</span>
+</div>
+<p class="muted" style="margin:2px 0 10px">Projects first. Open a project to see its {{ 'tracks' if by == 'track' else 'sprints' }}, open one of those to see its tickets. Close what you do not need; what is open stays in the address.</p>
+<div class="bboard" id="bboard" data-by="{{ by }}" data-filters="{{ filter_q }}">
+{% for r in rows %}
+{% set brand = s.brand_for(r.key) %}
+<details class="bproj" data-key="open" data-val="{{ r.key }}"{% if r.is_open %} open{% endif %}>
+  <summary>
+    {% if brand and brand.mark_url %}<img src="{{ brand.mark_url }}" width="22" height="22" alt="">{% else %}<span class="initial">{{ (r.title or '?')[0]|upper }}</span>{% endif %}
+    <b class="bname" title="{{ r.title }}">{{ r.title }}</b> <span class="chip">{{ r.key }}</span>
+    <span class="bcounts">{{ counts_line(r.counts, r.open) }}</span>
+    {{ top_chip(r.top) }}{% if r.top_ticket %}<a class="btop" href="/ticket/{{ r.top_ticket.id }}" title="{{ r.top_ticket.meta.get('title') }}">{{ r.top_ticket.id }}</a>{% endif %}
+    <span class="muted bgn">{{ r.groups|length }} {{ 'track' if by == 'track' else 'sprint' }}{{ 's' if r.groups|length != 1 }}</span>
+  </summary>
+  <div class="bgroups">
+  {% for g in r.groups %}
+  <details class="bgroup" data-key="g" data-val="{{ r.key }}:{{ g.slug }}" data-project="{{ r.key }}" data-slug="{{ g.slug }}"{% if g.is_open %} open{% endif %}>
+    <summary><b class="bname" title="{{ g.name }}">{{ g.name }}</b> <span class="bcounts">{{ counts_line(g.counts, g.open) }}</span> {{ top_chip(g.top) }}{% if g.top_ticket %}<a class="btop" href="/ticket/{{ g.top_ticket.id }}" title="{{ g.top_ticket.meta.get('title') }}">{{ g.top_ticket.id }}</a>{% endif %}<span class="muted bgn">{{ g.total }} ticket{{ 's' if g.total != 1 }}</span></summary>
+    <div class="gbody">{% if g.is_open %}{{ columns(g.tickets, s, r.key, g.slug) }}{% endif %}</div>
+  </details>
+  {% endfor %}
   </div>
-  {% endif %}
+</details>
+{% else %}<p class="muted">No tickets match. {% if tokens %}<a href="/board">Clear the filters</a>.{% endif %}</p>
 {% endfor %}
 </div>
+<script src="/static/board-filter.js" defer></script>
+<script>
+(function () {
+  /* What is open lives in the address (open= for projects, g= for groups as project:slug) so a view can be shared and reopened.
+     A group the server drew closed has no tickets in the page; opening one fetches its columns, no reload. */
+  var board = document.getElementById("bboard");
+  function sync() {
+    var u = new URL(location.href), open = [], gs = [];
+    board.querySelectorAll("details.bproj[open]").forEach(function (d) { open.push(d.dataset.val); });
+    board.querySelectorAll("details.bgroup[open]").forEach(function (d) { gs.push(d.dataset.val); });
+    ["open", "g"].forEach(function (k) { u.searchParams.delete(k); });
+    if (open.length) u.searchParams.set("open", open.join(","));
+    if (gs.length) u.searchParams.set("g", gs.join(","));
+    history.replaceState(null, "", u);
+  }
+  board.addEventListener("click", function (e) {  /* "N more" fills in place; without script the link is a page */
+    var a = e.target.closest && e.target.closest("a[data-more]");
+    if (!a || e.ctrlKey || e.metaKey || e.shiftKey) return;
+    e.preventDefault();
+    a.textContent = "Loading...";
+    fetch(a.href + "&frag=1").then(function (r) { return r.text(); }).then(function (h) { a.insertAdjacentHTML("beforebegin", h); a.remove(); })
+      .catch(function () { a.textContent = "Could not load. Reload the page."; });
+  });
+  board.querySelectorAll("details.bproj").forEach(function (d) { d.addEventListener("toggle", sync); });
+  board.querySelectorAll("details.bgroup").forEach(function (d) {
+    d.addEventListener("toggle", function () {
+      var body = d.querySelector(".gbody");
+      if (d.open && !body.firstElementChild && !body.dataset.loading) {
+        body.dataset.loading = "1"; body.innerHTML = '<p class="muted">Loading...</p>';
+        var q = new URLSearchParams({ project: d.dataset.project, slug: d.dataset.slug, by: board.dataset.by });
+        fetch("/board/group?" + q + (board.dataset.filters ? "&" + board.dataset.filters : "")).then(function (r) { return r.text(); }).then(function (h) { body.innerHTML = h; delete body.dataset.loading; })
+          .catch(function () { body.innerHTML = '<p class="muted">Could not load these tickets. Reload the page.</p>'; delete body.dataset.loading; });
+      }
+      sync();
+    });
+  });
+})();
+</script>
 {% endblock %}

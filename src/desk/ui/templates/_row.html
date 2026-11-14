@@ -1,0 +1,13 @@
+{# One ticket as a row (DESK-0040): what is asked or who holds it, then the title, then the id. Only Bug and Urgent are badges; the rest is on the ticket page. #}
+{% macro row(t, lead='', due='', step='') -%}
+<a class="trow" href="/ticket/{{ t.id }}">
+  <span class="tr-lead">{% if lead.startswith('ask:') %}<span class="ask {{ 'ask-do' if lead == 'ask:Do' else '' }}">{{ lead[4:] }}</span>{% else %}{{ lead }}{% endif %}</span>
+  <span class="tr-title">{% if t.meta.get('priority') == 'p0' %}<span class="badge urgent">Urgent</span>{% endif %}{% if t.meta.get('type') == 'bug' %}<span class="badge bug">Bug</span>{% endif %}{{ t.meta.get('title') }}{% if step %}<span class="tr-step">Smallest step: {{ step }}</span>{% endif %}</span>
+  <span class="tr-id">{{ t.id }}{% if s.formerly(t) %} (formerly {{ s.formerly(t) }}){% endif %}{% if due %} · {{ due }}{% endif %}</span>
+</a>
+{%- endmacro %}
+{% macro dropdown(label, name, options, current, base, hidden) -%}
+{% if options %}
+<form class="dd-form" method="get" action="{{ base }}" data-progress="none"><label>{{ label }} <select name="{{ name }}" aria-label="{{ label }}" onchange="this.form.submit()"><option value="">All</option>{% for slug, text, n in options %}<option value="{{ slug }}"{% if slug == current %} selected{% endif %}>{{ text }} ({{ n }})</option>{% endfor %}</select></label>{% for k, v in hidden.items() %}{% if v %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endif %}{% endfor %}<noscript><button class="btn small" type="submit">Go</button></noscript></form>
+{% endif %}
+{%- endmacro %}
