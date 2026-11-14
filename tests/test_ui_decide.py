@@ -53,7 +53,8 @@ def test_a_decision_ticket_can_be_decided_from_ready_but_a_feature_cannot(store)
         ops.decide(store, store.get(f.id), True, "Ship it, please.", actor="james")
 
 
-def test_drew_decide_works_from_ready_on_a_decision_ticket(store, capsys):
+def test_drew_decide_works_from_ready_on_a_decision_ticket(store, capsys, monkeypatch):
+    monkeypatch.setenv("DESK_ACTOR", "james")  # DESK-0261: `--as` must be the caller
     t = _ask(store)
     main(["--home", str(store.home), "decide", t.id, "--approve", "Option A, nothing automatic.", "--as", "james"])
     assert store.get(t.id).status == "approved"

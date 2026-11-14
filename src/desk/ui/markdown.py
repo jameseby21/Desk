@@ -464,6 +464,8 @@ def _by_html(code: str | None) -> str:
         words += f" · as {info['as']}"
     if info.get("parent"):
         words += f" · parent {info['parent']}"
+    if info.get("relaying"):
+        words += f" · relaying {info['relaying']}"
     title = ("instance " + info["inst"]) if info.get("inst") else ""
     return f'<span class="by {"confirmed" if ok else "claimed"}" title="{title}">{words}</span>'
 

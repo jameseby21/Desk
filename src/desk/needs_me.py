@@ -175,7 +175,7 @@ def _decision_rows(t: Ticket) -> list[tuple[dt.date, str]]:
         m = _DECISION_LINE.match(line)
         if m:
             try:
-                out.append((dt.date.fromisoformat(m.group(1)), m.group(2).strip()))
+                out.append((dt.date.fromisoformat(m.group(1)), m.group(2).split(", relaying", 1)[0].strip()))  # DESK-0261: the writer, not the relayed person
             except ValueError:
                 pass
     return out

@@ -14,7 +14,8 @@ def run(store, *args):
     main(["--home", str(store.home), *args])
 
 
-def test_cli_new_list_next_validate(store, capsys):
+def test_cli_new_list_next_validate(store, capsys, monkeypatch):
+    monkeypatch.setenv("DESK_ACTOR", "main")  # DESK-0261: `--as` must be the caller
     run(store, "new", "--project", "jre", "--priority", "p1", "Install Em round 1")
     path = capsys.readouterr().out.strip()
     assert path.endswith("JRE-0001-install-em-round-1.md")

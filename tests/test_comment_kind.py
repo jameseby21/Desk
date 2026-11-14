@@ -44,8 +44,9 @@ def test_older_comments_have_no_kind_and_duplicates_ignore_it(store):
     assert ops.locate_comment(store.get(t.id), "em", "Same words") == 1
 
 
-def test_cli_comment_takes_a_kind_and_show_prints_it(store, capsys):
+def test_cli_comment_takes_a_kind_and_show_prints_it(store, capsys, monkeypatch):
     t = _ticket(store)
+    monkeypatch.setenv("DESK_ACTOR", "em")  # DESK-0261: `--as` must be the caller
     main(["--home", str(store.home), "comment", t.id, "Please look", "--kind", "Concern", "--as", "em"])
     main(["--home", str(store.home), "comment", t.id, "No kind given", "--as", "em"])
     capsys.readouterr()

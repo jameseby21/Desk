@@ -63,7 +63,7 @@ def test_redirect_lands_on_the_ticket_and_says_it_was_created(store):
     assert r.status_code == 200 and "DESK-0001" in r.text and "Approve the logo" in r.text and "Ticket created" in r.text
 
 
-def test_creator_is_the_person_acted_as(store, monkeypatch):
+def test_creator_is_the_real_poster_whatever_an_old_act_as_cookie_says(store, monkeypatch):
     from desk import identity
 
     monkeypatch.setattr(identity, "os_user", lambda: "james")
@@ -73,7 +73,7 @@ def test_creator_is_the_person_acted_as(store, monkeypatch):
 
     people.link_os_user(store.home, "james", "james")
     c.post("/new", data={**GOOD, "token": _token(c)}, follow_redirects=False)
-    assert store.get("DESK-0001").meta["creator"] == "chaz"
+    assert store.get("DESK-0001").meta["creator"] == "james"  # DESK-0261: the cookie is ignored
 
 
 def test_missing_fields_say_so_in_plain_words_and_write_nothing(store):

@@ -25,8 +25,17 @@ _KEY = re.compile(r"^[a-z0-9][a-z0-9-]*$")
 _SAFE_NAME = re.compile(r"[^A-Za-z0-9._-]+")
 
 
-def _stamp(actor: str, what: str, at_time: bool = False, now: dt.datetime | None = None) -> str:
+def _stamp(actor: str, what: str, at_time: bool = False, now: dt.datetime | None = None, decision: bool = False) -> str:
+    """One record line. When the writer relays another person's words (`--relaying`, DESK-0261) the line says so beside the writer's own
+    name, never as the relayed person: a Decision reads `<date> · patch, relaying James's words of <date> · approved`, a Comments line
+    `<time> · patch · relaying James's words of <date>: <text>`. Lines Desk writes itself (actor `desk`) are not relayed."""
     when = (now or dt.datetime.now()).strftime("%Y-%m-%d %H:%M") if at_time else today()
+    ident = identity.CURRENT.get()
+    if ident is not None and ident.relay_phrase and actor != "desk":
+        if decision:
+            actor = f"{actor}, {ident.relay_phrase}"
+        else:
+            what = f"{ident.relay_phrase}: {what}"
     return f"- {when} · {actor} · {what}"
 
 
@@ -41,8 +50,10 @@ def _norm(text: str) -> str:
     return " ".join(text.split()).casefold()
 
 
-def move(store: Store, t: Ticket, new: str, *, actor: str | None = None, reason: str | None = None, note: str | None = None) -> Ticket:
-    check_transition(t, new, store, actor=actor, reason=reason)
+def move(store: Store, t: Ticket, new: str, *, actor: str | None = None, reason: str | None = None, note: str | None = None,
+         authority: str | None = None) -> Ticket:
+    """`authority` is whose permission the rules check when the writer relays another person's words (DESK-0261); the record keeps `actor`."""
+    check_transition(t, new, store, actor=authority or actor, reason=reason)
     old = t.status
     if new == "blocked":
         t.meta["blocked_from"] = old
@@ -124,11 +135,14 @@ def report(store: Store, t: Ticket, text: str) -> Ticket:
 def decide(store: Store, t: Ticket, approve: bool, reason: str, actor: str | None = None) -> Ticket:
     actor = actor or "main"
     new = "approved" if approve else "changes_requested"
-    check_transition(t, new, store, actor=actor, reason=reason)
+    ident = identity.CURRENT.get()
+    # A relayed decision is the relayed person's words, so their authority is checked; the record still names the real writer.
+    authority = ident.relaying if ident is not None and ident.relaying else None
+    check_transition(t, new, store, actor=authority or actor, reason=reason)
     if (what := looks_secret(reason)):  # rule 80: a secret never lands in a ticket
         raise RuleError(secret_refusal(what))
-    t.append_line("Decision", f'{_stamp(actor, new)} · "{reason.strip()}"')
-    return move(store, t, new, actor=actor, reason=reason)
+    t.append_line("Decision", f'{_stamp(actor, new, decision=True)} · "{reason.strip()}"')
+    return move(store, t, new, actor=actor, reason=reason, authority=authority)
 
 
 CHECK_SECTIONS = ("Acceptance", "How to validate", "Prompt", "Evidence")
@@ -346,7 +360,7 @@ def unblock(store: Store, t: Ticket, actor: str | None = None, to: str | None = 
 
 def reject(store: Store, t: Ticket, reason: str, actor: str | None = None) -> Ticket:
     check_transition(t, "rejected", store, actor=actor, reason=reason)
-    t.append_line("Decision", f'{_stamp(actor or "main", "rejected")} · "{reason.strip()}"')
+    t.append_line("Decision", f'{_stamp(actor or "main", "rejected", decision=True)} · "{reason.strip()}"')
     return move(store, t, "rejected", actor=actor, reason=reason)
 
 
