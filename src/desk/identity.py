@@ -6,8 +6,8 @@ honest about its limits: the operating-system user or the git user mapped to a p
 (`--as patch`, DESK_ACTOR, a device cookie, the owner assumed because nobody is named yet) is shown as *claimed*, never as confirmed.
 
 CLI order: a subagent id, then a name given (`--as` or DESK_ACTOR), then a Claude Code shell (CLAUDECODE), then the OS user, then the
-git user.name. UI order: the OS user the server runs as, then the device cookie; the store owner may Act as someone else, and the record
-then reads `james (as chaz)`. A subagent is always itself (`subagent:<id>` with its parent), never Patch or James.
+git user.name. UI order: the OS user the server runs as, then the device cookie. Nobody acts as anyone in the browser (decision 110): a
+desk_act_as cookie left from the removed Act as menu is ignored and the real poster is stamped. A subagent is always itself (`subagent:<id>` with its parent), never Patch or James.
 
 Environment a session or subagent can set so it is told apart: DESK_ACTOR, DESK_ACTOR_KIND (person, thread, session, subagent),
 DESK_INSTANCE (a session id or a short name), DESK_SUBAGENT_ID, DESK_PARENT_SESSION. CLAUDE_CODE_SESSION_ID is read when the host sets it."""
@@ -168,10 +168,7 @@ def resolve_ui(store, cookies: dict, user: str | None = None) -> Actor:
             base = Actor(q.key, _kind_of(q, "person"), device, "ui", "device-cookie", False)
         else:
             base = Actor(store.owner, "person", device, "ui", "assumed-owner", False)
-    act = (cookies.get("desk_act_as") or "").strip()
-    if act and base.confirmed and base.name == store.owner and pe.get(act) and pe.get(act).key != base.name:
-        return Actor(base.name, base.kind, base.instance, base.source, base.how, True, as_=pe.get(act).key)
-    return base
+    return base  # decision 110: a desk_act_as cookie is ignored, whoever sends it
 
 
 def unnamed(actor: Actor) -> bool:

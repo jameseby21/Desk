@@ -253,7 +253,8 @@ def test_drew_stats_rolls_up_per_assignee_and_the_store(shop, capsys):
 
 def test_lists_sort_by_score_cards_show_it_and_explain_prints_every_term(shop, capsys):
     low = _mk(shop, "Low p3 feature", "lab", type="feature", priority="p3", size="l", created="2026-11-10")
-    high = _mk(shop, "High p0 bug", "desk", type="bug", priority="p0", size="xs", deadline="2026-11-11", deadline_kind="hard")
+    high = _mk(shop, "High p0 bug", "desk", type="bug", priority="p0", size="xs",
+              deadline=(dt.date.today() + dt.timedelta(days=1)).isoformat(), deadline_kind="hard")  # explain and the page judge by the real clock, so the deadline is tomorrow on any day the suite runs
     mid = _mk(shop, "Mid p2 task", "desk", type="task", priority="p2", status="in_progress")
     main(["--home", str(shop.home), "list", "--sort", "score"])
     out = capsys.readouterr().out
