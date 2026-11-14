@@ -25,6 +25,7 @@ SECTIONS = [
     "Decision",
     "Comments",
 ]
+MERGED = "Merged tickets"  # written by `drew merge` (DESK-0263); not in SECTIONS so the ticket page draws it with the other extra sections, but it renders before Report
 # Sections copied by `desk clone`.
 CLONED_SECTIONS = ["Context", "Outcome", "Acceptance", "Prompt"]
 
@@ -276,6 +277,15 @@ class Ticket:
         return str(self.meta.get("status", ""))
 
     @property
+    def projects(self) -> list[str]:
+        """The project it belongs to, then the projects it was merged in from (`also_projects`, DESK-0263)."""
+        also = self.meta.get("also_projects")
+        return [self.project, *(str(x) for x in also if str(x) != self.project)] if isinstance(also, list) else [self.project]
+
+    def in_project(self, key: str) -> bool:
+        return key in self.projects
+
+    @property
     def project(self) -> str:
         return str(self.meta.get("project", ""))
 
@@ -351,7 +361,8 @@ class Ticket:
         fm = yamlio.dump(_plain(ordered), sort_keys=False, allow_unicode=True, default_flow_style=None, width=1000).rstrip("\n")
         fm = re.sub(r"^(\w+): '(\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}:\d{2})?)'$", r"\1: \2", fm, flags=re.M)  # dates unquoted, as people write them
         parts = [f"---\n{fm}\n---\n"]
-        names = list(SECTIONS) + [s for s in self.sections if s not in SECTIONS]
+        base = SECTIONS[:SECTIONS.index("Report")] + [MERGED] + SECTIONS[SECTIONS.index("Report"):] if self.sections.get(MERGED) else list(SECTIONS)
+        names = base + [s for s in self.sections if s not in base]
         for name in names:
             body = self.section(name)
             parts.append(f"\n## {name}\n" + (body + "\n" if body else ""))

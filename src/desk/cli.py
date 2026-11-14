@@ -129,7 +129,7 @@ def cmd_list(args):
             print(f"No hard deadline within {args.due} days, and none missed.")
             return
         for t in due:
-            if args.project and t.project != args.project:
+            if args.project and not t.in_project(args.project):
                 continue
             rows.append([_id_label(s, t), t.project, deadlines.of(t)[0].isoformat(), deadlines.words(deadlines.days_left(t)), t.status, t.meta.get("priority", ""),
                          str(t.meta.get("owner", "")), str(t.meta.get("title", ""))[:60]])
@@ -137,7 +137,7 @@ def cmd_list(args):
         return
     for t in (sc.sort(every) if getattr(args, "sort", "") == "score" else _by_project(every)):
         stale = s.is_stale(t)
-        if args.project and t.project != args.project:
+        if args.project and not t.in_project(args.project):
             continue
         if args.status and t.status != args.status:
             continue
@@ -627,6 +627,24 @@ def cmd_split(args):
     s.sync_after(f"desk: split {old.id} -> {new.id}")
     print(f"{new.id} created from {old.id}: depends_on {old.id}; {old.id} lists it under blocks and asks for the completion decision (done as scoped, or closed in favour)")
     print(new.path)
+
+
+def cmd_merge(args):
+    """DESK-0263: fold tickets into a survivor, losing nothing. The actor is whoever really runs the command (no --as)."""
+    from . import identity, merge as mg
+
+    s = _store(args)
+    if not args.dry_run:
+        s.sync_before()
+    actor = (identity.CURRENT.get() or identity.resolve_cli(s)).display()
+    try:
+        plan = mg.merge(s, args.survivor, args.sources, kind=args.kind, reason=args.reason, signed=args.signed, actor=actor, dry_run=args.dry_run)
+    except (mg.MergeError, ValueError) as e:
+        _die(str(e))
+    for line in plan.report(args.dry_run):
+        print(line)
+    if not args.dry_run:
+        s.sync_after(f"desk: merge {plan.survivor} <- {', '.join(plan.sources)}")
 
 
 def cmd_whoami(args):
@@ -1271,6 +1289,15 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--acceptance", action="append", help="an Acceptance line (repeat for more)")
     actor(sp)
     sp.set_defaults(fn=cmd_split)
+
+    sp = sub.add_parser("merge", help="merge tickets into a survivor without losing anything: their full text, open acceptance lines and projects move to it; each source is rejected with merged_into (kept)")
+    sp.add_argument("survivor", help="the open ticket that keeps going")
+    sp.add_argument("sources", nargs="+", help="the tickets folded into it (not in progress, not done)")
+    sp.add_argument("--kind", required=True, choices=["duplicate", "linked", "family"], help="duplicate: same ask (duplicate_of); linked or family: related work that now lives in one ticket (merged_into)")
+    sp.add_argument("--reason", required=True, help="why these are one ticket")
+    sp.add_argument("--signed", required=True, help="the comment link or decision number that approves the merge")
+    sp.add_argument("--dry-run", action="store_true", help="print the planned changes and write nothing")
+    sp.set_defaults(fn=cmd_merge)
 
     sp = sub.add_parser("stop", help="stop the Desk UI: end whatever listens on the UI port (DESK_UI_PORT, default 8765) by PID and say which; exit 0 when nothing listens")
     sp.add_argument("--port", type=int, help="the port (default: the UI port)")

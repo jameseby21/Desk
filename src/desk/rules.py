@@ -141,6 +141,14 @@ def validate_ticket(t: Ticket, store: "Store", known_ids: set[str] | None = None
         for rel in (m.get(field_) or []) if isinstance(m.get(field_), list) else []:
             if str(rel) not in ids:
                 warnings.append(f"{where}: {field_} `{rel}` does not exist")
+    if "also_projects" in m and m["also_projects"] not in (None, ""):  # DESK-0263: projects a merged ticket also belongs to
+        if not isinstance(m["also_projects"], list) or not all(isinstance(x, str) and x.strip() for x in m["also_projects"]):
+            errors.append(f"{where}: also_projects must be a list of project keys")
+        elif projects:
+            errors += [f"{where}: also_projects names unknown project `{x}` (no projects/{x}.md)" for x in m["also_projects"] if x not in projects]
+    for field_ in ("merged_into", "duplicate_of"):
+        if m.get(field_) not in (None, "") and str(m[field_]) not in ids:
+            warnings.append(f"{where}: {field_} `{m[field_]}` does not exist")
     if m.get("cloned_from") and str(m["cloned_from"]) not in ids:
         warnings.append(f"{where}: cloned_from `{m['cloned_from']}` does not exist")
     if m.get("parent") not in (None, ""):  # DESK-0208: a subticket names its main ticket

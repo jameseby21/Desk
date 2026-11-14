@@ -20,7 +20,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from .. import timing
-from .. import deadlines, newform, notify, asks, boardfilter as bf, boardview as bv, commands, companies as compmod, identity as idmod, ladder, priority, readability, sprints as sprintmod, todayview as tv, people as peoplemod, projectfilter as pf, search as srch, nav as navmod, needs_me as nmod, buildstamp as bs, comments as cm, docs as docsmod, ops, profanity, review as rv, style as styles, subtickets as subt, tracks as trk, version as ver
+from .. import merge as mergemod, deadlines, newform, notify, asks, boardfilter as bf, boardview as bv, commands, companies as compmod, identity as idmod, ladder, priority, readability, sprints as sprintmod, todayview as tv, people as peoplemod, projectfilter as pf, search as srch, nav as navmod, needs_me as nmod, buildstamp as bs, comments as cm, docs as docsmod, ops, profanity, review as rv, style as styles, subtickets as subt, tracks as trk, version as ver
 from ..config import find_home
 from ..rules import RuleError
 from ..store import Store, id_parts, split_profile
@@ -589,7 +589,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
             company = ""  # a company that no longer exists: back to the top
         level = "project" if company else "company"
         if level == "project" and company != compmod.ALL:
-            ts = [t for t in ts if of.get(t.project) == names[company]]
+            ts = [t for t in ts if any(of.get(p) == names[company] for p in t.projects)]
         nm_items = {i.id: i for i in nmod.build(s, tickets=ts)}  # Needs me (DESK-0149): the same set as Today's block, within the filters
         needs = "1" if needs == "1" else ""
         if needs:
@@ -722,7 +722,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
             ts = [t for t in ts if compmod.slug(of.get(t.project) or compmod.of(s, t.project)) == company]
             where.append(compmod.title(next((n for n in of.values() if compmod.slug(n) == company), company)))
         if project:
-            ts = [t for t in ts if t.project == project]
+            ts = [t for t in ts if t.in_project(project)]
             where.append(s.project_title(project))
         if track:
             ts = [t for t in ts if trk.track_slug(trk.track_of(t)) == track]
@@ -824,13 +824,14 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         family_view = {"part": fam.parent(t), "part_id": subt.parent_of(t), "subs": fam.subs(t), "roll": fam.rollup(t)}
         mermaid = any(has_mermaid(t.section(name)) for name in t.sections)
         rejected, flagged = rejected_note(t), False
+        merged = merged_note(s, t, by_id)
         if rejected or t.failed_checks():
             flagged = True
         else:
             rx = getattr(censor_for(s), "rx", None)
             flagged = bool(rx and rx.search(re.sub(r"`[^`]*`", "", t.section("Comments"))))
         empty_head, empty_body = flag_empty(styles.load(s.home)["name"])
-        return templates.TemplateResponse(request, "ticket.html", ctx(request, s, t=t, deps=deps, rejected=rejected, flag_empty=None if flagged else (empty_head, empty_body), stale=s.is_stale(t), error=error, s=s,
+        return templates.TemplateResponse(request, "ticket.html", ctx(request, s, t=t, deps=deps, rejected=rejected, merged=merged, flag_empty=None if flagged else (empty_head, empty_body), stale=s.is_stale(t), error=error, s=s,
                                                              formerly=s.formerly(t), mermaid=mermaid, mentions=docsmod.mentioned_in(list(by_id.values()), ticket_id=t.id),
                                                              owning=docsmod.owning_docs(s, t), source_doc=source_doc(s, t), acc_lines=[(i + 1, c.text) for i, c in enumerate(parse_checks(t.section("Acceptance")))], dod=dod_view(s, t), reply_ask=reply_ask(s, t), doc_links=doc_links(s, t), **assign_view(s, t), **nav_view(s, t), events_url=f"/events/{t.id}", events_since=ev.ticket_stamp(s, t.id),
                                                              tl=tlmod.view(s, t), **family_view))
@@ -841,6 +842,17 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         cur = ops.assignee_of(t)
         found = pe.get(cur) if cur else None
         return {"assign_groups": pe.groups(), "cur_assignee": found.key if found else cur, "cur_known": bool(found) or not cur}
+
+    def merged_note(s: Store, t, by_id: dict) -> dict | None:
+        """DESK-0263: where a merged-away ticket went. `merged_into:` always; `duplicate_of:` when the survivor holds a copy of this ticket."""
+        into = str(t.meta.get("merged_into") or "")
+        dup = str(t.meta.get("duplicate_of") or "")
+        target = by_id.get(into or dup)
+        if target is None:
+            return None
+        if not into and t.id not in mergemod.embedded(target.path.read_text(encoding="utf-8")):
+            return None  # an older duplicate that was only closed: the rejected note says so
+        return {"id": target.id, "title": str(target.meta.get("title") or ""), "status": target.status}
 
     def rejected_note(t) -> dict | None:
         """Who let this ticket go, when and why, from the last `rejected` line of Decision (DESK-0154, Chaz F3)."""

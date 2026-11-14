@@ -148,7 +148,7 @@ def hierarchy(store: Store, tickets: list[Ticket]) -> list[dict]:
     sc = priority.scores(store)
     rows = []
     for key in store.projects():
-        mine = [t for t in tickets if t.project == key]
+        mine = [t for t in tickets if t.in_project(key)]
         meta, _ = store.project_profile(key)
         by_track: dict[str, list[Ticket]] = {}
         for t in mine:
