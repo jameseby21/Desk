@@ -198,3 +198,22 @@ def test_drew_migrate_events_prints_counts_per_ticket_progress_and_a_plain_last_
     assert "Wrote 2 events to 1 ticket" in capsys.readouterr().out
     main(["--home", str(store.home), "migrate", "events", "--apply"])
     assert "Nothing to add: every ticket's history is already in its log." in capsys.readouterr().out
+
+
+def test_a_commit_co_authored_by_claude_is_the_code_session_not_the_owner_and_no_git_event_is_confirmed(store):
+    """desk-pr9 review: every session commit carries the owner's git author; importing it as the owner's confirmed action would put
+    Patch's work in the owner's name forever (the log is append-only). Protects: a Co-Authored-By AI trailer makes the actor claude-code
+    (kind code), the raw git author is kept in `old`, and a git author name, which anyone can set, is never confirmed."""
+    a = _old_ticket(store, "Session work", [])
+    b = _old_ticket(store, "Owner work", [])
+    _git(store.home, "init", "-q")
+    who = ["-c", "user.name=James", "-c", "user.email=james@example.com"]
+    _git(store.home, *who, "add", str(a.path))
+    _git(store.home, *who, "commit", "-q", "-m", "chore(tickets): session edit", "-m", "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>")
+    _git(store.home, *who, "add", "-A")
+    _git(store.home, *who, "commit", "-q", "-m", "docs: owner edit")
+    activity.migrate(store, apply=True)
+    (ga,) = [e for e in activity.read(store.home, a.id) if e.change == "git"]
+    assert ga.actor == "claude-code" and ga.kind == "code" and ga.confirmed is False and ga.old == "James", ga
+    (gb,) = [e for e in activity.read(store.home, b.id) if e.change == "git"]
+    assert gb.actor == "james" and gb.confirmed is False  # the author is named, but a git user name proves nothing
