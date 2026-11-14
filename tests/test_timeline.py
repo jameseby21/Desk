@@ -198,3 +198,17 @@ def test_timeline_in_a_real_browser_no_sideways_scroll_one_line_latest_and_filte
     assert data["small"] == [], data
     assert data["vis"] == 1 and data["shown"] == "Showing 1 of 6 events, newest first.", data
     assert data["legend"] == "James 1", data
+
+
+def test_a_300_item_list_change_is_one_short_line_naming_what_was_added_and_removed(store):
+    """ask-timeline review: list fields were joined after the length cut, leaving 8 KB 'what' lines in the timeline and the log.
+    Protects: a list field change records the difference, and every value and 'what' stays within one line."""
+    from desk import activity
+
+    t = ops.new(store, "Many links", "desk")
+    old, new = store.get(t.id), store.get(t.id)
+    old.meta["related"] = [f"TUT-{n:04d}" for n in range(300)]
+    new.meta["related"] = [f"TUT-{n:04d}" for n in range(1, 301)]
+    (ch,) = [c for c in activity.diff(old, new) if c["field"] == "related"]
+    assert len(ch["what"]) <= activity.MAX_VALUE and len(ch["old"]) <= activity.MAX_VALUE and len(ch["new"]) <= activity.MAX_VALUE
+    assert ch["what"] == "related: +TUT-0300 −TUT-0000"

@@ -28,6 +28,7 @@ KINDS = ("owner", "main", "coworker", "code", "subagent", "person")
 CHANGES = ("created", "field", "section", "comment", "git")
 SKIP_FIELDS = {"updated"}  # moves on every save; the save itself is the event
 MAX_VALUE = 120
+_AI_COAUTHOR = re.compile(r"\bclaude\b|anthropic\.com", re.I)  # a Co-Authored-By trailer that names an AI session
 _ID = re.compile(r"^([A-Za-z][A-Za-z0-9]*-\d+)")
 _ANY_COMMENT = re.compile(r"^- (\d{4}-\d{2}-\d{2})(?:[ T](\d{2}:\d{2}))? · (.+?) · (.*)$")
 _TAGS = re.compile(r"\s*<!--.*?-->")
@@ -169,13 +170,16 @@ def _actor_now(store):
 
 # -- what --------------------------------------------------------------------------------
 
-def _val(v) -> str:
+def _val(v, cut: bool = True) -> str:
+    """One line for a value; a list is joined first and then cut, so a long list never becomes a wall in the timeline or the log."""
     if v is None:
         return ""
-    if isinstance(v, (list, tuple)):
-        return ", ".join(_val(x) for x in v)
-    s = " ".join(str(v).split())
-    return s if len(s) <= MAX_VALUE else s[:MAX_VALUE - 1] + "…"
+    s = ", ".join(_val(x, False) for x in v) if isinstance(v, (list, tuple)) else " ".join(str(v).split())
+    return s if not cut or len(s) <= MAX_VALUE else s[:MAX_VALUE - 1] + "…"
+
+
+def _items(v) -> list[str]:
+    return [_val(x, False) for x in v] if isinstance(v, (list, tuple)) else ([_val(v, False)] if _val(v, False) else [])
 
 
 def comment_words(rest: str) -> str:
@@ -209,9 +213,15 @@ def diff(old, new) -> list[dict]:
     for k in keys:
         if k in SKIP_FIELDS:
             continue
-        a, b = _val(old.meta.get(k)), _val(new.meta.get(k))
-        if a != b:
-            out.append({"change": "field", "field": k, "old": a, "new": b, "what": f"{k}: {a or 'empty'} → {b or 'empty'}"})
+        ov, nv = old.meta.get(k), new.meta.get(k)
+        if _val(ov, False) == _val(nv, False):
+            continue
+        a, b = _val(ov), _val(nv)
+        what = f"{k}: {a or 'empty'} → {b or 'empty'}"
+        if isinstance(ov, (list, tuple)) or isinstance(nv, (list, tuple)):  # a list records what was added and removed, not both lists
+            oi, ni = _items(ov), _items(nv)
+            what = _val(f"{k}: " + (" ".join([f"+{x}" for x in ni if x not in oi] + [f"−{x}" for x in oi if x not in ni]) or "reordered"))
+        out.append({"change": "field", "field": k, "old": a, "new": b, "what": what})
     names = list(dict.fromkeys([*old.sections.keys(), *new.sections.keys()]))
     for name in names:
         a, b = old.sections.get(name, "") or "", new.sections.get(name, "") or ""
@@ -280,11 +290,13 @@ def comment_events(t, pe, owner: str) -> list[Event]:
 
 def git_history(home: Path, pe, owner: str) -> tuple[dict[str, list[Event]], str]:
     """({ticket id: [one event per commit that touched its file]}, a note when there is no git history to read). One `git log` call
-    for the whole store; a renamed ticket file keeps its id prefix, so commits are found by id, not by file name."""
+    for the whole store; a renamed ticket file keeps its id prefix, so commits are found by id, not by file name. A commit with a
+    Co-Authored-By trailer naming an AI is a code session's (claude-code), not its git author's; the raw author is kept in `old`, and
+    no git event is confirmed, because a git user name is whatever the machine is set to (sessions commit under the owner's)."""
     from . import identity
 
     try:
-        r = subprocess.run(["git", "-C", str(home), "log", "--format=%x1e%H%x1f%an%x1f%ae%x1f%aI%x1f%s", "--name-only", "--", "tickets/"],
+        r = subprocess.run(["git", "-C", str(home), "log", "--format=%x1e%H%x1f%an%x1f%ae%x1f%aI%x1f%s%x1f%(trailers:key=Co-authored-by,valueonly,separator=%x1d)", "--name-only", "--", "tickets/"],
                            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300)
     except (OSError, subprocess.SubprocessError) as e:
         return {}, f"git history not read: {e}"
@@ -302,6 +314,8 @@ def git_history(home: Path, pe, owner: str) -> tuple[dict[str, list[Event]], str
         p = identity._person_for(pe, name) or identity._person_for(pe, email.split("@")[0]) if pe is not None else None
         actor = p.key if p else name
         kind = kind_for(actor, "", owner, pe)
+        if _AI_COAUTHOR.search(parts[5] if len(parts) > 5 else ""):
+            actor, kind = "claude-code", "code"
         try:
             ts = dt.datetime.fromisoformat(when).replace(tzinfo=None).isoformat()
         except ValueError:
@@ -317,7 +331,7 @@ def git_history(home: Path, pe, owner: str) -> tuple[dict[str, list[Event]], str
             tid = m.group(1).upper()
             seen.add(tid)
             what = f"Saved in git: {_val(subject)}"
-            out.setdefault(tid, []).append(Event(tid, ts, actor, kind, "git", "git", "git", "", sha[:10], what, "", bool(p), f"git:{sha}"))
+            out.setdefault(tid, []).append(Event(tid, ts, actor, kind, "git", "git", "git", name, sha[:10], what, "", False, f"git:{sha}"))
     return out, ""
 
 
