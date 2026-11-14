@@ -1,14 +1,11 @@
 {% extends "base.html" %}
-{% from "_row.html" import row, dropdown with context %}
+{% from "_row.html" import dropdown with context %}
+{% from "_tile.html" import tile_of with context %}
 {% from "_mascot.html" import empty %}
 {% from "_needs_me.html" import block as needs_block with context %}
 {% block title %}Desk · Today{% endblock %}
 {% macro imm_row(t) -%}
-<a class="imm-row trow{% if v.missed(t) %} late{% endif %}" href="/ticket/{{ t.id }}">
-  <span class="tr-lead imm-when">{{ v.days_text(t) }}</span>
-  <span class="tr-title">{{ t.meta.get('title') }}</span>
-  <span class="tr-id">{{ who(t.meta.get('owner')) }} · {% set pl = placeof(t) %}{{ pl[0] }} › {{ pl[1] }}</span>
-</a>
+{{ tile_of(t, '', 'imm-row' ~ (' late' if v.missed(t) else ''), v.days_text(t)) }}
 {%- endmacro %}
 {% block body %}
 <div class="row t-head">
@@ -35,8 +32,8 @@
 <section id="immediate" class="t-sec imm{% if v.imm_missed %} imm-missed{% endif %}" aria-label="Immediate Action Required">
   {% if v.imm %}
   <h2>Immediate Action Required <small>{% if v.imm_missed %}A hard deadline has passed{% else %}Hard deadlines in the next {{ v.window }} days, soonest first{% endif %}</small></h2>
-  <div class="rows">{% for t in v.imm_shown %}{{ imm_row(t) }}{% endfor %}</div>
-  {% if v.imm_more %}<details class="fold"><summary>{{ v.imm_more|length }} more · <b>Show</b></summary><div class="rows">{% for t in v.imm_more %}{{ imm_row(t) }}{% endfor %}</div></details>{% endif %}
+  <div class="tiles">{% for t in v.imm_shown %}{{ imm_row(t) }}{% endfor %}</div>
+  {% if v.imm_more %}<details class="fold"><summary>{{ v.imm_more|length }} more · <b>Show</b></summary><div class="tiles">{% for t in v.imm_more %}{{ imm_row(t) }}{% endfor %}</div></details>{% endif %}
   {% else %}<p class="muted imm-empty">Nothing has a hard deadline in the next {{ v.window }} days.</p>{% endif %}
 </section>
 
@@ -44,7 +41,7 @@
 
 <section class="t-sec" id="needs-you">
   <h2>{{ heading('needs') }} <small>Answer these and the rest can move</small></h2>
-  {% if v.needs %}<div class="rows">{% for t in v.needs %}{{ row(t, 'ask:' ~ v.ask_label(t), v.due_text(t)) }}{% endfor %}</div>
+  {% if v.needs %}<div class="tiles">{% for t in v.needs %}{{ tile_of(t, '', '', v.ask_label(t) ~ ((' · ' ~ v.due_text(t)) if v.due_text(t) else '')) }}{% endfor %}</div>
   {% else %}{{ empty(style, "Nothing is waiting on you.") }}{% endif %}
   <div class="card asked" id="asked">
     <span class="label">Your questions</span>
@@ -63,14 +60,14 @@
 
 <section class="t-sec" id="in-hand">
   <h2>{{ heading('hand') }} <small>Being worked on now, one per person</small></h2>
-  {% if v.hand %}<div class="rows">{% for t in v.hand_shown %}{{ row(t, who(t.meta.get('assignee') or t.meta.get('owner')), '', t.meta.get('smallest_step') if cap == 'rough' else '') }}{% endfor %}</div>
-  {% if v.hand_more %}<details class="fold"><summary>and {{ v.hand_more|length }} more · <b>Show</b></summary><div class="rows">{% for t in v.hand_more %}{{ row(t, who(t.meta.get('assignee') or t.meta.get('owner')), '', t.meta.get('smallest_step') if cap == 'rough' else '') }}{% endfor %}</div></details>{% endif %}
+  {% if v.hand %}<div class="tiles">{% for t in v.hand_shown %}{{ tile_of(t, ('Smallest step: ' ~ t.meta.get('smallest_step')) if cap == 'rough' and t.meta.get('smallest_step') else '') }}{% endfor %}</div>
+  {% if v.hand_more %}<details class="fold"><summary>and {{ v.hand_more|length }} more · <b>Show</b></summary><div class="tiles">{% for t in v.hand_more %}{{ tile_of(t, ('Smallest step: ' ~ t.meta.get('smallest_step')) if cap == 'rough' and t.meta.get('smallest_step') else '') }}{% endfor %}</div></details>{% endif %}
   {% else %}{{ empty(style, "Nothing is being worked on right now.") }}{% endif %}
 </section>
 
 <section class="t-sec" id="waiting">
   <h2>{{ heading('waiting') }} <small>Proof attached, in queue order</small>{% if v.pile %}<a class="all" href="/search?q=status%3Areview">All {{ v.pile|length }} &rarr;</a>{% endif %}</h2>
-  {% if v.pile %}<div class="rows">{% for t in v.pile_shown %}{{ row(t, t.project, '', t.meta.get('smallest_step') if cap == 'rough' else '') }}{% endfor %}</div>
+  {% if v.pile %}<div class="tiles">{% for t in v.pile_shown %}{{ tile_of(t, ('Smallest step: ' ~ t.meta.get('smallest_step')) if cap == 'rough' and t.meta.get('smallest_step') else '') }}{% endfor %}</div>
   {% else %}{{ empty(style, "No proof is waiting for review.") }}{% endif %}
 </section>
 
@@ -79,7 +76,7 @@
   <p class="muted" style="margin:0">Also open, not shown here:
     {% for st, label in (('ready', 'ready'), ('inbox', 'in inbox'), ('triage', 'in triage'), ('blocked', 'blocked'), ('approved', 'approved, waiting for merge')) %}{% if oc[st] %}<a href="/search?q=status%3A{{ st }}">{{ oc[st] }} {{ label }}</a> · {% endif %}{% endfor %}<a href="/board">the board</a></p>
   {% if stale %}<details class="fold"><summary>{{ screen('stale') }} · {{ stale|length }} not touched for a long time · <b>Show</b></summary>
-    <p class="muted">Keep each one with a reason, or close it with a reason.</p><div class="rows">{% for t in stale[:8] %}{{ row(t, t.project) }}{% endfor %}</div>{% if stale|length > 8 %}<p class="muted"><a href="/search?q=is%3Astale">All {{ stale|length }} &rarr;</a></p>{% endif %}</details>{% endif %}
+    <p class="muted">Keep each one with a reason, or close it with a reason.</p><div class="tiles">{% for t in stale[:8] %}{{ tile_of(t) }}{% endfor %}</div>{% if stale|length > 8 %}<p class="muted"><a href="/search?q=is%3Astale">All {{ stale|length }} &rarr;</a></p>{% endif %}</details>{% endif %}
   <details class="fold"><summary>Decided this week · {{ decided|length }} · <b>Show</b></summary>
   {% if decided %}
   <table><tr><th>Ticket</th><th>Status</th><th>Decision</th></tr>

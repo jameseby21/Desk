@@ -22,7 +22,7 @@ def _page(store, url="/"):
 
 
 def _rows(page):
-    return re.findall(r'<a class="trow[^"]*" href="/ticket/([A-Z]+-\d+)"', page)
+    return re.findall(r'<a class="tile[^"]*" href="/ticket/([A-Z]+-\d+)"', page)
 
 
 def test_order_is_needs_you_then_in_hand_then_review_preview_with_all_n(store):
@@ -46,7 +46,7 @@ def test_rows_not_cards_and_only_bug_and_urgent_badges(store):
     _mk(store, "Plain feature", status="in_progress", priority="p2", type="feature", tags=["y"])
     page = _page(store)
     assert 'class="card' not in page.split("<main>")[1].split("Claimed tickets")[1].split("Waiting for review")[0]
-    row = lambda title: re.search(r'<a class="trow[^>]*>(?:(?!</a>).)*' + title + r'.*?</a>', page, re.S).group(0)
+    row = lambda title: re.search(r'<a class="tile[^>]*>(?:(?!</a>).)*' + title + r'.*?</a>', page, re.S).group(0)
     hot, plain = row("Hot bug"), row("Plain feature")
     assert "Urgent" in hot and "Bug" in hot
     assert not re.search(r'class="(chip|badge)', plain) and "#y" not in plain and "ty-feature" not in plain

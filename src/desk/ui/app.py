@@ -474,7 +474,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
     def search_page(request: Request, q: str = ""):
         s = store()
         res = search_for(s, q[:300], 50) if q.strip() else None
-        return templates.TemplateResponse(request, "search.html", ctx(request, s, q=q, res=res, snippet_html=lambda x: Markup(srch.snippet_html(x))))
+        return templates.TemplateResponse(request, "search.html", ctx(request, s, q=q, res=res, context_of=lambda tid: (s.get(tid).context_line() if tid else ""), snippet_html=lambda x: Markup(srch.snippet_html(x))))
 
     @app.get("/about", response_class=HTMLResponse)
     def about(request: Request):

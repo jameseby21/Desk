@@ -1,0 +1,16 @@
+{# One ticket as a tile (DESK-0260): id, title, status, priority, assignee and the first line of Context; the whole tile is the one link.
+   `extra` is an optional line above the foot (what is asked, when it is due, the smallest step). The `tile` class is the test hook. #}
+{% set PRIO_WORDS = {'p0': 'Urgent', 'p1': 'High', 'p2': 'Normal', 'p3': 'Low'} %}
+{% macro tile(id, title, status, priority, assignee, context='', extra='', cls='', bug=False, note='', place='', formerly='', part='', x=none) -%}
+<a class="tile {{ cls }}" href="/ticket/{{ id }}">
+  <span class="tl-top"><span class="tl-id">{% if place %}<span class="tr-place" title="{{ place }}">{{ place }}</span> · {% endif %}{{ id }}{% if formerly %} (formerly {{ formerly }}){% endif %}</span>{% if note %}<span class="tl-note">{{ note }}</span>{% endif %}</span>
+  <span class="tl-title">{% if bug %}<span class="badge bug">Bug</span>{% endif %}{{ title }}</span>
+  {% if part %}<div class="part-line">{{ part }}</div>{% endif %}
+  {% if context %}<span class="tl-ctx">{{ context }}</span>{% endif %}
+  {% if extra %}<span class="tl-extra">{{ extra }}</span>{% endif %}
+  <span class="tl-foot"><span class="tl-status" data-status="{{ status }}">{{ screen(status) }}</span><span class="tl-prio tl-{{ priority }}">{{ PRIO_WORDS.get(priority, priority) }}</span>{% if x and x.score is not none %}<b class="score{% if x.emergency %} band{% endif %}" title="Score {{ x.score }}: {{ x.why() }}">{{ x.score }}</b>{% endif %}{% if assignee %}<span class="tl-who">{{ who(assignee) }}</span>{% endif %}</span>
+</a>
+{%- endmacro %}
+{% macro tile_of(t, extra='', cls='', note='') -%}
+{{ tile(t.id, t.meta.get('title'), t.status, t.meta.get('priority'), t.meta.get('assignee') or t.meta.get('owner'), t.context_line(), extra, cls, t.meta.get('type') == 'bug', note, (placeof(t)[0] ~ ' › ' ~ placeof(t)[1]) if placeof is defined else '', s.formerly(t), '', score_of(t) if score_of is defined else none) }}
+{%- endmacro %}

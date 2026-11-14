@@ -99,7 +99,7 @@ def test_today_row_lists_missed_first_turns_red_and_caps_at_five(store, monkeypa
     c = TestClient(create_app(store.home))
     page = _today(c)
     top = page.split('id="immediate"')[1].split("</section>")[0]
-    assert "Immediate Action Required" in top and top.split("<details")[0].count('class="imm-row') == 5 and top.count('class="imm-row') == 6 and "1 more" in top and "imm-missed" not in top
+    assert "Immediate Action Required" in top and top.split("<details")[0].count('class="tile imm-row') == 5 and top.count('class="tile imm-row') == 6 and "1 more" in top and "imm-missed" not in top
     assert "due in 1 day" in top and top.index("Task 1") < top.index("Task 5") and "Task 6" not in top.split("<details")[0]
     assert page.index('id="immediate"') < page.index('id="needs-you"')
     late = _t(store, "Late one", -2)
@@ -149,7 +149,7 @@ var sleep=function(ms){return new Promise(function(r){setTimeout(r,ms);});},out=
  out.scrollW=d.documentElement.scrollWidth;out.w=w.innerWidth;out.rows=sec.querySelectorAll('.imm-row').length;
  out.wide=Array.prototype.filter.call(sec.querySelectorAll('.imm-row'),function(r){return r.getBoundingClientRect().right>w.innerWidth+1;}).length;
  out.small=Array.prototype.filter.call(sec.querySelectorAll('*'),function(e){return e.children.length===0&&e.textContent.trim()&&parseFloat(w.getComputedStyle(e).fontSize)<12;}).length;
- out.red=w.getComputedStyle(sec.querySelector('.imm-row.late .imm-when')).color;
+ out.red=w.getComputedStyle(sec.querySelector('.imm-row.late .tl-note')).backgroundColor;
  fetch('/m',{method:'POST',body:JSON.stringify(out)});})();});</script>"""
 
 

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "_tile.html" import tile with context %}
 {% block title %}Desk · Search{% endblock %}
 {% block body %}
 <h1>Search</h1>
@@ -9,9 +10,8 @@
   <p><b>{{ res.total }}{% if res.capped %}+{% endif %}</b> match{{ 'es' if res.total != 1 }}{% if res.fuzzy %} <span class="muted">(some are the closest spelling)</span>{% endif %}</p>
   {% for project, n, hits in res.groups %}
   <h2>{{ titles.get(project, project) }} <small>{{ project }} · {{ n }}</small></h2>
-  <div class="grid" style="grid-template-columns:1fr">{% for h in hits %}
-    <a href="/ticket/{{ h.id }}" style="text-decoration:none"><div class="card"><span class="chip">{{ h.id }}</span> <span class="chip">{{ screen(h.status) }}</span> <span class="chip">{{ h.priority }}</span>{% if h.assignee %} <span class="muted">{{ who(h.assignee) }}</span>{% endif %}{% if h.fuzzy %} <span class="muted">close match</span>{% endif %}
-      <div class="title" style="font-weight:600;margin-top:4px">{{ h.title }}</div>{% if h.part_of %}<div class="part-line">{{ h.part_of }}</div>{% endif %}{% if h.snippet %}<div class="muted" style="font-size:13.5px">{{ snippet_html(h.snippet) }}</div>{% endif %}</div></a>
+  <div class="tiles">{% for h in hits %}
+    {{ tile(h.id, h.title, h.status, h.priority, h.assignee, context_of(h.id), '', 'hit-tile', False, 'close match' if h.fuzzy else '', '', '', h.part_of) }}
   {% endfor %}</div>
   {% if n > hits|length %}<p class="muted">{{ n - hits|length }} more in {{ project }}: add <code>project:{{ project }}</code> to narrow.</p>{% endif %}
   {% endfor %}{% endif %}

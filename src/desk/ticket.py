@@ -286,6 +286,19 @@ class Ticket:
     def section(self, name: str) -> str:
         return (self.sections.get(name) or "").strip()
 
+    def context_line(self, limit: int = 140) -> str:
+        """The first line of Context as plain words for a tile (DESK-0260): markdown marks removed, cut at `limit` with an ellipsis."""
+        for raw in self.section("Context").splitlines():
+            line = raw.strip().lstrip("#>-* ").strip()
+            if not line:
+                continue
+            line = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\g<1>", line)
+            line = re.sub(r"[*_`]+", "", line).strip()
+            if len(line) > limit:
+                line = line[:limit].rsplit(" ", 1)[0].rstrip(" ,;:.") + "…"
+            return line
+        return ""
+
     def set_section(self, name: str, text: str) -> None:
         self.sections[name] = text.strip() + "\n" if text.strip() else ""
 
