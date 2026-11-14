@@ -112,7 +112,7 @@ def _fill_from_rules(s: Store, t) -> None:
 
 
 def cmd_list(args):
-    from . import people, priority, subtickets
+    from . import companies, people, priority, subtickets
 
     from . import sprints
 
@@ -154,11 +154,12 @@ def cmd_list(args):
         part = fam.label(t)
         score = sc.of(t).score
         rows.append([_id_label(s, t), t.project, t.meta.get("type", ""), t.status + (" (stale)" if stale else ""), str(score) if score is not None else "", t.meta.get("priority", ""),
-                     t.meta.get("size", ""), str(t.meta.get("owner", "")), who.display(ops.assignee_of(t)), str(t.meta.get("title", ""))[:60] + (f" ({part})" if part else "")])
+                     t.meta.get("size", ""), str(t.meta.get("owner", "")), who.display(ops.assignee_of(t)), companies.title(companies.of(s, t.project)),
+                     str(t.meta.get("title", ""))[:60] + (f" ({part})" if part else "")])
     if not rows:
         print("No tickets match.")
         return
-    print(_table(rows, ["id", "project", "type", "status", "score", "pri", "size", "owner", "assignee", "title"]))
+    print(_table(rows, ["id", "project", "type", "status", "score", "pri", "size", "owner", "assignee", "company", "title"]))
 
 
 def cmd_explain(args):
@@ -213,8 +214,12 @@ def cmd_show(args):
         t = s.get(args.id)
     except KeyError as e:
         _die(str(e))
-    if s.formerly(t):  # a renamed project: say so before the file, which keeps its original id
-        print(f"# {_id_label(s, t)} · project {t.project} · {s.project_title(t.project)}\n")
+    from . import companies
+
+    co = companies.of(s, t.project)
+    known = co != companies.UNSORTED
+    if s.formerly(t) or known:  # a renamed project (it keeps its original id), or the company it sits in (DESK-0181): say so before the file
+        print(f"# {_id_label(s, t)}" + (f" · company {companies.title(co)}" if known else "") + f" · project {t.project} · {s.project_title(t.project)}\n")
     if args.raw:
         _print_ticket(t)
     else:  # display filter: code spans and fences stay as written; --raw or [style] profanity_filter = false shows everything
@@ -961,6 +966,12 @@ def cmd_refresh(args):
 
 
 def cmd_migrate(args):
+    if args.what == "hierarchy":
+        return cmd_migrate_hierarchy(args)
+    if args.undo:
+        _die("--undo is for `drew migrate hierarchy` only")
+    if not (args.dry_run or args.apply):
+        _die("Give --dry-run or --apply.")
     if args.what == "type":
         return cmd_migrate_type(args)
     if args.what == "acceptance":
@@ -998,6 +1009,53 @@ def cmd_migrate(args):
         return
     wrote = sum(1 for t, name in pairs if trk.write_track(t, name))
     print(f"Wrote track: to {wrote} tickets. updated dates were not changed.")
+
+
+def _in_store(s, given, default):
+    p = Path(given) if given else s.home / default
+    return p if p.is_absolute() or p.exists() else s.home / p
+
+
+def cmd_migrate_hierarchy(args):
+    """DESK-0181: company: in each profile, the [hierarchy] block in desk.toml, and track: mapped to the vocabulary with the old text
+    kept as legacy_track:. A dry run unless --apply; --undo takes all of it back out (with --dry-run it only counts)."""
+    from . import hierarchy
+
+    s = _store(args)
+    if args.undo:
+        profiles, tickets, toml = hierarchy.undo_plan(s)
+        print(f"{len(profiles)} profile(s) with a company: line, {len(tickets)} ticket(s) with legacy_track:, desk.toml block: {'yes' if toml else 'no'}")
+        if args.dry_run:
+            print("Dry run: nothing written. Run `drew migrate hierarchy --undo` without --dry-run to restore.")
+            return
+        np_, nt, wt = hierarchy.undo(s)
+        print(f"Undone: {np_} profile(s) lost their company: line, {nt} ticket(s) restored track: from legacy_track:"
+              + (", and the [hierarchy] block left desk.toml" if wt else "") + ". Every other byte is as it was.")
+        return
+    try:
+        cmap = hierarchy.load_companies(_in_store(s, args.companies, hierarchy.COMPANIES_PATH))
+        vocab = hierarchy.load_vocabulary(_in_store(s, args.vocabulary, hierarchy.VOCABULARY_PATH))
+    except hierarchy.HierarchyError as e:
+        _die(str(e))
+    p = hierarchy.plan(s, cmap, vocab)
+    names = {**cmap.names, **hierarchy.company_names(s)}
+    if p.profiles:
+        print(_table([[k, ck, names.get(ck, ck)] for k, ck in p.profiles], ["project", "company", "shown as"]))
+        print()
+    if p.tickets:
+        print(_table([[t.id, old, new] for t, old, new in p.tickets], ["ticket", "track (kept as legacy_track)", "new track"]))
+        print()
+    if p.unmapped:
+        rows = [[v, str(n)] for v, n in sorted(p.unmapped.items(), key=lambda kv: (-kv[1], kv[0]))]
+        print(_table(rows, ["track not in the vocabulary map (left alone)", "tickets"]))
+        print()
+    print(f"{len(p.profiles)} profile(s) get company:; {len(p.tickets)} ticket(s) get a new track: and legacy_track:; {p.kept} ticket(s) left alone; "
+          f"desk.toml {'gets the [hierarchy] block' if p.toml else 'already has [hierarchy]'}.")
+    if not args.apply:
+        print("Dry run: nothing written. Add --apply to write; `drew migrate hierarchy --undo` takes it back out.")
+        return
+    np_, nt, wt = hierarchy.apply(s, p)
+    print(f"{np_} profile(s) and {nt} ticket(s) written" + (", and desk.toml" if wt else "") + ". updated dates were not changed.")
 
 
 def cmd_migrate_events(args):
@@ -1281,13 +1339,16 @@ def build_parser() -> argparse.ArgumentParser:
     sp.add_argument("--ref", help="install this git ref of the repo instead of its working folder")
     sp.set_defaults(fn=cmd_refresh)
 
-    sp = sub.add_parser("migrate", help="one-off bulk edits; `migrate track` assigns tracks from tracks/rules.yaml, `migrate type` retires the legacy slice and chore types, `migrate acceptance` strips boilerplate Acceptance lines that restate the Definition of Done, `migrate checks` rewrites inline `not accepted` lines as the quoted-reason block, `migrate tests` adds the Tests section to every ticket without one, `migrate commands` adds the Commands section (seeded from the How to validate lines that look like commands), `migrate assignee` fills blank assignees from assign.yaml (never overrides one), `migrate events` turns every ticket's Comments lines and the git history of its file into events in its activity log (events/<ID>.jsonl), once")
-    sp.add_argument("what", choices=["track", "type", "acceptance", "checks", "tests", "assignee", "commands", "events"])
+    sp = sub.add_parser("migrate", help="one-off bulk edits; `migrate track` assigns tracks from tracks/rules.yaml, `migrate type` retires the legacy slice and chore types, `migrate acceptance` strips boilerplate Acceptance lines that restate the Definition of Done, `migrate checks` rewrites inline `not accepted` lines as the quoted-reason block, `migrate tests` adds the Tests section to every ticket without one, `migrate commands` adds the Commands section (seeded from the How to validate lines that look like commands), `migrate assignee` fills blank assignees from assign.yaml (never overrides one), `migrate events` turns every ticket's Comments lines and the git history of its file into events in its activity log (events/<ID>.jsonl), once, `migrate hierarchy` writes company: into each project profile, the [hierarchy] block into desk.toml and the track vocabulary into each ticket (old value kept as legacy_track:); --undo takes it back out byte for byte")
+    sp.add_argument("what", choices=["track", "type", "acceptance", "checks", "tests", "assignee", "commands", "events", "hierarchy"])
     sp.add_argument("--include-closed", action="store_true", help="assignee: also fill closed tickets (default: open tickets only)")
-    mode = sp.add_mutually_exclusive_group(required=True)
+    mode = sp.add_mutually_exclusive_group()
     mode.add_argument("--dry-run", action="store_true", help="print ticket -> track and counts; write nothing")
     mode.add_argument("--apply", action="store_true", help="write track: into each matched ticket's frontmatter")
+    sp.add_argument("--undo", action="store_true", help="hierarchy only: remove the company: lines and the desk.toml block, and restore track: from legacy_track: (with --dry-run: only count)")
     sp.add_argument("--rules", help="rules file (default tracks/rules.yaml in the store)")
+    sp.add_argument("--companies", help="hierarchy: the project -> company map (default tracks/companies.yaml in the store)")
+    sp.add_argument("--vocabulary", help="hierarchy: the track vocabulary and its map from old values (default tracks/vocabulary.yaml in the store)")
     sp.set_defaults(fn=cmd_migrate)
 
     sp = sub.add_parser("history", help="a ticket's timeline from its activity log: the latest change, then every event newest first (who, kind, where from, what, when); --by groups by a dimension, --filter key=value narrows (repeat it; a,b means either)")

@@ -110,7 +110,7 @@ def test_filters_narrow_the_company_rows(store):
 def test_a_profile_without_area_is_unsorted_and_says_so(store):
     page = _fx(store, unsorted=True).get("/board").text
     assert len(re.findall(r'<a class="bcomp"', page)) == 6
-    assert ">Unsorted</b>" in page and "projects with no area in their profile" in page
+    assert ">Unsorted</b>" in page and "projects with no company or area in their profile" in page
     assert companies.of(store, "loose") == "Unsorted" and companies.split("Research") == ("Research", "")
 
 

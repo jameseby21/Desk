@@ -1,0 +1,55 @@
+# The company of every project (DESK-0181, from the proposed map on MGMT-0052 section 2). Owner-editable.
+# `drew migrate hierarchy` reads a copy of this file at <store>/tracks/companies.yaml (or the path given with --companies):
+#   companies: the company keys and the names Desk shows. --apply copies them into desk.toml [hierarchy.companies],
+#              which is where a rename happens afterwards (one line).
+#   projects:  project key -> company key. A project profile with no row here gets `default`.
+#   default:   the company key for a project without a row.
+# Tickets never name a company; they name a project, so moving a project or renaming a company breaks no reference.
+companies:
+  jeby: jeby
+  ja-insights: JA Insights
+  jeby-real-estate: jeby Real Estate
+  jebylabs: jebyLabs
+  unassigned: Unassigned
+default: unassigned
+projects:
+  # jeby (the empire itself)
+  algo: jeby
+  brand: jeby
+  channel: jeby
+  fightplan: jeby
+  fishing: jeby
+  ganado: jeby
+  jeby-us: jeby
+  life: jeby
+  management: jeby
+  philanthropy: jeby
+  showcase: jeby
+  temujin: jeby
+  writing: jeby
+  funding: jeby              # flag: JA Insights if the grants are for the company
+  # JA Insights (teaching and research rows are guesses: paid offerings here, personal study under jeby)
+  consulting: ja-insights    # the free report tool is a product inside it
+  partner: ja-insights
+  driver-tracking: ja-insights
+  route-optimizer: ja-insights
+  nfl-analytics: ja-insights
+  become-a-data-analyst: ja-insights
+  tutoring: ja-insights
+  prompting: ja-insights
+  learninglabs: ja-insights
+  science-stats: ja-insights
+  cosmology: ja-insights
+  # jeby Real Estate
+  jre: jeby-real-estate
+  # jebyLabs
+  desk: jebylabs
+  standards: jebylabs
+  appforge: jebylabs
+  backseat-analyst: jebylabs
+  lightinglab: jebylabs
+  musicalgames: jebylabs
+  plantriloquist: jebylabs
+  quorum: jebylabs
+  territory: jebylabs
+  security: jebylabs         # flag: a baseline applied everywhere; it could be a track instead

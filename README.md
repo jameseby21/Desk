@@ -29,7 +29,7 @@ A store is any directory with a `desk.toml`. Desk finds it in this order: the `-
 
 ```
 <store>/
-  desk.toml              # owner, delegation, git sync, stale window, combos
+  desk.toml              # owner, delegation, git sync, stale window, combos; [hierarchy] levels and company names
   tickets/               # one file per ticket: KEY-0001-slug.md
   tickets/assets/<ID>/   # attachments and screen snaps for one ticket
   events/<ID>.jsonl      # the ticket's activity log: one event per change, append-only, committed (DESK-0162)
@@ -37,6 +37,8 @@ A store is any directory with a `desk.toml`. Desk finds it in this order: the `-
   intake/<date>-<topic>/ # research hand-offs, copied in by `desk intake`
   tracks/<project>/<slug>.md  # optional track descriptions (title, kind sprint|milestone|epic|theme, starts, ends, goal)
   tracks/rules.yaml      # ordered rules for `desk migrate track`
+  tracks/companies.yaml  # project -> company map read by `drew migrate hierarchy` (owner-editable source: docs/hierarchy/)
+  tracks/vocabulary.yaml # the track vocabulary and its map from old values, read by `drew migrate hierarchy`
   glossary.md            # one `## Term` per entry; drives popovers and [[Term]] links
   DECISIONS.md           # process decisions, dated, append-only
   .desk/index.sqlite     # derived search index, gitignored, never the source of truth
@@ -165,6 +167,31 @@ A ticket id is valid when its prefix is the current `prefix` **or** the uppercas
 
 Everywhere tickets are shown (`list`, `board`, `show`, every UI page) they are grouped by their current project under its current name, and a ticket whose id prefix differs from the project's current prefix is marked `(formerly FR)` after the id.
 
+## Companies and the hierarchy (DESK-0181)
+
+The levels are company > project > track > ticket > subticket, read from `desk.toml`, never from code:
+
+```toml
+[hierarchy]
+levels = ["company", "project", "track", "ticket", "subticket"]
+
+[hierarchy.companies]       # company key = the name Desk shows
+jeby = "jeby"
+ja-insights = "JA Insights"
+jeby-real-estate = "jeby Real Estate"
+jebylabs = "jebyLabs"
+unassigned = "Unassigned"
+```
+
+A project profile names its company by key (`company: jebylabs`), beside its `area:`. A profile without `company:` falls back to its `area:`, and one with neither is in Unsorted. A ticket never names a company, only its project, so:
+
+- renaming how a company is shown is one line in `desk.toml`;
+- renaming a company key is that line plus the `company:` line of each of its profiles; no ticket changes, and `drew validate` errors on a `company:` key that `desk.toml` does not declare (the only reference that can dangle).
+
+The board and Today open at the companies, the ticket page shows the company (linked to its board row) and the track with its legacy value, `drew list` has a `company` column and `drew show` names the company in its first line.
+
+`drew migrate hierarchy` writes the structure into a store and takes it back out. It reads `tracks/companies.yaml` (project -> company, the company names, a default) and `tracks/vocabulary.yaml` (the track vocabulary, old value -> new, and `from_type` for batches and sprints, where the ticket's type decides); the owner-editable sources are `docs/hierarchy/companies.yaml` and `docs/hierarchy/vocabulary.yaml` in this repo, copied into the store's `tracks/`. The dry run (default) prints every profile and ticket it would change and every track value not in the map; `--apply` adds `company:` after `area:` in each profile, appends the `[hierarchy]` block to `desk.toml` between two marker comments, and rewrites `track:` with the old text kept verbatim as `legacy_track:`; `--undo` removes the `company:` lines and the block and restores `track:` from `legacy_track:`, every other byte as it was. Running `--apply` twice writes nothing the second time.
+
 ## Refreshing Desk
 
 The installed tool is a copy of the repo from the day it was installed, so a fix in the repo does not reach `drew-ui` until you reinstall. The footer of every UI page and `drew --version` show `Desk <version> · <commit>`, so you can tell which copy is running.
@@ -211,7 +238,7 @@ Rules the CLI and the UI both enforce, and `desk validate` checks in the files:
 | `desk review sync [ID]` | owner / main | Regenerate the list between `<!-- review:start -->` and `<!-- review:end -->` (hand-written lines outside survive): decided tickets become `[x]`, new ones are added, vanished ones are kept as `(resolved)`. Writes the weekly KPI between `<!-- kpi:start -->` and `<!-- kpi:end -->` in Report: waiting at creation, added, decided this week, still waiting, median days in review, oldest waiting. Idempotent. The Today page links this week's review with "N waiting" |
 | `desk list [--project] [--status] [--owner] [--stale] [--all]` | anyone | Table of tickets (open ones by default), grouped by project |
 | `desk next --project jre [--json]` | project session | Highest-priority, oldest ready ticket, in full. `--json` is the SessionStart hook shape (`hookSpecificOutput.additionalContext`) |
-| `desk show ID` | anyone | Print the ticket (with a `(formerly OLD)` header line when the project's prefix has changed) |
+| `desk show ID` | anyone | Print the ticket, after a header line `# <ID> · company <name> · project <key> · <title>` when the project has a company (DESK-0181) or its prefix has changed (`(formerly OLD)` after the id) |
 | `desk claim ID [--owner key-or-name]` | project session | `ready → claimed`; sets owner and branch |
 | `desk start ID` | project session | `claimed → in_progress` |
 | `desk report ID --file report.md` or `--text "..."` | project session | Writes Report, `→ review` |
@@ -230,6 +257,7 @@ Rules the CLI and the UI both enforce, and `desk validate` checks in the files:
 | `desk board [--project] [--all]` | owner | The board in the terminal |
 | `desk intake <folder-or-zip> --topic "x" --project key` | main | Copy a hand-off into `intake/<date>-<topic>/` and open an `intake` ticket. Refuses packages containing `PRIVATE_CONTEXT.md` or a `jeby-private` path |
 | `desk migrate track --dry-run\|--apply [--rules tracks/rules.yaml]` | owner / main | Assign `track:` from ordered rules (first match wins). The dry run prints ticket -> track and counts; `--apply` inserts one `track:` line per ticket and changes nothing else. Tickets that already have a track are left alone |
+| `drew migrate hierarchy --dry-run\|--apply\|--undo [--companies tracks/companies.yaml] [--vocabulary tracks/vocabulary.yaml]` | owner / main | DESK-0181: `company:` in every profile, the `[hierarchy]` block in `desk.toml`, and `track:` from the vocabulary with the old value kept as `legacy_track:`; `--undo` restores every file byte for byte (see Companies and the hierarchy) |
 | `desk doctor [--repo PATH]` | anyone | Installed version and commit, repo path and HEAD, tool and store paths, anything on the UI port. Exit 1 when the installed code is older than the repo |
 | `desk upgrade [--repo PATH]` | owner | Refuses while the UI port is in use (names the PID), else `uv tool install --force <repo>` |
 | `desk home` | anyone | Print the resolved store |

@@ -84,7 +84,9 @@ class Opt:
 def options(store: Store, tickets: list[Ticket], sel: dict, people) -> dict:
     """{facet: [(group heading, [Opt])]}: every value any ticket carries, counted over the tickets the other filters leave."""
     out: dict = {}
-    # projects, grouped by the area in the project profile
+    # projects, grouped by their company (DESK-0181: the profile's company:, else its area:)
+    from . import companies as compmod
+
     mine = [t for t in tickets if keep(t, sel, "project")]
     counts: dict = {}
     for t in mine:
@@ -94,7 +96,8 @@ def options(store: Store, tickets: list[Ticket], sel: dict, people) -> dict:
         n = counts.get(key, 0)
         if not n and key not in sel["project"]:
             continue
-        area = str(store.project_profile(key)[0].get("area") or "") or OTHER_AREA
+        area = compmod.of(store, key)
+        area = OTHER_AREA if area == compmod.UNSORTED else area
         by_area.setdefault(area, []).append(Opt(key, key, n, key in sel["project"]))
     out["project"] = [(a, sorted(o, key=lambda x: x.label.lower())) for a, o in sorted(by_area.items(), key=lambda kv: (kv[0] == OTHER_AREA, kv[0].lower()))]
     # assignees
