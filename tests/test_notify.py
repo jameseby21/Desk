@@ -111,6 +111,40 @@ def test_pair_makes_a_random_topic_in_the_secrets_file_and_keeps_it(store, capsy
     assert nc.read_secrets()["NTFY_TOPIC"] != topic
 
 
+def test_notify_test_sends_one_line_to_each_channel_that_is_on(store):
+    """`drew notify test` sends exactly one 'Desk test: notifications work' line per channel that is on, and --channel keeps it to one."""
+    _pair_secrets()
+    for k, v in (("SMTP_USER", "owner@example.com"), ("SMTP_PASSWORD", "pw")):
+        nc.write_secret(k, v)
+    FakeSmtp.instances.clear()
+    post = FakePost()
+    note, results, names = ns.send_test(store.home, post=post, smtp=FakeSmtp)
+    assert names == ["ntfy", "smtp"] and [r.ok for r in results] == [True, True]
+    assert len(post.calls) == 1 and post.calls[0]["url"] == "https://ntfy.sh/" + "t" * 32
+    assert post.calls[0]["data"].decode("utf-8").startswith("Desk test: notifications work")
+    assert len(FakeSmtp.instances) == 1 and FakeSmtp.instances[0].sent[0].get_content().startswith("Desk test: notifications work")
+    FakeSmtp.instances.clear()
+    post = FakePost()
+    _, results, names = ns.send_test(store.home, "ntfy", post=post, smtp=FakeSmtp)
+    assert names == ["ntfy"] and len(post.calls) == 1 and FakeSmtp.instances == []
+
+
+def test_notify_test_on_a_channel_that_is_not_on_says_what_it_needs(store, capsys):
+    """`drew notify test --channel smtp` with only the phone paired names the missing keys instead of saying nothing is paired."""
+    _pair_secrets()
+    with pytest.raises(SystemExit) as e:
+        main(["--home", str(store.home), "notify", "test", "--channel", "smtp"])
+    out = capsys.readouterr().out
+    assert e.value.code == 1
+    assert "smtp is not on" in out and "SMTP_USER" in out and "SMTP_PASSWORD" in out and "notify pair" not in out
+    with pytest.raises(SystemExit):
+        main(["--home", str(store.home), "notify", "test", "--channel", "pushover"])
+    assert "not in [notify] channels" in capsys.readouterr().out
+    with pytest.raises(SystemExit):
+        main(["--home", str(store.home), "notify", "test", "--channel", "carrier-pigeon"])
+    assert "There is no channel named carrier-pigeon" in capsys.readouterr().out
+
+
 def test_secrets_file_inside_a_repository_is_refused(tmp_path):
     """Secrets never land inside a repository (rule 30): writing notify.env under a folder with .git raises."""
     (tmp_path / "repo" / ".git").mkdir(parents=True)

@@ -88,6 +88,9 @@ def cmd_test(args):
     s = _store(args)
     print("Sending one test line...")
     _, results, names = ns.send_test(s.home, args.channel)
+    if args.channel and not names:  # say why that one channel is off, not "nothing is paired"
+        print(ns.channel_problem(ns.settings(s.home), nc.read_secrets(), args.channel.strip().lower()))
+        sys.exit(1)
     sys.exit(_results(results, names))
 
 

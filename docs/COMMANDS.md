@@ -37,7 +37,7 @@ Phone push and email for the morning brief and alerts; the full guide, costs and
 | Command | What it does | When |
 | --- | --- | --- |
 | `drew notify pair [--new]` | makes a random 32-character ntfy topic, saves it in `%USERPROFILE%\.desk\notify.env` (outside every repository; `DESK_NOTIFY_ENV` names another file) and prints the phone steps and the subscribe link; run again to see the same topic, `--new` replaces it | once, to pair the phone |
-| `drew notify test [--channel NAME]` | sends one line, "Desk test: notifications work", to every channel that is on, and says which worked | after pairing or changing a key |
+| `drew notify test [--channel NAME]` | sends one line, "Desk test: notifications work", to every channel that is on, and says which worked; with `--channel NAME` it says why that channel is off when it is | after pairing or changing a key |
 | `drew notify brief [--dry-run]` | sends the morning brief (ids, titles that pass the private-term scan, counts) with held items folded in; `--dry-run` prints exactly the text and sends nothing | each morning (scheduled), or to preview |
 | `drew notify drain [--dry-run]` | sends what other parts of Desk queued (`.desk/notify-queue.jsonl`) through the privacy filter, the daily budget and quiet hours, showing `[i/n]` per item and a closing count; held items wait for the next brief | every 15 minutes (scheduled) |
 | `drew notify status [--json]` | which channels are on, which keys are set (masked), quiet hours, budget used today, queued, held and unreadable counts, whether the private-term scan is ready | when something did not arrive |

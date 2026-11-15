@@ -106,7 +106,7 @@ Leave out any line to keep its default.
 - `drew notify brief --dry-run` prints exactly the text that would be sent. It holds ticket ids and titles and no Context or Report text.
 - `drew notify status` lists five channels: ntfy and smtp as free, and postmark, twilio and pushover as paid and off. No secret value appears in it.
 - Run `drew notify pair`, then `drew notify test`. The phone shows "Desk test: notifications work".
-- `pytest tests/test_notify.py` passes 22 tests: the privacy filter, the budget, quiet hours and each adapter with a fake transport. None of them uses the network.
+- `pytest tests/test_notify.py` passes 30 tests (one is Windows only): the privacy filter, the budget, quiet hours and each adapter with a fake transport. None of them uses the network.
 
 ## Sources (all read 2026-11-15)
 

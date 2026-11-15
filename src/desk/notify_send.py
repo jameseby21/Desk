@@ -202,7 +202,21 @@ def in_quiet_hours(now: dt.datetime, st: dict) -> bool:
 def active_channels(st: dict, sec: dict, only: str | None = None) -> list[nc.Channel]:
     on = {str(c).strip().lower() for c in (st.get("channels") or [])}
     chans = [c for c in nc.all_channels(st) if c.name in on and c.ready(sec)]
+    only = (only or "").strip().lower()
     return [c for c in chans if c.name == only] if only else chans
+
+
+def channel_problem(st: dict, sec: dict, name: str) -> str:
+    """Why the named channel is not on, in one plain sentence ("" when it is on); never prints a secret, only the missing key names."""
+    chans = {c.name: c for c in nc.all_channels(st)}
+    c = chans.get(name)
+    if c is None:
+        return f"There is no channel named {name}. The channels are {', '.join(chans)}."
+    if name not in {str(x).strip().lower() for x in (st.get("channels") or [])}:
+        return f"{name} is not on: it is not in [notify] channels in desk.toml. Add it there to turn it on."
+    if c.missing(sec):
+        return f"{name} is not on: it needs {', '.join(c.missing(sec))} in notify.env (see docs/NOTIFICATIONS.md)."
+    return ""
 
 
 def _scrub(text: str, sec: dict) -> str:
