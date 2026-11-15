@@ -1544,6 +1544,7 @@ def build_parser() -> argparse.ArgumentParser:
     rp = rsub.add_parser("sync", help="regenerate the checkbox list and KPI block in place")
     rp.add_argument("id", nargs="?", help="default: this week's review ticket")
     rp.set_defaults(fn=cmd_review_sync)
+    __import__("desk.cli_notify", fromlist=["register"]).register(sub)  # DESK-0289: drew notify
     return p
 
 

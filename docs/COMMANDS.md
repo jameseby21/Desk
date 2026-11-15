@@ -31,6 +31,18 @@ Every command a person or an agent runs day to day, with what it does and when. 
 | `drew comments [--author NAME] [--since DATE\|"DATE HH:MM"\|last-sweep] [--unanswered] [--answered-by NAME] [--json] [--mark-sweep]` | lists comments across the store (ticket, time, author, kind, text; `--json` gives a list with ticket, title, when, author, kind, text, answered). `--unanswered` keeps comments with no later line by patch in the same ticket and no change to the ticket on a day after its last comment (dates are days, so a same-day change leaves it open). `--since last-sweep` reads `.desk/state` (everything when none is marked); `--mark-sweep` records now as the last sweep after listing, or alone just records it. The Today page shows the owner's open count in an "asked" block and the weekly review ticket's Report carries it | the sweep, first: `drew comments --author james --since last-sweep --unanswered`, answer each, then `drew comments --mark-sweep` |
 | `drew needs-me [--as NAME] [--json] [--seen ID...] [--seen-all]` | the tickets with an ask for you (a decision ticket you hold, a review only you may approve, a ticket you hold to do) and the tickets someone else changed since you last acted on them (a comment, a checked line, a status, Report or proof change); each with its reason line (`ask: approve · from Patch · due Mon`, `changed: 2 comments by Lily · 5:10 AM`) and a closing `N asks for you · K changed by someone else`. Reading a ticket never counts as acting. `--seen ID` is Mark seen (clears a change without acting; asks stay until answered), `--seen-all` clears every change | start of a session, before the comment sweep |
 
+## Notifications
+Phone push and email for the morning brief and alerts; the full guide, costs and your steps are in [NOTIFICATIONS.md](NOTIFICATIONS.md).
+
+| Command | What it does | When |
+| --- | --- | --- |
+| `drew notify pair [--new]` | makes a random 32-character ntfy topic, saves it in `%USERPROFILE%\.desk\notify.env` (outside every repository; `DESK_NOTIFY_ENV` names another file) and prints the phone steps and the subscribe link; run again to see the same topic, `--new` replaces it | once, to pair the phone |
+| `drew notify test [--channel NAME]` | sends one line, "Desk test: notifications work", to every channel that is on, and says which worked | after pairing or changing a key |
+| `drew notify brief [--dry-run]` | sends the morning brief (ids, titles that pass the private-term scan, counts) with held items folded in; `--dry-run` prints exactly the text and sends nothing | each morning (scheduled), or to preview |
+| `drew notify drain [--dry-run]` | sends what other parts of Desk queued (`.desk/notify-queue.jsonl`) through the privacy filter, the daily budget and quiet hours, showing `[i/n]` per item and a closing count; held items wait for the next brief | every 15 minutes (scheduled) |
+| `drew notify status [--json]` | which channels are on, which keys are set (masked), quiet hours, budget used today, queued and held counts, whether the private-term scan is ready | when something did not arrive |
+| `drew notify schedule --print` | prints the two `schtasks` lines (brief at `brief_time`, drain every 15 minutes, both through `pythonw.exe` so no window opens); Desk never installs them | once, after `drew notify test` worked |
+
 ## Data and environment
 | Command | What it does | Notes |
 | --- | --- | --- |
