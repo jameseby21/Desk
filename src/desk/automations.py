@@ -764,12 +764,12 @@ rules:
     does: An open ticket untouched for more than the store's stale days is tagged stale with a note.
     when: {untouched_days: store, not_status: [review, approved], tags_none: [stale]}
     then:
-      - {add_tags: [stale], comment: "Untouched for {days} days, so it is labelled stale; it closes after as many days again unless someone touches it."}
+      - {add_tags: [stale], comment: "Untouched for {days} days, so it is labelled stale; it closes after as many days again unless someone touches it (not while it is blocked, claimed or in progress)."}
 
   - name: stale-close
-    source: "DESK-0199 (close with a reason; hard deadlines, review and the owner's tickets are never auto-closed)"
-    does: A ticket marked stale stays untouched as long again. It closes as rejected, with the reason. The owner's tickets, reviews and hard deadlines stay open.
-    when: {tags_any: [stale], untouched_days: store, not_status: [review, approved], no_hard_deadline: true, owner_not: [owner]}
+    source: "DESK-0199 (close with a reason; hard deadlines, review and the owner's tickets are never auto-closed); standards rule 10 (blocked_on says what a ticket waits on)"
+    does: A ticket marked stale stays untouched as long again. It closes as rejected, with the reason. The owner's tickets, reviews, hard deadlines and tickets someone is working on or waiting on stay open.
+    when: {tags_any: [stale], untouched_days: store, not_status: [review, approved, blocked, claimed, in_progress], no_hard_deadline: true, owner_not: [owner]}
     then:
       - {move: rejected, reason: "Untouched for {days} days after it was labelled stale (rule {rule}); reopen it with a comment if it still matters."}
 

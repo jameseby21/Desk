@@ -224,6 +224,20 @@ def test_stale_label_then_close_with_a_reason_and_owner_tickets_are_kept(home, n
     assert home.get(mine.id).status == "ready" and "stale" in home.get(mine.id).tags
 
 
+def test_stale_close_never_rejects_a_ticket_waiting_on_the_owner_or_in_progress(home, no_gh):
+    """Rule 10: a ticket blocked on the owner, claimed or in progress is labelled stale but never auto-closed."""
+    waiting = make(home, "Build: waits on the owner's answer")
+    ops.block(home, waiting, "james", "needs the owner's choice")
+    working = make(home, "Build: someone is on it", status="in_progress")
+    claimed = make(home, "Build: someone took it", status="claimed")
+    later = TODAY + dt.timedelta(days=home.stale_days + 2)
+    run(home, "stale-label", "stale-close", today=later)
+    run(home, "stale-label", "stale-close", today=later + dt.timedelta(days=home.stale_days + 2))
+    for t, status in ((waiting, "blocked"), (working, "in_progress"), (claimed, "claimed")):
+        after = home.get(t.id)
+        assert after.status == status and "stale" in after.tags, (t.id, after.status)
+
+
 def test_unblock_when_the_blocker_closes(home, no_gh):
     """A ticket blocked on another ticket returns to where it was when that ticket closes."""
     blocker = make(home, "Build: the blocker")

@@ -27,7 +27,7 @@
 | `approved-waits-to-ship` | A feature, upgrade, bug or release approved more than a day ago and not done gets `ship-pending`, and you are told once. | Skill release (built is not delivered) |
 | `unblock-when-blocker-closes` | A ticket blocked on another ticket goes back to where it was once that ticket closes. | Standards rule 10; event log: 11 unblocks by hand |
 | `stale-label` | A ticket untouched for more than the store's stale days (`desk.toml [stale] days`) gets the tag `stale` and a note. | DESK-0199; idea 52 |
-| `stale-close` | A stale ticket untouched for the stale days again closes as rejected, with the reason. Your own tickets, tickets in review and hard deadlines are labelled but never closed. | DESK-0199 |
+| `stale-close` | A stale ticket untouched for the stale days again closes as rejected, with the reason. Your own tickets, tickets in review or approved, hard deadlines, and tickets that are blocked (waiting on you or anyone), claimed or in progress are labelled but never closed. | DESK-0199; standards rule 10 |
 | `weekly-review-monday` | On Monday, or the first run after it, this week's ticket review is created and synced if it is missing. | Decision 24; idea 56; skill management |
 | `monthly-recurring-example` (off) | An example of a ticket that repeats: one ticket a month from a template. Switch it on and change the template. `every:` is `weekly`, `monthly` or `yearly`; `day:` is a weekday, a day of the month (1 to 28) or `MM-DD`. | Idea 55; DESK-0047; decision 94 |
 
