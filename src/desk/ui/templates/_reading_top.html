@@ -1,0 +1,11 @@
+{# DESK-0287: the second block of the ticket page, right under Latest change: what happens next, and for whom. #}
+{% if rd is defined and rd %}<link rel="stylesheet" href="{{ asset('reading.css') }}">
+{% set na = rd.next %}
+<section class="rd-next{% if na.mine %} mine{% endif %}" id="next-action" aria-label="Next action">
+  <span class="rd-cap">Next action</span>
+  <span class="rd-for">{% if na.for_whom == 'you' %}For you{% elif na.for_whom %}For {{ na.for_whom }}{% else %}Nobody holds it yet{% endif %}</span>
+  <span class="rd-text">{{ na.text }}</span>
+  {% if na.step %}<span class="rd-step">Smallest step: {{ na.step }}</span>{% endif %}
+  {% if na.act and na.href %}<a class="btn small ball rd-go" href="{{ na.href }}">{{ na.act }}</a>{% elif na.href %}<a class="btn small rd-go" href="{{ na.href }}">See the ask</a>{% endif %}
+</section>
+{% endif %}

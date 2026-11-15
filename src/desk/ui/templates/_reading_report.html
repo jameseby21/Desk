@@ -1,0 +1,7 @@
+{# DESK-0287: a Report in reading mode: the summary (up to three findings) and the one ask on top, the rest folded. #}
+{% set rp = rd.report %}
+<div class="rd-report" id="report">
+  <div class="rd-findings"><span class="rd-cap">In short</span>{% if rp.findings|length > 1 or rp.is_list %}<ul>{% for f in rp.findings %}<li>{{ render(f)|safe }}</li>{% endfor %}</ul>{% else %}<div class="md">{{ render(rp.findings[0])|safe }}</div>{% endif %}</div>
+  {% if rp.ask %}<div class="rd-ask" id="report-ask"><span class="rd-cap">The ask</span><div class="md">{{ render(rp.ask)|safe }}</div></div>{% endif %}
+  {% if rp.rest %}<details class="ladder rd-rest"><summary>Read the full report ({{ rp.rest_lines }} more line{{ 's' if rp.rest_lines != 1 }})</summary><div class="md">{{ render(rp.rest)|safe }}</div></details>{% endif %}
+</div>

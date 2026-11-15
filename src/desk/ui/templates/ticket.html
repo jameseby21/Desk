@@ -71,12 +71,42 @@
 </section>
 <script src="{{ asset('timeline.js') }}" defer></script>
 {% endif %}
+{% include "_reading_top.html" %}
 
 <div class="cols">
   <div>
+    {% if t.section('Decision') or reply_ask %}
+    <div class="card section" id="decision"><span class="label">Decision</span>
+      {% if t.section('Decision') %}<div class="md">{{ render(t.section('Decision'))|safe }}</div>{% else %}<p class="muted">Nothing decided yet.</p>{% endif %}
+      {% if reply_ask %}{% set ask = reply_ask %}
+      <form class="post-once reply" id="reply" method="post" action="/ticket/{{ t.id }}/decide" data-inplace="refresh" data-progress="Sending,Saving,Done">
+        <input type="hidden" name="token" value="{{ token() }}"><input type="hidden" name="reply" value="1"><input type="hidden" name="who" value="{{ owner }}">
+        <span class="label">Your answer, as {{ owner }}</span>
+        {% if ask.kind == 'choose' %}
+        <button class="vh" type="submit" name="option" value="" tabindex="-1" aria-hidden="true">Send my words</button>
+        <div class="opts" role="group" aria-label="Options">{% for label, text in ask.options %}<button class="btn" type="submit" name="option" value="{{ loop.index0 }}">{% if label != text %}<b>{{ label }}</b> {% endif %}{{ text }}</button>{% endfor %}</div>
+        <label>Or in your own words (a picked option also records this line)<input type="text" name="words" maxlength="1000" placeholder="Option C, but only for the free tier"></label>
+        <span class="muted note">Picking an option records it and closes the question. To send only your words, press Enter in the box.</span>
+        {% elif ask.kind == 'approve' %}
+        <label>Why<textarea name="words" rows="2" required minlength="4" placeholder="Approve: yes, as written. Or: send back, because..."></textarea></label>
+        <div class="row"><button class="btn ball" type="submit" name="action" value="approve">Approve</button><button class="btn" type="submit" name="action" value="changes">Send back</button><span class="dp-slot"></span></div>
+        {% else %}
+        <label>{{ 'What you are providing' if ask.kind == 'provide' else 'Your answer' }}<textarea name="words" rows="3" required minlength="4" placeholder="{{ 'The thing asked for, or where it lives (never a password or key)' if ask.kind == 'provide' else 'Your answer, in your words' }}"></textarea></label>
+        <div class="row"><button class="btn ball" type="submit" name="action" value="approve">{{ 'Send it' if ask.kind == 'provide' else 'Send answer' }}</button><span class="dp-slot"></span></div>
+        {% endif %}
+        <span class="muted note">Recorded in the Decision section in your words and the ticket moves. Passwords and keys are refused.</span>
+      </form>
+      {% endif %}</div>
+    {% endif %}
+    {% include "_reading_diff.html" %}
+
+    {% if t.section('Context') or t.section('Outcome') %}{# DESK-0287: Context and Outcome wait folded under one line that says the goal #}
+    <details class="fold rd-ctx" id="context-fold"><summary><span class="label">Context and outcome</span>{% if rd is defined and rd and rd.goal() %} <span class="rd-goal">{{ rd.goal() }}</span>{% endif %} <b>Show</b></summary>
     {% for name in ['Context','Outcome'] %}{% if t.section(name) %}
     <div class="card section"><span class="label">{{ name }}</span>{{ wall(name) }}{{ shaped(t.section(name)) }}</div>
     {% endif %}{% endfor %}
+    </details>
+    {% endif %}
 
     {% if subs %}{# DESK-0208: the pieces of this ticket that others do, each tracked and assigned on its own, kept off the board. With none, the
        New subticket button sits in the facts on the right, so a page without subtickets is no taller than before. #}
@@ -124,7 +154,7 @@
     <div class="card section">
       <div class="row" style="justify-content:space-between"><span class="label">Proof (Report)</span>{{ wall('Report') }}
         {% if not t.section('Report') %}<span class="chip red">Not run</span>{% endif %}</div>
-      {% if t.section('Report') %}{{ shaped(t.section('Report')) }}{% else %}<p class="muted">No report yet. A claim with no run behind it gets a red tag, not a pass.</p>{% endif %}
+      {% if t.section('Report') %}{% if rd is defined and rd and rd.report %}{% include "_reading_report.html" %}{% else %}{% if rd is defined and rd and rd.report_flag %}<p class="readflag rd-nosum"><span class="chip red">No summary</span> {{ rd.report_flag }}</p>{% endif %}{{ shaped(t.section('Report')) }}{% endif %}{% else %}<p class="muted">No report yet. A claim with no run behind it gets a red tag, not a pass.</p>{% endif %}
       {% set bad = t.failed_checks() %}{% if bad %}<div class="failed-checks"><span class="label">Failed checks ({{ bad|length }})</span><ul>{% for sec, txt in bad %}<li><span class="chip red">Not run</span> {{ sec }}: {{ txt }}</li>{% endfor %}</ul></div>{% endif %}
     </div>
 
@@ -132,32 +162,8 @@
     <div class="card section" id="evidence"><span class="label">Evidence</span>{{ wall('Evidence') }}{% if t.meta.get('evidence') %}<p style="margin:6px 0">{{ t.meta.get('evidence') }}</p>{% endif %}{% if t.section('Evidence') %}<div class="md" data-check-section="Evidence">{{ render(t.section('Evidence'), t, 'Evidence')|safe }}</div>{% endif %}</div>
     {% endif %}
 
-    {% if t.section('Decision') or reply_ask %}
-    <div class="card section" id="decision"><span class="label">Decision</span>
-      {% if t.section('Decision') %}<div class="md">{{ render(t.section('Decision'))|safe }}</div>{% else %}<p class="muted">Nothing decided yet.</p>{% endif %}
-      {% if reply_ask %}{% set ask = reply_ask %}
-      <form class="post-once reply" id="reply" method="post" action="/ticket/{{ t.id }}/decide" data-inplace="refresh" data-progress="Sending,Saving,Done">
-        <input type="hidden" name="token" value="{{ token() }}"><input type="hidden" name="reply" value="1"><input type="hidden" name="who" value="{{ owner }}">
-        <span class="label">Your answer, as {{ owner }}</span>
-        {% if ask.kind == 'choose' %}
-        <button class="vh" type="submit" name="option" value="" tabindex="-1" aria-hidden="true">Send my words</button>
-        <div class="opts" role="group" aria-label="Options">{% for label, text in ask.options %}<button class="btn" type="submit" name="option" value="{{ loop.index0 }}">{% if label != text %}<b>{{ label }}</b> {% endif %}{{ text }}</button>{% endfor %}</div>
-        <label>Or in your own words (a picked option also records this line)<input type="text" name="words" maxlength="1000" placeholder="Option C, but only for the free tier"></label>
-        <span class="muted note">Picking an option records it and closes the question. To send only your words, press Enter in the box.</span>
-        {% elif ask.kind == 'approve' %}
-        <label>Why<textarea name="words" rows="2" required minlength="4" placeholder="Approve: yes, as written. Or: send back, because..."></textarea></label>
-        <div class="row"><button class="btn ball" type="submit" name="action" value="approve">Approve</button><button class="btn" type="submit" name="action" value="changes">Send back</button><span class="dp-slot"></span></div>
-        {% else %}
-        <label>{{ 'What you are providing' if ask.kind == 'provide' else 'Your answer' }}<textarea name="words" rows="3" required minlength="4" placeholder="{{ 'The thing asked for, or where it lives (never a password or key)' if ask.kind == 'provide' else 'Your answer, in your words' }}"></textarea></label>
-        <div class="row"><button class="btn ball" type="submit" name="action" value="approve">{{ 'Send it' if ask.kind == 'provide' else 'Send answer' }}</button><span class="dp-slot"></span></div>
-        {% endif %}
-        <span class="muted note">Recorded in the Decision section in your words and the ticket moves. Passwords and keys are refused.</span>
-      </form>
-      {% endif %}</div>
-    {% endif %}
-
     <div class="card section" id="comments"><span class="label">Comments</span>{% if flag_empty %} <span class="flag-empty" title="{{ flag_empty[1] }}">{{ flag_empty[0] }}</span>{% endif %}
-      <div class="md" data-comments>{% if t.section('Comments') %}{{ comments_html(t.section('Comments'))|safe }}{% else %}<p class="muted">No comments.</p>{% endif %}</div>
+      <div class="md" data-comments>{% if t.section('Comments') %}{{ (rd.comments(comments_html) if rd is defined and rd else comments_html(t.section('Comments')))|safe }}{% else %}<p class="muted">No comments.</p>{% endif %}</div>
       <details class="addc" id="add-comment"><summary>Add a comment</summary>
       <form class="post-once composer" id="composer" method="post" action="/ticket/{{ t.id }}/comment" data-timeout-ms="10000" data-posting="Posting…" data-progress="Sending,Saving,Done">
         <input type="hidden" name="token" value="{{ token() }}">

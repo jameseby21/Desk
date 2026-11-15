@@ -27,6 +27,7 @@ from ..store import Store, id_parts, split_profile
 from ..ticket import SECTIONS, STATUSES, check_states, parse_checks
 from .. import words
 from .. import timeline as tlmod
+from .. import reading as rdmod
 from ..words import flag_empty
 from urllib.parse import quote
 
@@ -304,6 +305,8 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
                 "titles": {k: st.project_title(k) for k in st.projects()},
                 "score_of": sc.of, "columns_of": lambda ts: bv.five(ts, sc.key), **kw}
 
+    from . import routes_reading
+    routes_reading.install(app, templates, ctx, store, acting)  # DESK-0287: /changes and the why line on rows
     held: OrderedDict[str, dict] = OrderedDict()  # unhandled errors a person may file as a bug, by one-time id
     app.state.errors = held
     desk_dir = Path(__file__).resolve().parent.parent
@@ -830,7 +833,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         return templates.TemplateResponse(request, "ticket.html", ctx(request, s, t=t, deps=deps, rejected=rejected, flag_empty=None if flagged else (empty_head, empty_body), stale=s.is_stale(t), error=error, s=s,
                                                              formerly=s.formerly(t), mermaid=mermaid, mentions=docsmod.mentioned_in(list(by_id.values()), ticket_id=t.id),
                                                              owning=docsmod.owning_docs(s, t), source_doc=source_doc(s, t), acc_lines=[(i + 1, c.text) for i, c in enumerate(parse_checks(t.section("Acceptance")))], dod=dod_view(s, t), reply_ask=reply_ask(s, t), doc_links=doc_links(s, t), **assign_view(s, t), **nav_view(s, t), events_url=f"/events/{t.id}", events_since=ev.ticket_stamp(s, t.id),
-                                                             tl=tlmod.view(s, t), **family_view))
+                                                             tl=tlmod.view(s, t), **rdmod.ticket_view(s, t, acting(request)), **family_view))
 
     def assign_view(s: Store, t) -> dict:
         """The assignee dropdown: people in their groups, and the stored value as a key (an old spelling such as `jre` selects `code:jre`)."""

@@ -1,0 +1,10 @@
+{# DESK-0287: what changed on this ticket since this viewer last opened it: added lines green, removed lines struck. #}
+{% if rd is defined and rd and rd.diff %}{% set d = rd.diff %}
+<details class="rd-diff" id="since-last-visit">
+  <summary><span class="rd-cap">Since your last visit</span> {{ d.summary() }}{% if d.since %} <span class="muted">· {{ d.since.strftime('%b') }} {{ d.since.day }} at {{ d.since.strftime('%I:%M %p').lstrip('0') }}</span>{% endif %} <b>Show</b></summary>
+  {% if d.fields %}<div class="rd-dsec"><span class="label">Fields</span><ul class="rd-dlines">{% for name, old, new in d.fields %}<li><b>{{ name }}</b>: {% if old %}<del>{{ old }}</del>{% else %}<span class="muted">empty</span>{% endif %} &rarr; {% if new %}<ins>{{ new }}</ins>{% else %}<span class="muted">empty</span>{% endif %}</li>{% endfor %}</ul></div>{% endif %}
+  {% for sd in d.sections %}<div class="rd-dsec"><span class="label">{{ sd.name }} <span class="muted">+{{ sd.added }} &minus;{{ sd.removed }}</span></span>
+    <ul class="rd-dlines">{% for sign, line in sd.lines %}<li class="{{ 'rd-add' if sign == '+' else 'rd-del' }}"><span class="rd-sign" aria-hidden="true">{{ sign if sign == '+' else '−' }}</span>{% if sign == '+' %}<ins>{{ line }}</ins>{% else %}<del>{{ line }}</del>{% endif %}</li>{% endfor %}{% if sd.more %}<li class="muted">and {{ sd.more }} more lines</li>{% endif %}</ul>
+  </div>{% endfor %}
+</details>
+{% endif %}

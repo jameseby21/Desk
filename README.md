@@ -246,6 +246,7 @@ Plain HTML forms over FastAPI and Jinja2; no build step. The only JavaScript is 
 
 - **Today**: Claimed tickets (claimed and in progress), Waiting on you (review, and open decisions), Waiting for review, Stale (not touched for a long time), Decided this week. The Dogs style adds its dog words in brackets beside these labels. A Good / Normal / Rough switch hides the stale pile on a rough week and shows each ticket's smallest step. With `[life] combos = true`, a **Combos** card lists any two tagged tickets finished within 30 minutes of each other today: `"Dishes" and "Laundry" completed together, +100 for efficiency!` It is computed from `done_at`; nothing new is stored.
 - **Board**: one column per status, filter by project.
+- **Reading mode** (DESK-0287): a ticket opens on Latest change, Next action and the answer box, with Context folded and a diff since your last visit; a Report shows its summary and the one ask first; agent comments fold to one line unless they ask you something; `/changes` lists what others changed since you last looked, by company and project; rows on Today say why they are there. See docs/COMMANDS.md.
 - **Ticket**: every section rendered as Markdown (see Rich bodies), acceptance checkboxes with a count, the Report beside them with a red **Not run** tag when it is empty, Attachments with inline images, Approve and Send back forms (both require words, acting as the configured owner), a guarded Move form, comments.
 - **Projects**: one row per `projects/*.md` with its prefix and aliases, counts by status and last activity.
 
