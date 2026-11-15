@@ -1,0 +1,17 @@
+{# DESK-0290: theme and type size, for this device only (two cookies; the server writes them on <html> before the first paint). #}
+{% set dp = display_prefs(request) %}
+<form method="post" action="/settings/display" class="radios post-once disp-form" data-inplace="stay" data-progress="Sending,Saving,Done" id="display">
+  <fieldset class="disp-set">
+    <legend class="label">Theme (this device)</legend>
+    {% for n, d in (("system", "System: follow the computer's light or dark setting"), ("light", "Light"), ("dark", "Dark: easier at night")) %}
+    <label><input type="radio" name="theme" value="{{ n }}"{% if dp.theme == n %} checked{% endif %}>{{ d }}</label>
+    {% endfor %}
+  </fieldset>
+  <fieldset class="disp-set">
+    <legend class="label">Type size (this device)</legend>
+    {% for n, d in (("small", "Small"), ("normal", "Normal"), ("large", "Large: easier on long reports")) %}
+    <label><input type="radio" name="size" value="{{ n }}"{% if dp.size == n %} checked{% endif %}>{{ d }}</label>
+    {% endfor %}
+  </fieldset>
+  <p><button class="btn ball" type="submit">Save for this device</button><span class="dp-slot"></span></p>
+</form>

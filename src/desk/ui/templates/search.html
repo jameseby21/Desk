@@ -15,5 +15,12 @@
   {% endfor %}</div>
   {% if n > hits|length %}<p class="muted">{{ n - hits|length }} more in {{ project }}: add <code>project:{{ project }}</code> to narrow.</p>{% endif %}
   {% endfor %}{% endif %}
+  {% if res.files %}
+  <h2 id="in-docs">In docs and intake <small>{{ res.files|length }}</small></h2>
+  <div class="grid" style="grid-template-columns:1fr">{% for f in res.files %}
+    <a href="/doc/{{ f.path|urlencode_path }}" style="text-decoration:none"><div class="card"><span class="chip fpath">{{ f.path }}</span>
+      <div class="title" style="font-weight:600;margin-top:4px">{{ f.title }}</div>{% if f.snippet %}<div class="muted" style="font-size:13.5px">{{ snippet_html(f.snippet) }}</div>{% endif %}</div></a>
+  {% endfor %}</div>
+  {% endif %}
 {% endif %}
 {% endblock %}

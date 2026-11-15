@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="en"{{ display_attrs(request) }}>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -7,6 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;800&family=Geist+Mono:wght@400;500&family=Instrument+Sans:wght@400;600;700&display=swap">
 <link rel="stylesheet" href="{{ asset('desk.css') }}">
+<link rel="stylesheet" href="{{ asset('keys.css') }}">
 <link rel="icon" href="data:image/svg+xml,{{ favicon }}">
 </head>
 <body>
@@ -14,6 +15,7 @@
 {% endif %}<header>
   <a class="mark" href="/"><i></i>Desk</a>
   <nav><a href="/">Today</a><a href="/board">Board</a><a href="/projects">Projects</a></nav>
+  {% include "_saved_views.html" %}
   <form class="search-open" action="/search" method="get" role="search" data-progress="none"><input type="search" name="q" id="search-open" placeholder="Find a ticket or project" aria-label="Find a ticket or project" autocomplete="off"><kbd title="Press / to search from any page">/</kbd></form>
   <span class="notify-ctl" role="group" aria-label="Popup notifications"><button type="button" class="btn small" id="notify-allow" aria-pressed="false">Notify me</button><button type="button" class="btn small" id="notify-mute" aria-pressed="false">Mute</button></span>
   <a class="user" href="/settings" title="You are {{ me.display() }}. Settings, and the store this Desk reads."><span class="uinit">{{ (me.name or '?')[0]|upper }}</span>{{ me.display() }}</a>
@@ -28,6 +30,7 @@
 <script src="{{ asset('progress.js') }}"></script>
 <script src="{{ asset('hovercard.js') }}" defer></script>
 <script src="{{ asset('search.js') }}" defer></script>
+<script src="{{ asset('keys.js') }}" defer></script>
 <script src="{{ asset('notify.js') }}" defer></script>
 <script src="{{ asset('flags.js') }}" defer></script>
 <script>

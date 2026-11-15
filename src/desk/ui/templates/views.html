@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}Desk · Saved views{% endblock %}
+{% block body %}
+<h1>Saved views</h1>
+<p class="muted sv-lead">A view is a board or search filter with a name. It sits in the header of every page and every device that reads this store.</p>
+{% if views %}
+<ul class="sv-list">{% for v in views %}
+  <li class="card"><a class="sv-name" href="{{ v.url }}">{{ v.name }}</a><code class="sv-url">{{ v.url }}</code>
+    <form method="post" action="/views/remove" class="post-once" data-progress="none"><input type="hidden" name="token" value="{{ token() }}"><input type="hidden" name="name" value="{{ v.name }}"><button class="btn small" type="submit" aria-label="Remove {{ v.name }}">Remove</button></form></li>
+{% endfor %}</ul>
+{% else %}
+<p>No saved views yet.</p>
+{% endif %}
+<p class="muted">To add one: open the <a href="/board">board</a> or a <a href="/search">search</a>, pick the filters, then use <b>Save view</b> in the header.</p>
+{% endblock %}
