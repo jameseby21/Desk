@@ -274,23 +274,46 @@ class ReportView:
     is_list: bool
 
 
+_HEADING = re.compile(r"^\s*#{1,6}\s")
+_BOLD_ONLY = re.compile(r"^(\*\*|__)[^*_]+?\1[.:]?$|^(\*\*|__)[^*_]+?[.:]\2$")
+LEAD_WORDS = 3  # a block of fewer words is a label, not a summary
+
+
+def _lead_only(block: list[str]) -> bool:
+    """A block that only labels what follows (a heading, a bold lead alone, a line ending in ':', or a word or two) says nothing yet,
+    so it is not the summary rule 15 asks for."""
+    if len(block) != 1:
+        return False
+    s = _strip_item(block[0]).strip()
+    words = re.sub(r"[*_#`]", " ", s).split()
+    return bool(_HEADING.match(block[0]) or _BOLD_ONLY.match(s) or s.endswith(":") or len(words) < LEAD_WORDS)
+
+
 def report_view(text: str, owner: str = "") -> ReportView | None:
-    """The summary on top of a Report: its first block when that is a paragraph of up to three lines (and about 600 characters) or a
-    list of up to three findings; the one ask is the first line that starts Ask:, Your decision: or the owner's name. None without a
-    summary."""
+    """The summary on top of a Report: its first block of content (not a heading or a bold lead alone) when that is a paragraph of up
+    to three lines (and about 400 characters) or a list of up to three findings; the one ask is the first line, outside code, that
+    starts Ask:, Your decision: or the owner's name. Only that one line leaves the body: every other line is in the summary or the
+    folded rest. None without a summary."""
     t = (text or "").strip()
     if not t:
         return None
     rx = _ask_line(owner)
     ask = ""
-    for ln in t.splitlines():
-        m = rx.match(ln)
-        if m:
-            ask = m.group(1).strip().strip("*_ ").strip()
+    raw = ladder.blocks(t)
+    pos = None
+    for bi, b in enumerate(raw):
+        if any(ladder._FENCE.match(x) for x in b):
+            continue
+        for li, x in enumerate(b):
+            m = rx.match(x)
+            if m:
+                ask, pos = m.group(1).strip().strip("*_ ").strip(), (bi, li)
+                break
+        if pos:
             break
-    bs = ladder.blocks(t)
+    bs = [b for b in ([x for li, x in enumerate(b) if (bi, li) != pos] for bi, b in enumerate(raw)) if any(x.strip() for x in b)]
     i = 0
-    while i < len(bs) and all(rx.match(x) or not x.strip() for x in bs[i]):  # an ask standing alone above the summary
+    while i < len(bs) and (all(rx.match(x) or not x.strip() for x in bs[i]) or _lead_only(bs[i])):  # asks and labels above the summary
         i += 1
     if i >= len(bs):
         return None
@@ -316,8 +339,7 @@ def report_view(text: str, owner: str = "") -> ReportView | None:
         if len(first) > SUMMARY_LINES or len(para) > SUMMARY_CHARS:
             return None
         findings = [para]
-    findings = [f for f in findings if not rx.match(f)] or findings
-    rest_bs = [b for b in ([x for x in b if not (ask and rx.match(x))] for b in bs[i + 1:]) if any(x.strip() for x in b)]  # the ask is on top already
+    rest_bs = bs[:i] + bs[i + 1:]  # labels or other asks above the summary stay, at the top of the fold; only the one ask left the body
     rest = "\n\n".join("\n".join(b) for b in rest_bs)
     return ReportView(findings, ask, rest, sum(len(b) for b in rest_bs), is_list)
 

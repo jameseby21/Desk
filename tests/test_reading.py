@@ -50,8 +50,13 @@ def _decision(store):
     return store.get(t.id)
 
 
+def _browser(store):
+    """A client that behaves like the person's browser: it carries the device cookie Desk gave it on an earlier visit."""
+    return TestClient(create_app(store.home), cookies={"desk_device": "testbrowser"})
+
+
 def _page(store, tid):
-    return TestClient(create_app(store.home)).get(f"/ticket/{tid}").text
+    return _browser(store).get(f"/ticket/{tid}").text
 
 
 def test_ticket_page_order_is_latest_change_next_action_ask_then_folded_context(store):
@@ -150,7 +155,7 @@ def test_changes_page_lists_others_changes_since_the_last_visit_per_company_and_
         b = ops.new(store, "New listing page", "jre")
     with acting("james", "person", "ui"):
         mine = ops.new(store, "My own note", "desk")
-    c = TestClient(create_app(store.home))
+    c = _browser(store)
     first = c.get("/changes").text
     assert "in the last 7 days (your first visit)" in first and a.id in first and b.id in first and mine.id not in first
     assert "Created: Fix the search box" in first and "Patch: " in first
@@ -244,3 +249,54 @@ def test_reading_mode_at_390_px_never_scrolls_sideways(store):
     html = re.sub(r'<script src="[^"]*"[^>]*></script>', "", html).replace("</body>", MEASURE + "</body>")
     data = run_in_browser(html, 390)
     assert data["next"] and data["over"] == [] and data["scroll"] <= data["inner"], data
+
+
+# ---- fixes after review --------------------------------------------------------------------------------------------------------
+
+TWO_ASKS = """Built the thing and it passes.
+
+Details here.
+
+- Ask: approve X.
+- Ask: also decide Y before Friday
+- James: said keep the old colours
+- other note"""
+
+
+def _shown(rv) -> str:
+    return "\n".join([*rv.findings, rv.ask, rv.rest])
+
+
+def test_report_reading_mode_drops_only_the_one_ask_line_and_keeps_every_other_line(store):
+    """Protects: only the line shown under The ask leaves the Report body; a second ask and a quoted owner line stay in the folded rest."""
+    rv = reading.report_view(TWO_ASKS, "James")
+    assert rv.ask == "approve X." and "approve X" not in rv.rest
+    assert "also decide Y before Friday" in rv.rest and "said keep the old colours" in rv.rest and "other note" in rv.rest
+    top = reading.report_view("Ask: pick A.\nJames: B is also fine by me\n\nShort finding in one line.\n\nMore detail.", "james")
+    assert top.ask == "pick A." and "B is also fine by me" in _shown(top) and "More detail." in top.rest
+    with acting("patch", "session"):
+        t = ops.new(store, "Two asks in a report", "desk")
+        x = store.get(t.id)
+        x.sections["Report"] = TWO_ASKS
+        store.save(x)
+    html = _page(store, t.id)
+    rest = re.search(r'<details class="ladder rd-rest">(.*?)</details>', html, re.S).group(1)
+    assert "also decide Y before Friday" in rest and "said keep the old colours" in rest
+
+
+def test_a_lone_heading_or_bold_lead_is_not_a_report_summary(store):
+    """Protects: a long Report that opens with only a heading, a bold lead or a 'label:' line has no summary (rule 15) and is warned
+    about; a bold lead with sentences in the same paragraph, or a heading over a real summary, still counts."""
+    for lead in ("**Changed.**", "**Changed:**", "## What I did", "Commands run:", "Report", "**Built (commit 9b4bd8c, pushed):**"):
+        assert reading.report_view(lead + "\n\n" + LONG_NO_SUMMARY, "james") is None, lead
+    ok = reading.report_view("**Summary.** The page opens on the change. The suite is green. One colour is open.\n\n" + LONG_NO_SUMMARY, "james")
+    assert ok and ok.findings[0].startswith("**Summary.** The page opens on the change.")
+    headed = reading.report_view("## Summary\n\nThe page opens on the change. The suite is green.\n\n" + LONG_NO_SUMMARY, "james")
+    assert headed.findings == ["The page opens on the change. The suite is green."] and "## Summary" in headed.rest
+    with acting("patch", "session"):
+        t = ops.new(store, "Report with a bold lead only", "desk")
+        x = store.get(t.id)
+        x.sections["Report"] = "**Changed.**\n\n" + LONG_NO_SUMMARY
+        store.save(x)
+    _errors, warns = validate_store(store)
+    assert any(w.startswith(f"{t.id}: Report is ") and "no summary on top" in w for w in warns), warns
