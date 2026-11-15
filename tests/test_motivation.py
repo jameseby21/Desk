@@ -30,8 +30,18 @@ def _review(store, title="Build the thing", owner="james", assignee="patch"):
     return store.get(t.id)
 
 
-def _status_event(store, tid, day, new, actor="james", kind="owner", hm="10:00:00"):
-    activity.append(store.home, [activity.Event(tid, f"{day.isoformat()}T{hm}", actor, kind, "ui", "field", "status", "review", new, f"status: review → {new}")])
+def _status_event(store, tid, day, new, actor="james", kind="owner", hm="10:00:00", confirmed=True):
+    activity.append(store.home, [activity.Event(tid, f"{day.isoformat()}T{hm}", actor, kind, "ui", "field", "status", "review", new,
+                                                f"status: review → {new}", confirmed=confirmed)])
+
+
+@pytest.fixture
+def owner_listed(store, monkeypatch):
+    """The web server runs as an operating-system user listed for the owner in people.yaml, so web writes are confirmed as the owner."""
+    from desk import people
+
+    monkeypatch.setattr(identity, "os_user", lambda: "owner-login")
+    people.link_os_user(store.home, "james", "owner-login")
 
 
 def test_decided_today_counts_the_owners_decisions_once_each_and_nobody_elses(store, as_owner):
@@ -47,6 +57,26 @@ def test_decided_today_counts_the_owners_decisions_once_each_and_nobody_elses(st
     counts = mot.daily_counts(store.home, "james", today)
     assert counts.get(today) == 2, counts
     assert mot.state(store.home, "james")["decided"] == 2
+
+
+def test_a_claimed_owner_name_never_counts_as_the_owners_decision(store):
+    """Protects decision 110: an approval made under the owner's name but only claimed (--as, DESK_ACTOR, an assumed owner) never counts."""
+    a, b = _review(store, "Claimed on the command line"), _review(store, "Claimed in the browser")
+    claimed = identity.resolve_cli(store, claimed="james", env={"CLAUDECODE": "1"})
+    assert claimed.name == "james" and not claimed.confirmed
+    token = identity.CURRENT.set(claimed)
+    try:
+        ops.decide(store, a, True, "Ship it, looks good.", actor="james")
+    finally:
+        identity.CURRENT.reset(token)
+    ev = [e for e in activity.read(store.home, a.id) if e.field == "status"][-1]
+    assert (ev.actor, ev.kind, ev.new, ev.confirmed) == ("james", "owner", "approved", False)
+    c = TestClient(create_app(store.home))  # nobody listed for this machine: the owner is only assumed
+    r = c.post(f"/ticket/{b.id}/decide", data={"token": c.app.state.tokens.issue(), "action": "approve", "words": "Yes, go."}, headers=JSON)
+    assert r.status_code == 200 and store.get(b.id).status == "approved"
+    _status_event(store, a.id, dt.date.today(), "done", hm="23:59:58", confirmed=False)
+    assert mot.state(store.home, "james")["decided"] == 0
+    assert c.get("/motivation/state.json").json()["decided"] == 0
 
 
 def test_streak_runs_back_from_yesterday_skips_weekends_and_adds_today_once_met():
@@ -76,7 +106,7 @@ def test_streak_is_computed_from_past_days_in_the_event_log(store):
     assert not list((store.home / ".desk").glob("*streak*"))
 
 
-def test_approving_from_the_web_puts_the_header_count_up_by_one(store):
+def test_approving_from_the_web_puts_the_header_count_up_by_one(store, owner_listed):
     """Protects How to validate: approve one ask, the decided-today count goes up by one."""
     t = _review(store, "Approve: the plan")
     c = TestClient(create_app(store.home))

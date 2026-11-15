@@ -3,7 +3,9 @@
 Decided today, precisely: the tickets whose LAST status change made by the store owner on that day moved them into one of DECIDED
 (approved, changes_requested, rejected, done). It is read from the activity log (events/<ID>.jsonl), never stored, so it cannot drift:
 a ticket approved and then put back (an undo writes a later status event) does not count, a ticket approved and then closed counts
-once, and a change made by anyone else (an agent, a rule, a coworker) never counts.
+once, and a change made by anyone else (an agent, a rule, a coworker) never counts. Only a confirmed owner counts (decision 110): a
+change only claimed under the owner's name (`--as`, DESK_ACTOR, a device cookie, the owner assumed in a browser nobody is named in)
+has `confirmed` false on its event and is not the owner's decision.
 
 The streak is the run of days that met the goal, counted back from yesterday, plus today once today meets it. A Saturday or Sunday
 below the goal neither breaks the run nor adds to it (a free weekend is not a failure); a weekday below the goal ends it.
@@ -98,7 +100,7 @@ def _status_rows(p: Path, owner: str, st: os.stat_result) -> list:
             day = dt.date.fromisoformat(ts[:10])
         except ValueError:
             continue
-        mine = d.get("kind") == "owner" or str(d.get("actor") or "").lower() == owner
+        mine = d.get("confirmed") is True and (d.get("kind") == "owner" or str(d.get("actor") or "").lower() == owner)
         rows.append((day, ts, str(d.get("ticket") or p.stem).upper(), str(d.get("new") or ""), mine))
     _cache[key] = (st.st_mtime_ns, st.st_size, rows)
     return rows
