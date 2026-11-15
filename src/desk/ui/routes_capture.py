@@ -12,9 +12,9 @@ import datetime as dt
 import re
 import tempfile
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
-from fastapi import APIRouter, File, Form, Request, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from .. import activity, capture as cap, ops
@@ -23,6 +23,24 @@ from ..ticket import TYPES
 
 LANE_WORD = {"now": "Now", "later": "Later", "planned": "Planned", "parked": "Parked"}
 _ID = re.compile(r"^[A-Za-z][A-Za-z0-9]*-\d+$")
+LOCAL_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})  # Desk serves on 127.0.0.1 only (standards rule 80, item 10)
+NOT_LOCAL = "Desk takes captures from this computer only. Open Desk at http://127.0.0.1 and try again."
+
+
+def _host_of(value: str) -> str | None:
+    try:
+        return urlsplit(value if "//" in value else "//" + value).hostname
+    except ValueError:
+        return None
+
+
+def local_only(request: Request) -> None:
+    """Refuse a request whose Host or Origin is not this computer. A DNS-rebinding page reaches 127.0.0.1 under its own name, so its
+    Host gives it away; a page on another site sends its own Origin. Either way no key is minted and nothing is written."""
+    host = _host_of(request.headers.get("host", ""))
+    origin = request.headers.get("origin")
+    if host not in LOCAL_HOSTS or (origin is not None and _host_of(origin) not in LOCAL_HOSTS):
+        raise HTTPException(status_code=403, detail=NOT_LOCAL)
 
 
 def _json(request: Request) -> bool:
@@ -68,7 +86,7 @@ def attach_bytes(store, t, filename: str, data: bytes) -> Path:
 
 
 def router(store, templates, ctx, tokens, acting) -> APIRouter:
-    r = APIRouter()
+    r = APIRouter(dependencies=[Depends(local_only)])  # every capture route, the key and the guess included
 
     def page(request: Request, name: str, status: int = 200, **kw):
         s = store()

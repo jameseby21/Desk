@@ -16,7 +16,7 @@ JSON = {"Accept": "application/json"}
 
 
 def _client(store):
-    return TestClient(create_app(store.home))
+    return TestClient(create_app(store.home), base_url="http://127.0.0.1:8799")  # the capture routes answer this computer only
 
 
 def _tok(c):
@@ -265,6 +265,26 @@ def test_trailing_junk_cannot_smuggle_a_program_past_the_refusal(store, name):
     assert r2.status_code == 415
     assert not store.ticket_assets_dir(t.id).exists() and [x.id for x in store.tickets()] == [t.id]
     assert capture.stored_name(name).lower().rsplit(".", 1)[-1] in ("exe", "bat", "ps1", "cmd")  # the name it would have been saved as
+
+
+@pytest.mark.parametrize("headers", [{"host": "rebind.attacker.example:8765"},
+                                     {"host": "rebind.attacker.example:8765", "origin": "http://rebind.attacker.example:8765"},
+                                     {"host": "127.0.0.1:8765", "origin": "http://evil.example"},
+                                     {"host": "127.0.0.1:8765", "origin": "null"}])
+def test_capture_routes_answer_only_this_computer(store, headers):
+    """DNS rebinding or a foreign page cannot mint a capture key or write a ticket: a non-local Host or Origin gets 403 and nothing is written."""
+    t = ops.new(store, "Files", "desk")
+    c = _client(store)
+    k = c.get("/capture/token.json", headers=headers)
+    assert k.status_code == 403 and "token" not in k.text
+    assert c.get("/capture/guess.json?q=hello", headers=headers).status_code == 403
+    r = c.post("/capture", data={"text": "made from another site", "token": _tok(c)}, headers={**JSON, **headers})
+    d = c.post(f"/ticket/{t.id}/drop", data={"token": _tok(c)}, files={"file": ("a.txt", b"x", "text/plain")}, headers={**JSON, **headers})
+    p = c.post("/capture/paste/create", data=_paste_form(c, store, ["jre"]), headers=headers)
+    assert (r.status_code, d.status_code, p.status_code) == (403, 403, 403)
+    assert [x.id for x in store.tickets()] == [t.id] and not store.ticket_assets_dir(t.id).exists()
+    for local in ({"host": "localhost:8765"}, {"host": "[::1]:8765", "origin": "http://[::1]:8765"}, {"host": "127.0.0.1:8765", "origin": "http://127.0.0.1:8765"}):
+        assert c.get("/capture/token.json", headers=local).status_code == 200, local
 
 
 def test_a_refused_drop_without_script_shows_the_reason_on_the_ticket_page(store):
