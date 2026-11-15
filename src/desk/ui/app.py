@@ -238,6 +238,9 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
     app.state.stopping = False
     app.add_middleware(timing.TimingMiddleware)
     app.add_middleware(IdentityMiddleware, find_store=lambda: Store(home or find_home()))
+    from .origin_guard import LocalOnly
+
+    app.add_middleware(LocalOnly)  # added last, so outermost: pages from this computer only (rule 80 item 10; DESK-0290 review)
     tokens = Tokens()
     app.state.tokens = tokens
     shown = {"censor": None, "style": "plain"}  # per request: the profanity filter (None when switched off) and the style that picks the words on screen
@@ -1397,6 +1400,9 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
     app.include_router(routes_capture.router(store, templates, ctx, tokens, acting))  # DESK-0286: capture, paste-to-split, file drop
     from . import routes_brief  # DESK-0288: /brief, /flow, /repeats, /company, /deadlines.ics
     routes_brief.register(app, templates, ctx, store)
+    from . import routes_keys  # DESK-0290: palette actions, saved views, theme and type size; last, so it skips routes others own
+
+    routes_keys.register(app, templates, store, ctx)
     return app
 
 

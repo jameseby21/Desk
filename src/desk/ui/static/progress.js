@@ -174,6 +174,7 @@
     post(f.getAttribute("action"), fd, { progress: p, timeoutMs: 30000 }).then(function (x) {
       token(x.j);
       if (!x.ok) { p.fail(failText(x), failDetail(x)); return end(); }
+      f.dispatchEvent(new CustomEvent("desk:sent", { bubbles: true }));  // DESK-0290: keys.js drops the kept draft of this form
       if (window.DeskLive) window.DeskLive.mine(x.j.stamp);
       var msg = x.j.message || "Done.";
       if (mode === "refresh") {

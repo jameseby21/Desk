@@ -436,7 +436,7 @@ def cmd_search(args):
         for h in hits:
             print(f"  {h.id}  {h.status}  {h.priority}  {h.title[:70]}" + (f"  [{h.assignee}]" if h.assignee else ""))
             if h.snippet:
-                print(f"      {h.snippet[:110]}")
+                print(f"      {srch.plain_snippet(h.snippet)[:110]}")
         if n > len(hits):
             print(f"  ... {n - len(hits)} more in {project}: add project:{project} and --limit {n}")
 

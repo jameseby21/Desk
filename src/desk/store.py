@@ -332,6 +332,9 @@ class Store:
             import logging
 
             logging.getLogger("desk.activity").warning("activity log not written for %s: %s", ticket.id, e)
+        from .search import saved as index_saved  # DESK-0290: the open search index re-reads this ticket now
+
+        index_saved(self.home, ticket)
         return path
 
     # -- derived -----------------------------------------------------------

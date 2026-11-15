@@ -109,7 +109,7 @@ class _Client:
                 out["headers"] = {k.decode().lower(): v.decode() for k, v in msg["headers"]}
 
         scope = {"type": "http", "asgi": {"version": "3.0"}, "http_version": "1.1", "method": "GET", "scheme": "http", "path": path,
-                 "raw_path": path.encode(), "query_string": b"", "root_path": "", "headers": [(b"host", b"bench")],
+                 "raw_path": path.encode(), "query_string": b"", "root_path": "", "headers": [(b"host", b"127.0.0.1")],
                  "client": ("127.0.0.1", 1), "server": ("bench", 80)}
         self.loop.run_until_complete(self.app(scope, receive, send))
         return out["status"], out["headers"]

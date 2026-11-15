@@ -25,7 +25,10 @@ from .subtickets import LABEL_TITLE, parent_of
 from .ticket import CLOSED, PRIORITIES, Ticket
 
 FIELDS = ("project", "status", "type", "tag", "ask", "owner", "assignee", "track", "sprint", "priority", "parent", "is", "before", "after")
-BODY_CHARS = 2000
+BODY_CHARS = 20000  # DESK-0290: every section and every comment, so words said only inside a ticket are found
+FILE_CHARS = 60000  # a doc or intake file's text kept in the index
+FILE_HITS = 12  # docs and intake hits shown under the tickets
+FILE_ROOTS = ("docs", "intake")  # store folders whose Markdown is searched next to the tickets (DESK-0290)
 CANDIDATES = 500
 PER_GROUP = 12
 SNIPPETS = 30  # only the first hits shown get a snippet; the rest are title lines
@@ -82,16 +85,29 @@ class Hit:
 
 
 @dataclass
+class FileHit:
+    """A Markdown file of the store (docs/ or intake/) whose text matched; `path` is relative to the store, as /doc/<path> opens it."""
+    path: str
+    title: str
+    snippet: str
+
+    def as_json(self) -> dict:
+        return dict(self.__dict__)
+
+
+@dataclass
 class Result:
     query: Query
     total: int
     groups: list[tuple[str, int, list[Hit]]]  # (project, count in the candidates, hits shown)
     fuzzy: bool = False
     capped: bool = False
+    files: list[FileHit] = field(default_factory=list)  # DESK-0290: docs and intake hits, after the tickets
 
     def as_json(self) -> dict:
         return {"query": self.query.raw, "total": self.total, "fuzzy": self.fuzzy, "capped": self.capped,
-                "groups": [{"project": p, "count": n, "hits": [h.as_json() for h in hs]} for p, n, hs in self.groups]}
+                "groups": [{"project": p, "count": n, "hits": [h.as_json() for h in hs]} for p, n, hs in self.groups],
+                "files": [f.as_json() for f in self.files]}
 
 
 def ask_value(t: Ticket) -> str:
@@ -105,7 +121,8 @@ def ask_value(t: Ticket) -> str:
 
 def row_for(t: Ticket, sig: str = "") -> dict:
     m = t.meta
-    body = "\n".join(t.section(s) for s in ("Context", "Outcome", "Acceptance", "Comments") if t.section(s))
+    body = "\n".join(t.section(s) for s in t.sections if t.section(s))  # all sections, Comments included (DESK-0290)
+    body = re.sub(r"<!--.*?-->", " ", body, flags=re.S)  # template hints and who/when marks are not words anyone said
     return {"id": t.id, "title": str(m.get("title") or ""), "project": t.project, "status": t.status, "type": str(m.get("type") or ""),
             "priority": str(m.get("priority") or "p3"), "owner": str(m.get("owner") or "").lower(),
             "assignee": " ".join(str(m.get("assignee") or "").split()).lower(), "track": str(m.get("track") or "").lower(),
@@ -120,7 +137,7 @@ COLS = ["id", "title", "project", "status", "type", "priority", "owner", "assign
 class Index:
     """The search index. `path=None` keeps it in memory (tests, the benchmark)."""
 
-    def __init__(self, path: Path | None = None, stale_days: int = 21, resolve=None):
+    def __init__(self, path: Path | None = None, stale_days: int = 21, resolve=None, fts: bool | None = None):
         self.path = path
         self.stale_days = stale_days
         self.resolve = resolve or (lambda f, v: v)  # (field, value) -> value; people.py maps display names to keys
@@ -130,21 +147,32 @@ class Index:
         self.db.row_factory = sqlite3.Row
         self.lock = threading.RLock()
         self.checked = 0.0
+        self.fts = has_fts5() if fts is None else fts  # DESK-0290: plain LIKE tables when this SQLite has no FTS5 trigram tokenizer
+        self.home: Path | None = None  # the store whose docs/ and intake/ were indexed last
         self._schema()
 
     def _schema(self) -> None:
         with self.lock:
             ver = self.db.execute("PRAGMA user_version").fetchone()[0]
-            if ver != 5:  # 5: the parent column (DESK-0208); an older index is rebuilt from the files
-                self.db.executescript("DROP TABLE IF EXISTS docs; DROP TABLE IF EXISTS fts; DROP TABLE IF EXISTS vwords; DROP TABLE IF EXISTS vfts;")
+            want = 6 if self.fts else 106  # 6: whole bodies and the docs/intake files (DESK-0290); 1xx: the same without FTS5
+            if ver != want:  # an older or other-kind index is rebuilt from the files
+                self.db.executescript("DROP TABLE IF EXISTS docs; DROP TABLE IF EXISTS fts; DROP TABLE IF EXISTS vwords; DROP TABLE IF EXISTS vfts;"
+                                      " DROP TABLE IF EXISTS files; DROP TABLE IF EXISTS ffts;")
+            if self.fts:
+                text_tables = ("CREATE VIRTUAL TABLE IF NOT EXISTS fts USING fts5(id, title, body, tokenize='trigram');"
+                               "CREATE VIRTUAL TABLE IF NOT EXISTS vfts USING fts5(word, tokenize='trigram');"
+                               "CREATE VIRTUAL TABLE IF NOT EXISTS ffts USING fts5(path, title, body, tokenize='trigram');")
+            else:
+                text_tables = ("CREATE TABLE IF NOT EXISTS fts (rowid INTEGER PRIMARY KEY, id TEXT, title TEXT, body TEXT);"
+                               "CREATE TABLE IF NOT EXISTS vfts (rowid INTEGER PRIMARY KEY, word TEXT);"
+                               "CREATE TABLE IF NOT EXISTS ffts (rowid INTEGER PRIMARY KEY, path TEXT, title TEXT, body TEXT);")
             self.db.executescript(
                 "CREATE TABLE IF NOT EXISTS docs (rowid INTEGER PRIMARY KEY, id TEXT UNIQUE, title TEXT, project TEXT, status TEXT, type TEXT,"
                 " priority TEXT, owner TEXT, assignee TEXT, track TEXT, sprint TEXT, tags TEXT, ask TEXT, updated TEXT, sig TEXT, parent TEXT, pri INTEGER);"
                 "CREATE INDEX IF NOT EXISTS docs_pri ON docs (pri);"
-                "CREATE VIRTUAL TABLE IF NOT EXISTS fts USING fts5(id, title, body, tokenize='trigram');"
                 "CREATE TABLE IF NOT EXISTS vwords (word TEXT PRIMARY KEY);"
-                "CREATE VIRTUAL TABLE IF NOT EXISTS vfts USING fts5(word, tokenize='trigram');"
-                "PRAGMA user_version = 5;")
+                "CREATE TABLE IF NOT EXISTS files (rowid INTEGER PRIMARY KEY, path TEXT UNIQUE, sig TEXT);"
+                + text_tables + f"PRAGMA user_version = {want};")
 
     # -- writing ---------------------------------------------------------------------
     def upsert(self, rows: list[dict]) -> None:
@@ -202,7 +230,85 @@ class Index:
                 self.upsert(rows)
             if gone:
                 self.delete(gone)
-            return len(rows) + len(gone)
+            files = self.refresh_files(store.home, force=force or not every)
+            return len(rows) + len(gone) + files
+
+    def upsert_ticket(self, t: Ticket) -> None:
+        """Refresh one ticket's rows now: Store.save calls this through `saved()`, so a search right after a save finds the new words."""
+        p = t.path
+        try:
+            st = p.stat()
+            sig = f"{st.st_mtime_ns}:{st.st_size}:{p.name}"
+        except (OSError, AttributeError):
+            sig = ""
+        self.upsert([row_for(t, sig)])
+
+    # -- docs and intake (DESK-0290) -------------------------------------------------
+    def refresh_files(self, home: Path, force: bool = False, every: float = 10.0) -> int:
+        """Bring the docs/ and intake/ Markdown rows in line with the files (read only when (mtime, size) changed). Only files the
+        /doc page would open are indexed (docs.resolve_doc refuses private names and hidden folders), so every hit can be opened."""
+        from .docs import resolve_doc
+
+        now = time.monotonic()
+        home = Path(home)
+        if not force and self.home == home and now - getattr(self, "files_checked", 0.0) < every:
+            return 0
+        with self.lock:
+            self.home, self.files_checked = home, now
+            known = {r["path"]: (r["rowid"], r["sig"]) for r in self.db.execute("SELECT rowid, path, sig FROM files")}
+            seen, n = set(), 0
+            for root in FILE_ROOTS:
+                base = home / root
+                if not base.is_dir():
+                    continue
+                for p in sorted(base.rglob("*.md")):
+                    rel = p.relative_to(home).as_posix()
+                    try:
+                        st = p.stat()
+                    except OSError:
+                        continue
+                    sig = f"{st.st_mtime_ns}:{st.st_size}"
+                    if known.get(rel, (0, ""))[1] == sig:
+                        seen.add(rel)
+                        continue
+                    if resolve_doc(home, rel) is None:
+                        continue
+                    try:
+                        text = p.read_text(encoding="utf-8", errors="replace")
+                    except OSError:
+                        continue
+                    seen.add(rel)
+                    self._put_file(rel, sig, _file_title(text, p), text, known.get(rel, (None, ""))[0])
+                    n += 1
+            for rel, (rid, _sig) in known.items():
+                if rel not in seen:
+                    with self.db:
+                        self.db.execute("DELETE FROM ffts WHERE rowid = ?", (rid,))
+                        self.db.execute("DELETE FROM files WHERE rowid = ?", (rid,))
+                    n += 1
+            return n
+
+    def _put_file(self, rel: str, sig: str, title: str, text: str, old_rowid) -> None:
+        with self.lock, self.db:
+            if old_rowid is not None:
+                self.db.execute("DELETE FROM ffts WHERE rowid = ?", (old_rowid,))
+                self.db.execute("DELETE FROM files WHERE rowid = ?", (old_rowid,))
+            cur = self.db.execute("INSERT INTO files (path, sig) VALUES (?, ?)", (rel, sig))
+            self.db.execute("INSERT INTO ffts (rowid, path, title, body) VALUES (?,?,?,?)", (cur.lastrowid, rel, title, (" ".join(text.split()))[:FILE_CHARS]))
+
+    def search_files(self, terms: list[str], limit: int = FILE_HITS) -> list[FileHit]:
+        """Docs and intake files that hold every term (three letters or more), each with the words around the first match."""
+        terms = [t for t in terms if len(t) >= 3]
+        if not terms:
+            return []
+        with self.lock:
+            if self.fts:
+                match = " AND ".join(_fts_quote(t) for t in terms)
+                rows = self.db.execute("SELECT path, title, body FROM ffts WHERE ffts MATCH ? ORDER BY rank LIMIT ?", (match, limit)).fetchall()
+            else:
+                sql = "SELECT path, title, body FROM ffts WHERE 1=1" + " AND (title LIKE ? OR body LIKE ?)" * len(terms)
+                rows = self.db.execute(sql + " LIMIT ?", [x for t in terms for x in (f"%{t}%", f"%{t}%")] + [limit]).fetchall()
+            return [FileHit(r["path"], r["title"], _like_snip(r["body"], terms)) for r in rows]
 
     def count(self) -> int:
         with self.lock:
@@ -261,13 +367,12 @@ class Index:
             rows: list[tuple] = []
             fuzzy = False
             if long_:
-                rows = [(r, False) for r in self._fetch([_fts_quote(t) for t in long_], short, where, args)]
+                rows = [(r, False) for r in self._fetch([[t] for t in long_], short, where, args)]
                 if len(rows) < 3:  # too few: correct each term against the words in titles, then search again
                     fixed = [self._close_words(t) for t in long_]
                     if all(fixed) and fixed != [[t.lower()] for t in long_]:
                         have = {r[0]["id"] for r in rows}
-                        groups = ["(" + " OR ".join(_fts_quote(w) for w in ws) + ")" for ws in fixed]
-                        rows += [(r, True) for r in self._fetch(groups, short, where, args) if r["id"] not in have]
+                        rows += [(r, True) for r in self._fetch(fixed, short, where, args) if r["id"] not in have]
                         fuzzy = any(f for _, f in rows)
             else:
                 sql = "SELECT d.* FROM docs d WHERE 1=1" + "".join(f" AND {w}" for w in where)
@@ -276,22 +381,37 @@ class Index:
                     sql += " AND (d.id LIKE ? OR d.title LIKE ?)"
                     params += [f"%{t}%", f"%{t}%"]
                 rows = [(r, False) for r in self._buckets(sql, params)]
-        return self._shape(q, rows, limit, fuzzy, " AND ".join(_fts_quote(t) for t in long_))
+        res = self._shape(q, rows, limit, fuzzy, long_)
+        if long_ and not q.filters:  # filters are ticket fields; a filtered search stays on the tickets
+            res.files = self.search_files(long_)
+        return res
 
-    def _snip(self, rowid: int, match: str, fuzzy: bool) -> str:
-        """The words around the match (marked [like this]) for one shown hit; the start of the text when nothing matched literally."""
+    def _snip(self, rowid: int, terms: list[str], fuzzy: bool) -> str:
+        """The words around the first match in the body (between MARK_OPEN and MARK_CLOSE) for one shown hit; the start of the text when the match
+        is only in the id or title, or was a close spelling. Cut in Python: a trigram FTS5 snippet counts three-letter tokens, which
+        left a dozen characters (DESK-0290)."""
         with self.lock:
-            if match and not fuzzy:
-                r = self.db.execute("SELECT snippet(fts, -1, '[', ']', '...', 10) FROM fts WHERE rowid = ? AND fts MATCH ?", (rowid, match)).fetchone()
-                if r and r[0]:
-                    return " ".join(str(r[0]).split())
-            r = self.db.execute("SELECT substr(body, 1, 120) FROM fts WHERE rowid = ?", (rowid,)).fetchone()
-            return " ".join(str(r[0] if r else "").split())
+            r = self.db.execute("SELECT body FROM fts WHERE rowid = ?", (rowid,)).fetchone()
+            body = str(r[0] if r else "")
+            if terms and not fuzzy:
+                hit = _like_snip(body, terms)
+                if MARK_OPEN in hit:
+                    return hit
+            return " ".join(body[:400].split())[:120]
 
-    def _fetch(self, match_parts: list[str], short: list[str], where: list[str], args: list):
-        sql = ("SELECT d.* FROM fts JOIN docs d ON d.rowid = fts.rowid WHERE fts MATCH ?"
-               + "".join(f" AND {w}" for w in where))
-        params = [" AND ".join(match_parts), *args]
+    def _fetch(self, groups: list[list[str]], short: list[str], where: list[str], args: list):
+        """Tickets that match every group (a group is any of its words) in the id, title or body."""
+        if self.fts:
+            sql = "SELECT d.* FROM fts JOIN docs d ON d.rowid = fts.rowid WHERE fts MATCH ?"
+            params: list = [" AND ".join("(" + " OR ".join(_fts_quote(w) for w in ws) + ")" for ws in groups)]
+        else:
+            sql = "SELECT d.* FROM fts JOIN docs d ON d.rowid = fts.rowid WHERE 1=1"
+            params = []
+            for ws in groups:
+                sql += " AND (" + " OR ".join("(fts.id LIKE ? OR fts.title LIKE ? OR fts.body LIKE ?)" for _ in ws) + ")"
+                params += [x for w in ws for x in (f"%{w}%",) * 3]
+        sql += "".join(f" AND {w}" for w in where)
+        params += list(args)
         for t in short:
             sql += " AND (d.id LIKE ? OR d.title LIKE ?)"
             params += [f"%{t}%", f"%{t}%"]
@@ -314,11 +434,14 @@ class Index:
         grams = sorted({t[i:i + 3] for i in range(len(t) - 2)})[:40]
         if not grams:
             return []
-        cands = [r[0] for r in self.db.execute("SELECT word FROM vfts WHERE vfts MATCH ? LIMIT 400", (" OR ".join(_fts_quote(g) for g in grams),))]
+        if self.fts:
+            cands = [r[0] for r in self.db.execute("SELECT word FROM vfts WHERE vfts MATCH ? LIMIT 400", (" OR ".join(_fts_quote(g) for g in grams),))]
+        else:  # no FTS5: the same candidates through LIKE on the vocabulary
+            cands = [r[0] for r in self.db.execute("SELECT word FROM vfts WHERE " + " OR ".join("word LIKE ?" for _ in grams) + " LIMIT 400", [f"%{g}%" for g in grams])]
         scored = sorted(((difflib.SequenceMatcher(None, t, w, autojunk=False).ratio(), w) for w in cands if _similar(t, w)), reverse=True)
         return [w for _, w in scored[:6]]
 
-    def _shape(self, q: Query, rows: list[tuple], limit: int, fuzzy: bool, match: str = "") -> Result:
+    def _shape(self, q: Query, rows: list[tuple], limit: int, fuzzy: bool, match: "list[str] | None" = None) -> Result:
         terms = [t.lower() for t in q.terms]
         idq = [_norm_id_fragment(t) for t in q.terms]
 
@@ -339,7 +462,7 @@ class Index:
             counts[r["project"]] = counts.get(r["project"], 0) + 1
             hits = by.setdefault(r["project"], [])
             if len(hits) < limit:
-                hits.append(Hit(r["id"], r["title"], r["project"], r["status"], r["priority"], r["type"], r["assignee"], self._snip(r["rowid"], match, was_fuzzy) if shown < SNIPPETS else "", was_fuzzy))
+                hits.append(Hit(r["id"], r["title"], r["project"], r["status"], r["priority"], r["type"], r["assignee"], self._snip(r["rowid"], match or [], was_fuzzy) if shown < SNIPPETS else "", was_fuzzy))
                 shown += 1
         self._label_parts([h for hs in by.values() for h in hs], {r["id"]: r["parent"] for r, _ in rows if r["parent"]})
         order = sorted(by, key=lambda p: (-counts[p], p))  # biggest group first
@@ -359,6 +482,66 @@ class Index:
                 title = titles[pid]
                 h.part_of = f"part of {pid}: {title[:LABEL_TITLE]}{'…' if len(title) > LABEL_TITLE else ''}"
 
+def has_fts5() -> bool:
+    """True when this Python's SQLite has FTS5 with the trigram tokenizer (SQLite 3.34 or later, built with FTS5)."""
+    try:
+        con = sqlite3.connect(":memory:")
+        try:
+            con.execute("CREATE VIRTUAL TABLE t USING fts5(x, tokenize='trigram')")
+        finally:
+            con.close()
+        return True
+    except sqlite3.Error:
+        return False
+
+
+MARK_OPEN, MARK_CLOSE = "\x02", "\x03"  # around the match in a snippet: control characters ticket text never holds, so a Markdown
+# '- [ ]' box or '[link](..)' is never taken for a match (it was, when the marks were plain brackets)
+
+
+def _like_snip(body: str, terms: list[str], around: int = 60) -> str:
+    """The words around the first term found, the match between MARK_OPEN and MARK_CLOSE."""
+    text = " ".join(str(body or "").replace(MARK_OPEN, "").replace(MARK_CLOSE, "").split())
+    low = text.lower()
+    for t in terms:
+        i = low.find(t.lower())
+        if i >= 0:
+            a, b = max(0, i - around), min(len(text), i + len(t) + around)
+            return ("..." if a else "") + text[a:i] + MARK_OPEN + text[i:i + len(t)] + MARK_CLOSE + text[i + len(t):b] + ("..." if b < len(text) else "")
+    return text[:120]
+
+
+def plain_snippet(snip: str) -> str:
+    """The snippet for a terminal: the match shown as [match]."""
+    return str(snip or "").replace(MARK_OPEN, "[").replace(MARK_CLOSE, "]")
+
+
+def _file_title(text: str, p: Path) -> str:
+    """A Markdown file's first heading, else its name."""
+    for line in text.splitlines()[:40]:
+        if line.startswith("#"):
+            return line.lstrip("#").strip()[:120] or p.stem
+    return p.stem
+
+
+_OPEN: dict = {}  # store folder -> the Index the UI keeps open, so a save can refresh that ticket's rows at once
+
+
+def register(home, ix: "Index") -> None:
+    _OPEN[str(Path(home).resolve())] = ix
+
+
+def saved(home, t: Ticket) -> None:
+    """Store.save calls this after every write (DESK-0290): the open index, if any, re-reads that one ticket now. A failure here
+    never fails a save; the next search's signature check catches up."""
+    ix = _OPEN.get(str(Path(home).resolve()))
+    if ix is None:
+        return
+    try:
+        ix.upsert_ticket(t)
+    except Exception:  # the index is derived; the file is the record
+        pass
+
 
 def _norm_id_fragment(term: str) -> str:
     """`desk38` or `desk 38` -> `desk-0038`; `DESK-00` stays a prefix. Lowercase."""
@@ -377,11 +560,11 @@ def _similar(term: str, word: str) -> bool:
 
 
 def snippet_html(snip: str) -> str:
-    """The snippet with the `[match]` marks turned into <mark> and everything else escaped."""
+    """The snippet with the match marks turned into <mark> and everything else escaped (brackets in the text stay brackets)."""
     import html
 
     out = html.escape(snip)
-    return out.replace("[", "<mark>").replace("]", "</mark>")
+    return out.replace(MARK_OPEN, "<mark>").replace(MARK_CLOSE, "</mark>")
 
 
 def people_resolver(store):
@@ -394,4 +577,6 @@ def people_resolver(store):
 
 def open_index(store, resolve=None) -> Index:
     resolve = resolve or people_resolver(store)
-    return Index(store.index_path.with_name("search.sqlite"), stale_days=store.stale_days, resolve=resolve)
+    ix = Index(store.index_path.with_name("search.sqlite"), stale_days=store.stale_days, resolve=resolve)
+    register(store.home, ix)
+    return ix
