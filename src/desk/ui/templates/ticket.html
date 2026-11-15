@@ -44,9 +44,9 @@
 {% if tl is defined and tl %}{# DESK-0171 the latest change; DESK-0305 the visual timeline, open by default: the status strip, then the event rail #}
 <section class="tl" id="timeline" aria-label="Timeline of this ticket">
   {% set L = tl.latest %}
-  <p class="tl-latest" id="tl-latest"{% if L %} title="{{ L.actor_name }} ({{ L.kind_label }}) · {{ L.shown_what }} · {{ L.when }}"{% endif %}>
+  <p class="tl-latest" id="tl-latest"{% if L %} title="{{ L.actor_name }} ({{ L.kind_label }}) · {{ L.shown_what }} · {{ L.when }}{% if tl.git_after %} · +{{ tl.git_after }} git saves since{% endif %}"{% endif %}>
     <span class="tl-cap">Latest change</span>
-    {% if L %}<i class="tl-dot" style="background:{{ L.colours.kind }}"></i><b class="tl-who">{{ L.actor_name }}</b><span class="tl-kind">{{ L.kind_label }}</span><span class="tl-what">{{ L.shown_what }}</span><span class="tl-when">{{ L.when }}</span>{% else %}<span class="tl-what muted">No changes recorded yet.</span>{% endif %}
+    {% if L %}<i class="tl-dot" style="background:{{ L.colours.kind }}"></i><b class="tl-who">{{ L.actor_name }}</b><span class="tl-kind">{{ L.kind_label }}</span><span class="tl-what">{{ L.shown_what }}</span><span class="tl-when">{{ L.when }}</span>{% if tl.git_after %}<span class="tl-plus">+{{ tl.git_after }} git save{{ 's' if tl.git_after != 1 else '' }} since</span>{% endif %}{% else %}<span class="tl-what muted">No changes recorded yet.</span>{% endif %}
   </p>
   <div class="tl-strip-wrap" id="tl-strip">
     <span class="tl-cap">Status over time</span>
@@ -71,11 +71,11 @@
         <button type="button" class="btn small" id="tl-clear" hidden>Clear filters</button>
       </div>
     </details>
-    <p class="tl-shown" id="tl-shown" aria-live="polite">{% if tl.rows|length > tl.first %}Showing the newest {{ tl.first }} of {{ tl.rows|length }} events.{% elif tl.rows|length == 1 %}Showing the one event.{% else %}Showing all {{ tl.rows|length }} events, newest first.{% endif %}</p>
+    <p class="tl-shown" id="tl-shown" aria-live="polite">{% if tl.units > tl.first %}Showing the newest {{ tl.first_events }} of {{ tl.rows|length }} events.{% elif tl.rows|length == 1 %}Showing the one event.{% else %}Showing all {{ tl.rows|length }} events, newest first.{% endif %}</p>
     <ol class="tl-days" id="tl-list" data-first="{{ tl.first }}">
       {{ tl.rail(page_mask()) }}{# built in timeline.rail_html, masked like the rest of the page: a 2,000 event ticket stays under 300 ms (DESK-0305) #}
     </ol>
-    <button type="button" class="btn small" id="tl-showall" aria-expanded="false" aria-controls="tl-list" data-all="Show all {n} events" data-few="Show the newest {{ tl.first }}"{% if tl.rows|length <= tl.first %} hidden{% endif %}>Show all {{ tl.rows|length }} events</button>
+    <button type="button" class="btn small" id="tl-showall" aria-expanded="false" aria-controls="tl-list" data-all="Show all {n} events" data-few="Show the newest {{ tl.first }}"{% if tl.units <= tl.first %} hidden{% endif %}>Show all {{ tl.rows|length }} events</button>
   </div>
   {% endif %}
 </section>

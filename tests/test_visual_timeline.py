@@ -372,3 +372,85 @@ def test_the_strip_line_and_the_rail_agree_on_the_year_across_new_year(store, mo
     info = re.search(r'<p class="tl-st-info" id="tl-st-info"[^>]*>([^<]*)</p>', page).group(1)
     assert "Thu 31 Dec 2026" in info, info
     assert ">Thu 31 Dec 2026</h3>" in page
+
+
+# -- git saves never bury what changed last (DESK-0305 review, finding 6) ---------------------------------------------------------
+
+def _burst(store):
+    """The busy ticket, then the owner's comment, then a burst of 6 git saves by a code session (the normal case: 88% of a real
+    store's events are git saves). All seven sit inside one day, a few minutes before now."""
+    t = _busy(store, n=20)
+    start = dt.datetime.now().replace(second=0, microsecond=0) - dt.timedelta(minutes=10)
+    if (start + dt.timedelta(minutes=7)).date() != start.date():
+        start = start.replace(hour=0, minute=0) + dt.timedelta(days=1)  # keep the burst on one day
+    evs = [activity.Event(t.id, start.isoformat(), "owner-a", "owner", "ui", "comment", "comment", "", "x", "Why is the header split again?")]
+    evs += [activity.Event(t.id, (start + dt.timedelta(minutes=1 + i)).isoformat(), "claude-code", "code", "git", "git", "git", "git-user", f"s{i}",
+                           f"Saved in git: chore(tickets): pass {i} of the store sync after the owner's comment", key=f"git:burst{i}") for i in range(6)]
+    activity.append(store.home, evs)
+    return store.get(t.id), start
+
+
+def test_unit_latest_change_is_the_newest_meaningful_change_with_the_git_saves_counted():
+    """Protects the Latest change line: a comment followed by 6 git saves is the latest change, and the line counts the saves after it;
+    a ticket with only git saves still names its newest save."""
+    def row(i, ekind, what):
+        e = ev(f"2026-11-15T10:{50 - i:02d}:00", "git" if ekind == "git" else "comment", "git" if ekind == "git" else "comment", what=what)
+        return timeline.Row(e, "", "Someone", "Owner", "", what, {"actor": "a"}, ekind=ekind, index=i)
+    rs = [row(i, "git", f"save {i}") for i in range(6)] + [row(6, "comment", "the comment"), row(7, "status", "Status: Ready → Sent for review")]
+    latest, after = timeline.latest_of(rs)
+    assert latest.what == "the comment" and after == 6
+    assert timeline.latest_line(latest, after).endswith("(+6 git saves since)")
+    only = [row(i, "git", f"save {i}") for i in range(3)]
+    assert timeline.latest_of(only) == (only[0], 0) and timeline.latest_of([]) == (None, 0)
+
+
+def test_route_consecutive_git_saves_are_one_folded_row_and_the_first_12_keep_the_people_and_the_status_changes(store):
+    """Protects the first screen of the rail: the 6 saves after the owner's comment are one row ('6 git saves, HH:MM–HH:MM') that opens
+    in place, their own rows start hidden, the first 12 positions hold the comment and the decisions with 4 git rows, the fold among them (unfolded,
+    7 of the 12 were git saves), and Latest change names the comment with '+6 git saves since'."""
+    t, start = _burst(store)
+    page = _page(store, t)
+    folds = re.findall(r'<li class="tl-foldh ek-git" data-run="(f\d+)" data-group="git"([^>]*)>.*?<span class="tl-fn">([^<]+)</span>', page)
+    assert len(folds) == 1 and "hidden" not in folds[0][1].split(" data-")[0], folds
+    a, b = (start + dt.timedelta(minutes=1)).strftime("%H:%M"), (start + dt.timedelta(minutes=6)).strftime("%H:%M")
+    assert folds[0][2] == f"6 git saves, {a}–{b}"
+    members = re.findall(r'<li class="tl-ev ek-git"[^>]*data-run="' + folds[0][0] + r'"([^>]*)>', page)
+    assert len(members) == 6 and all(m.startswith(" hidden") for m in members)
+    visible = re.findall(r'<li class="(tl-ev ek-[a-z]+|tl-foldh ek-git)[^"]*"(?:(?!>).)*?data-group="([a-z]+)"(?:(?!>).)*?( hidden)?(?: data-actor)', page)
+    shown = [g for cls, g, hid in visible if not hid]
+    assert len(shown) == 12 and "comments" in shown and "decisions" in shown and shown.count("git") == 4, shown  # the fold and three single saves between other events
+    latest = re.search(r'<p class="tl-latest" id="tl-latest".*?</p>', page, re.S).group(0)
+    assert "Why is the header split again?" in latest and "+6 git saves since" in latest and "Saved in git" not in latest.split("title=")[0]
+    assert "Showing the newest 17 of 27 events." in page  # 11 single rows and the fold's 6 saves
+
+
+@pytest.mark.skipif(browser() is None, reason="no Edge or Chrome installed")
+@pytest.mark.parametrize("width", [320, 390])
+def test_browser_on_a_phone_the_latest_line_keeps_who_and_what_and_the_first_status_change_is_near_the_top(store, width):
+    """Protects the phone (finding 6): at 320 and 390 px the Latest change shows who and at least 20 characters of what changed, the
+    first status change or decision is among the first 6 rows of the rail (the 11th unfolded) and within 1.5 phone screens (844 px) of the timeline's top
+    (the page's own header above the title is not the timeline's), and the fold opens its 6 saves in place."""
+    t, _ = _burst(store)
+    html = _page(store, t)
+    css = (STATIC / "desk.css").read_text(encoding="utf-8")
+    js = (STATIC / "timeline.js").read_text(encoding="utf-8")
+    measure = """<script>addEventListener('load',function(){setTimeout(function(){
+var lat=document.getElementById('tl-latest'),box=lat.getBoundingClientRect(),who=lat.querySelector('.tl-who'),what=lat.querySelector('.tl-what');
+function inside(el,n){var tn=el.firstChild;if(!tn)return false;var g=document.createRange();g.setStart(tn,0);g.setEnd(tn,Math.min(n,tn.textContent.length));
+ return Array.prototype.every.call(g.getClientRects(),function(r){return r.width===0||(r.bottom<=box.bottom+0.5&&r.right<=box.right+0.5&&r.top>=box.top-0.5);});}
+function vis(){return Array.prototype.filter.call(document.querySelectorAll('.tl-ev'),function(li){return li.offsetHeight>0;}).length;}
+var rows=Array.prototype.filter.call(document.querySelectorAll('.tl-ev,.tl-foldh'),function(li){return li.offsetHeight>0;});
+var first=rows.filter(function(li){return /ek-(status|decision)/.test(li.className);})[0],top0=document.getElementById('timeline').getBoundingClientRect().top;
+var out={whoShown:!!who&&who.offsetWidth>0&&inside(who,who.textContent.length),what20:!!what&&inside(what,20),whatLen:what?what.textContent.length:0,
+ firstTop:first?first.getBoundingClientRect().top-top0:-1,firstRow:rows.indexOf(first),before:vis(),w:document.documentElement.clientWidth,over:[]};
+document.querySelectorAll('#timeline *').forEach(function(e){var r=e.getBoundingClientRect();if(r.width&&r.right>out.w+1&&!e.closest('[hidden]'))out.over.push(e.className+' '+Math.round(r.right));});
+var b=document.querySelector('.tl-foldb');out.after=out.back=-1;if(b){b.click();out.after=vis();out.exp=b.getAttribute('aria-expanded');b.click();out.back=vis();}
+fetch('/m',{method:'POST',body:JSON.stringify(out)});},300);});</script>"""
+    html = re.sub(r'<link rel="stylesheet" href="/static/desk.css[^"]*">', lambda m: f"<style>{css}</style>", html)
+    html = re.sub(r'<link rel="stylesheet" href="https://fonts[^>]*>|<link rel="preconnect"[^>]*>', "", html)
+    html = re.sub(r'<script src="[^"]*"[^>]*></script>', "", html).replace("</body>", f"<script>{js}</script>" + measure + "</body>")
+    d = run_in_browser(html, width)
+    assert d["whoShown"] and d["what20"] and d["whatLen"] >= 20, d
+    assert 0 <= d["firstRow"] < 6 and 0 < d["firstTop"] < 1.5 * 844, d
+    assert d["after"] == d["before"] + 6 and d["exp"] == "true" and d["back"] == d["before"], d
+    assert d["over"] == [], d  # nothing in the timeline past the right edge (the page-wide 320 px scroll is DESK-0303)

@@ -1,7 +1,8 @@
 /* DESK-0171 and DESK-0305: the ticket timeline. Everything is already on the page, so nothing waits on the server.
    The status strip: a segment's label shows only when it fits whole; hovering or focusing a segment names it under the strip.
    The event rail: the chips (All, Decisions, Status, Comments, Changes, Git) and the More filters boxes (ANDed across
-   dimensions, either within one) narrow the events; the first 12 that match show until Show all is pressed. */
+   dimensions, either within one) narrow the events; the first 12 that match show until Show all is pressed. Consecutive git saves
+   by one actor on one day are one row (a fold) that opens in place. */
 (function () {
   var root = document.getElementById("timeline");
   if (!root) return;
@@ -31,7 +32,15 @@
   var list = document.getElementById("tl-list");
   if (!list) return;
   var first = parseInt(list.getAttribute("data-first"), 10) || 12, open = false, group = "all";
-  var items = Array.prototype.slice.call(list.querySelectorAll(".tl-ev")), days = Array.prototype.slice.call(list.querySelectorAll(".tl-day"));
+  // a rail position is an event row, or a fold of consecutive git saves (one row until it is opened, then its saves count one each)
+  var units = Array.prototype.slice.call(list.querySelectorAll(".tl-ev,.tl-foldh")), days = Array.prototype.slice.call(list.querySelectorAll(".tl-day"));
+  var runs = {};
+  units.forEach(function (li) {
+    var id = li.getAttribute("data-run");
+    if (!id) return;
+    var r = runs[id] = runs[id] || { head: null, members: [], open: false };
+    if (li.classList.contains("tl-foldh")) r.head = li; else r.members.push(li);
+  });
   var chips = Array.prototype.slice.call(root.querySelectorAll(".tl-chip")), boxes = Array.prototype.slice.call(root.querySelectorAll(".tl-f input[type=checkbox]"));
   var more = document.getElementById("tl-showall"), shown = document.getElementById("tl-shown"), clear = document.getElementById("tl-clear");
 
@@ -41,24 +50,43 @@
     return f;
   }
 
+  function match(li, f, keys) {
+    return (group === "all" || li.getAttribute("data-group") === group) &&
+           keys.every(function (k) { return f[k].indexOf(li.getAttribute("data-" + k)) >= 0; });
+  }
+
   function apply() {
-    var f = chosen(), keys = Object.keys(f), n = 0, visible = 0;
-    items.forEach(function (li) {
-      var ok = (group === "all" || li.getAttribute("data-group") === group) &&
-               keys.every(function (k) { return f[k].indexOf(li.getAttribute("data-" + k)) >= 0; });
-      if (ok) n++;
-      li.hidden = !ok || (!open && n > first);
+    var f = chosen(), keys = Object.keys(f), n = 0, total = 0, visible = 0;  // n: rail positions that match; total: events that match
+    units.forEach(function (li) {
+      var id = li.getAttribute("data-run"), r = id ? runs[id] : null;
+      if (r && li === r.head) {
+        var ok = r.members.filter(function (m) { return match(m, f, keys); }).length;
+        total += ok;
+        var lab = li.querySelector(".tl-fn");
+        if (lab) lab.textContent = lab.textContent.replace(/^\d+ git saves?/, ok + (ok === 1 ? " git save" : " git saves"));
+        if (!ok) { li.hidden = true; return; }
+        n++;  // a fold is one position, open or not: opening it shows its saves under it and pushes nothing out of the newest 12
+        li.hidden = !open && n > first;
+        if (!li.hidden) visible += ok;
+        return;
+      }
+      var hit = match(li, f, keys);
+      if (r) { li.hidden = !hit || !r.open || r.head.hidden; return; }
+      if (hit) total++;
+      if (!hit) { li.hidden = true; return; }
+      n++;
+      li.hidden = !open && n > first;
       if (!li.hidden) visible++;
     });
-    days.forEach(function (d) { d.hidden = !d.querySelector(".tl-ev:not([hidden])"); });
+    days.forEach(function (d) { d.hidden = !d.querySelector(".tl-ev:not([hidden]),.tl-foldh:not([hidden])"); });
     var what = group === "all" && !keys.length ? "events" : "matching events";
-    shown.textContent = !n ? "No events match. Pick All to see every event." :
-      visible < n ? "Showing the newest " + visible + " of " + n + " " + what + "." :
-      n === 1 ? "Showing the one " + what.replace("events", "event") + "." : "Showing all " + n + " " + what + ", newest first.";
+    shown.textContent = !total ? "No events match. Pick All to see every event." :
+      visible < total ? "Showing the newest " + visible + " of " + total + " " + what + "." :
+      total === 1 ? "Showing the one " + what.replace("events", "event") + "." : "Showing all " + total + " " + what + ", newest first.";
     if (more) {
       more.hidden = n <= first;
       more.setAttribute("aria-expanded", open ? "true" : "false");
-      more.textContent = open ? more.getAttribute("data-few") : more.getAttribute("data-all").replace("{n}", n);
+      more.textContent = open ? more.getAttribute("data-few") : more.getAttribute("data-all").replace("{n}", total);
     }
     root.querySelectorAll(".tl-on").forEach(function (el) {
       var c = (f[el.getAttribute("data-of")] || []).length;
@@ -75,6 +103,15 @@
     });
   });
   boxes.forEach(function (b) { b.addEventListener("change", apply); });
+  Object.keys(runs).forEach(function (id) {
+    var r = runs[id], b = r.head && r.head.querySelector(".tl-foldb");
+    if (!b) return;
+    b.addEventListener("click", function () {
+      r.open = !r.open;
+      b.setAttribute("aria-expanded", r.open ? "true" : "false");
+      apply();
+    });
+  });
   if (clear) clear.addEventListener("click", function () { boxes.forEach(function (b) { b.checked = false; }); apply(); });
   if (more) {
     more.addEventListener("click", function () {

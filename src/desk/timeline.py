@@ -70,7 +70,9 @@ class Row:
     labels: dict = field(default_factory=dict)  # dimension -> what a person reads for the value
     colours: dict = field(default_factory=dict)  # dimension -> colour
     ekind: str = "field"  # event_kind: what the rail's dot says happened
-    index: int = 0  # position newest first, from 0; the rail shows the first FIRST
+    index: int = 0  # position newest first, from 0
+    unit: int = 0  # position on the rail, newest first: a fold of git saves is one; the rail shows the first FIRST
+    run: str = ""  # the fold this git save sits in (consecutive saves by one actor on one day), or ""
 
     @property
     def group(self) -> str:
@@ -173,14 +175,30 @@ class Day:
 
 
 @dataclass
+class Fold:
+    """Consecutive git saves by one actor on one day, drawn as one row that opens in place (DESK-0305 review: 88% of a real
+    store's events are git saves, and unfolded they pushed the people's events and the status changes off the first screen)."""
+    key: str
+    rows: list  # newest first
+
+    @property
+    def text(self) -> str:
+        a, b = self.rows[-1].time, self.rows[0].time
+        return f"{len(self.rows)} git saves" + (f", {a}–{b}" if a and b and a != b else (f", {b}" if b else ""))
+
+
+@dataclass
 class View:
     ticket_id: str
     title: str
     rows: list  # every event, newest first
     shown: list  # after the filters
-    latest: Row | None
+    latest: Row | None  # the newest change that is not a git save (a git save only when there is nothing else)
     facets: list
     filters: dict
+    git_after: int = 0  # git saves newer than `latest`
+    units: int = 0  # rows on the rail once git saves are folded
+    first_events: int = 0  # events the rail shows before Show all (a fold counts all its saves)
     periods: list = field(default_factory=list)  # status periods, oldest first
     days: list = field(default_factory=list)  # the rail: every event grouped by day, newest first
     counts: dict = field(default_factory=dict)  # chip key -> events
@@ -360,6 +378,33 @@ def _finish(out: list[Period], now: dt.datetime) -> list[Period]:
     return joined
 
 
+def fold_git(rs: list) -> int:
+    """Give every row its rail position (`unit`), folding each run of two or more consecutive git saves by one actor on one day into
+    one position (`run`). Returns the number of positions."""
+    i = unit = 0
+    while i < len(rs):
+        r = rs[i]
+        j = i
+        if r.ekind == "git":
+            while (j + 1 < len(rs) and rs[j + 1].ekind == "git" and rs[j + 1].dims.get("actor") == r.dims.get("actor")
+                   and rs[j + 1].event.ts[:10] == r.event.ts[:10]):
+                j += 1
+        for m in rs[i:j + 1]:
+            m.unit, m.run = unit, (f"f{unit}" if j > i else "")
+        unit += 1
+        i = j + 1
+    return unit
+
+
+def latest_of(rs: list) -> tuple[Row | None, int]:
+    """(the newest change that is not a git save, the git saves newer than it). Git saves are 88% of a real store's events: the
+    line names what a person or a status did, and counts the saves after it."""
+    for r in rs:
+        if r.ekind != "git":
+            return r, r.index
+    return (rs[0], 0) if rs else (None, 0)
+
+
 def rail_days(rs: list, today: dt.date, first: int = FIRST) -> list[Day]:
     """The rail's day groups, newest first; a day whose events are all past the first `first` starts hidden."""
     out: list[Day] = []
@@ -370,7 +415,7 @@ def rail_days(rs: list, today: dt.date, first: int = FIRST) -> list[Day]:
             out.append(Day(day_label(d.date(), today) if d else "Date not recorded", iso, []))
         out[-1].rows.append(r)
     for day in out:
-        day.hidden = all(r.index >= first for r in day.rows)
+        day.hidden = all(r.unit >= first for r in day.rows)
     return out
 
 
@@ -489,10 +534,13 @@ def view(store, t, filters: dict[str, set[str]] | None = None, now: dt.datetime 
         vals = sorted(((v, lab, n, col) for v, (lab, n, col) in counts.items()), key=lambda x: (-x[2], x[1].lower()))
         facets.append(Facet(d, LABELS[d], vals))
     filters = filters or {}
+    units = fold_git(rs)
+    latest, git_after = latest_of(rs)
     shown = [r for r in rs if matches(r, filters)]
     counts = {k: (len(rs) if k == "all" else sum(1 for r in rs if r.group == k)) for k, _lab in CHIPS}
     created = _ts(t.meta.get("created"))
-    return View(t.id, str(t.meta.get("title") or ""), rs, shown, rs[0] if rs else None, facets, filters,
+    return View(t.id, str(t.meta.get("title") or ""), rs, shown, latest, facets, filters, git_after=git_after, units=units,
+                first_events=sum(1 for r in rs if r.unit < FIRST),
                 periods=periods(t.meta.get("created"), evs, str(t.meta.get("status") or ""), now,
                                 snapshots=[(x.ts, x.status, x.first) for x in snaps], done_at=t.meta.get("done_at"), saved_at=saved),
                 days=rail_days(rs, now.date()), counts=counts, created_text=day_text(created, now.date()) if created else "not recorded")
@@ -510,13 +558,26 @@ def rail_html(v: View, mask=None) -> str:
     out, seen = [], {}
     for day in v.days:
         out.append(f'<li class="tl-day" data-day="{_e(day.iso)}"{" hidden" if day.hidden else ""}><h3 class="tl-dayh">{_e(day.label)}</h3>\n<ol class="tl-evs">')
+        runs: dict[str, list] = {}
+        for r in day.rows:
+            if r.run:
+                runs.setdefault(r.run, []).append(r)
         for r in day.rows:
             key = tuple(r.dims.values())  # most events share their dimensions: escape each set once
             dims = seen.get(key)
             if dims is None:
                 dims = seen[key] = "".join(f' data-{d}="{_e(val)}"' for d, val in r.dims.items())
+            run_attr = (' data-run="' + r.run + '"') if r.run else ""
+            if r.run and runs[r.run][0] is r:  # the fold's own row, before its saves: one line, opens them in place
+                f = Fold(r.run, runs[r.run])
+                out.append(
+                    f'<li class="tl-foldh ek-git" data-run="{r.run}" data-group="git"{" hidden" if r.unit >= v.first else ""}{dims}>'
+                    f'<time class="tl-time" datetime="{_e(r.event.ts)}" title="{_e(r.when)}">{r.time}</time><i class="tl-mark" aria-hidden="true"></i>'
+                    f'<div class="tl-body"><button type="button" class="tl-foldb" aria-expanded="false"><span class="tl-fn">{_e(f.text)}</span></button>'
+                    f'<span class="tl-actor" title="{_e(r.source_label)}"><i class="tl-dot" style="background:{_e(r.colours.get("kind", ""))}"></i>{_e(r.actor_name)} <small>{_e(r.kind_label)}</small></span></div></li>')
             out.append(
-                f'<li class="tl-ev ek-{r.ekind}{" tl-strong" if r.strong else ""}" data-group="{r.group}" data-i="{r.index}"{" hidden" if r.index >= v.first else ""}{dims}>'
+                f'<li class="tl-ev ek-{r.ekind}{" tl-strong" if r.strong else ""}" data-group="{r.group}" data-i="{r.index}"'
+                f'{run_attr}{" hidden" if r.run or r.unit >= v.first else ""}{dims}>'
                 f'<time class="tl-time" datetime="{_e(r.event.ts)}" title="{_e(r.when)}">{r.time}</time><i class="tl-mark" aria-hidden="true"></i>'
                 f'<div class="tl-body"><div class="tl-head"><span class="tl-ekind">{_e(r.ekind_label)}</span><span class="tl-actor" title="{_e(r.source_label)}">'
                 f'<i class="tl-dot" style="background:{_e(r.colours.get("kind", ""))}"></i>{_e(r.actor_name)} <small>{_e(r.kind_label)}</small></span></div>'
@@ -525,10 +586,11 @@ def rail_html(v: View, mask=None) -> str:
     return "\n".join(out)
 
 
-def latest_line(r: Row | None) -> str:
+def latest_line(r: Row | None, git_after: int = 0) -> str:
     if r is None:
         return "No changes recorded yet."
-    return f"{r.actor_name} ({r.kind_label}) · {r.what} · {r.when}"
+    more = f" (+{git_after} git save{'s' if git_after != 1 else ''} since)" if git_after else ""
+    return f"{r.actor_name} ({r.kind_label}) · {r.what} · {r.when}{more}"
 
 
 def _dot(colour: str, on: bool) -> str:
@@ -548,7 +610,7 @@ def _line(r: Row, by: str | None, colour: bool) -> str:
 
 def text(v: View, by: str | None = None, colour: bool = False) -> str:
     """What `drew history` prints: the latest change, then the events newest first, grouped by `by` when given, with counts."""
-    out = [f"{v.ticket_id} · {v.title}", f"Latest change: {latest_line(v.latest)}"]
+    out = [f"{v.ticket_id} · {v.title}", f"Latest change: {latest_line(v.latest, v.git_after)}"]
     if not v.rows:
         out.append("Its activity log is empty. `drew migrate events --apply` brings in old comments and git history.")
         return "\n".join(out)
