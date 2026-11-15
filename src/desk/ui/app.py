@@ -253,6 +253,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         return fn(v) if fn and isinstance(v, str) and not isinstance(v, Markup) else v
 
     templates.env.finalize = finalize
+    templates.env.globals["page_mask"] = lambda: shown["censor"]  # DESK-0305: HTML built outside Jinja (the timeline rail) masks the same words
     templates.env.filters["urlencode_path"] = lambda v: quote(str(v), safe="/#")
     if STATIC.exists():
         app.mount("/static", RevalidatingStaticFiles(directory=str(STATIC)), name="static")

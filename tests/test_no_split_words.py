@@ -9,7 +9,7 @@ CSS = re.sub(r"/\*.*?\*/", "", (Path(__file__).resolve().parents[1] / "src" / "d
 # Rules allowed to break inside a long token (URLs, paths, ids in flexible-width text). A new rule that allows mid-word breaks
 # fails this test until someone adds it here on purpose, after checking it can never sit in a box narrower than a word.
 MAY_BREAK_LONG_TOKENS = {
-    ".shot-meta", ".toast a", ".tl-opts label", ".tl-head", ".tl-ev .tl-what", ".part-of", ".sub-title", ".cc-sub",
+    ".shot-meta", ".toast a", ".tl-opts label", ".tl-ev .tl-what", ".part-of", ".sub-title", ".cc-sub",
     ".tr-part,.nm-part", ".part-line",
 }
 

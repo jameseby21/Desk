@@ -95,7 +95,8 @@ def test_validate_warns_on_a_wall_and_on_a_field_that_should_be_a_file(store):
 
 @pytest.mark.skipif(browser() is None, reason="no Edge or Chrome installed")
 def test_an_algo_0002_shaped_page_with_its_long_proof_is_under_2000_px_at_1440(store):
+    """Protects the folded long proof; DESK-0305: measured without the open timeline, which has its own 700 px budget."""
     t = fold._algo(store, long_proof=True)
-    got = drive(store, "<script>addEventListener('load',function(){setTimeout(function(){fetch('/m',{method:'POST',body:JSON.stringify({h:document.documentElement.scrollHeight})});},400);});</script>",
+    got = drive(store, "<script>addEventListener('load',function(){setTimeout(function(){var tl=document.getElementById('timeline');fetch('/m',{method:'POST',body:JSON.stringify({tl:tl?tl.offsetHeight:0,h:document.documentElement.scrollHeight})});},400);});</script>",
                 f"/ticket/{t.id}", width=1440)
-    assert got["h"] < 2000, got
+    assert got["h"] - got["tl"] < 2000 and 0 < got["tl"] < 700, got

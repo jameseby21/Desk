@@ -108,8 +108,10 @@ def test_decision_and_mentioned_in_show_when_they_have_something(store):
 
 @pytest.mark.skipif(browser() is None, reason="no Edge or Chrome installed")
 def test_the_page_without_a_wall_of_proof_is_under_2000_px_at_1440(store):
-    """The boilerplate folds alone bring a page to under 2,000 px; the long proof is folded by the text ladder (DESK-0139, same file)."""
+    """The boilerplate folds alone bring a page to under 2,000 px; the long proof is folded by the text ladder (DESK-0139, same file).
+    DESK-0305: the visual timeline is open by default (the owner's fourth ask), so the budget is the page without it, and the timeline
+    of a ticket with a short life stays under 700 px of its own."""
     t = _algo(store, long_proof=False)
-    got = drive(store, "<script>addEventListener('load',function(){setTimeout(function(){fetch('/m',{method:'POST',body:JSON.stringify({h:document.documentElement.scrollHeight,w:innerWidth})});},400);});</script>",
+    got = drive(store, "<script>addEventListener('load',function(){setTimeout(function(){var tl=document.getElementById('timeline');fetch('/m',{method:'POST',body:JSON.stringify({tl:tl?tl.offsetHeight:0,h:document.documentElement.scrollHeight,w:innerWidth})});},400);});</script>",
                 f"/ticket/{t.id}", width=1440)
-    assert got["w"] >= 1400 and got["h"] < 2000, got
+    assert got["w"] >= 1400 and got["h"] - got["tl"] < 2000 and 0 < got["tl"] < 700, got

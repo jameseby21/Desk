@@ -398,36 +398,87 @@ header .search-open kbd{position:absolute;right:10px;top:50%;transform:translate
 .toast-x{font:600 12.5px/1 inherit;font-family:inherit;min-height:28px;padding:0 10px;border-radius:8px;border:1px solid var(--line);background:var(--card);color:var(--ink);cursor:pointer}
 .toast.fold{border-style:dashed;color:var(--muted);justify-content:space-between}
 
-/* Ticket timeline (DESK-0171): a plain default layout until Chaz's design (DESK-0170). Text never below 12 px. */
+/* Ticket timeline (DESK-0171 latest change, DESK-0305 the visual timeline). Text never below 12 px; labels never split a word
+   (no overflow-wrap:anywhere or hyphens on a label: DESK-0302); only the free text of an event may break inside a long token. */
+:root{--st-triage:#EDC948;--st-ready:#76B7B2;--st-claimed:#A0CBE8;--st-progress:#4E79A7;--st-changes:#F28E2B;--st-approved:#59A14F;--st-rejected:#7A5A48;
+  --ek-comment:#4E79A7;--ek-git:#B07AA1;--ek-attach:#F28E2B}
 .tl{margin:6px 0 16px;min-width:0}
 .tl-latest{display:flex;align-items:center;gap:8px;margin:0;padding:8px 12px;background:var(--card);border:1px solid var(--line);border-radius:10px;font-size:14px;white-space:nowrap;overflow:hidden;min-width:0}
 .tl-latest>*{flex:none}
 .tl-latest .tl-what{flex:1 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
 .tl-latest .tl-when{color:var(--muted);font-size:13px}
-.tl-cap{font:500 12px/1.3 var(--font-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.tl-cap{font:500 12px/1.3 var(--font-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);white-space:nowrap}
 .tl-dot{display:inline-block;width:10px;height:10px;border-radius:50%;border:1px solid rgba(0,0,0,.25);vertical-align:middle;margin-right:4px;flex:none}
 .tl-kind{font:500 12px/1 var(--font-mono);padding:3px 6px;border:1px solid var(--line);border-radius:6px;color:var(--muted);white-space:nowrap}
-.tl-all{margin-top:8px}
-.tl-all>summary{cursor:pointer;font-weight:600;font-size:14px}
-.tl-tools{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-start;margin:10px 0}
-.tl-by{font-size:14px;display:flex;flex-direction:row;align-items:center;gap:6px}
-.tl-by select{font-size:14px;max-width:100%;padding:4px 8px}
+/* The status strip: one segment per status period, width by time, the current one taller and outlined. */
+.tl-strip-wrap{margin:12px 0 0;padding:10px 12px;background:var(--card);border:1px solid var(--line);border-radius:10px;min-width:0}
+.tl-strip{list-style:none;margin:6px 0 0;padding:0;display:flex;align-items:flex-end;gap:2px;height:34px;min-width:0;overflow:hidden}
+.tl-seg{flex:0 1 0%;min-width:6px;height:24px;border-radius:4px;position:relative;display:flex;align-items:center;justify-content:center;overflow:hidden;white-space:nowrap;background:var(--line);color:var(--ink);cursor:default}
+.tl-seg.tl-now{height:34px;box-shadow:inset 0 0 0 2px var(--ink)}
+.tl-seg:focus-visible{outline:3px solid var(--focus);outline-offset:-3px}
+.tl-lab{display:inline-block;padding:0 4px;font:600 12px/1 var(--font-body);white-space:nowrap;word-break:keep-all}
+.tl-now .tl-lab{font-weight:800;font-size:13px}
+.tl-lab.tl-hide{visibility:hidden}
+.st-inbox,.st-other{background:var(--line);color:var(--ink)}
+.st-other{background-image:repeating-linear-gradient(135deg,transparent 0 6px,rgba(127,127,127,.25) 6px 9px)}
+@media (prefers-color-scheme:dark){.st-inbox,.st-other{background-color:#55534D}}  /* the line colour is too close to the card in dark */
+.st-triage{background:var(--st-triage);color:#141414}
+.st-ready{background:var(--st-ready);color:#141414}
+.st-claimed{background:var(--st-claimed);color:#141414}
+.st-in_progress{background:var(--st-progress);color:#FFFFFF}
+.st-review{background:var(--ball);color:#141414}
+.st-changes_requested{background:var(--st-changes);color:#141414}
+.st-approved{background:var(--st-approved);color:#141414}
+.st-done{background:var(--ink);color:var(--on-ink)}
+.st-blocked{background:var(--red);color:var(--on-red)}
+.st-rejected{background:var(--st-rejected);color:#FFFFFF}
+.tl-ends{display:flex;justify-content:space-between;gap:8px;margin-top:4px}
+.tl-end{font:500 12px/1.3 var(--font-mono);color:var(--muted);white-space:nowrap}
+.tl-st-info{margin:4px 0 0;font-size:14px;min-height:21px}
+/* The event rail: a vertical line, one dot per event, newest first, grouped by day; decisions and status changes stronger. */
+.tl-rail-wrap{margin-top:12px;min-width:0}
+.tl-chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.tl-chip{display:inline-flex;align-items:center;gap:6px;min-height:40px;padding:0 12px;border:1px solid var(--line);border-radius:999px;background:var(--card);color:var(--ink);font:600 13px/1 var(--font-body);white-space:nowrap;cursor:pointer}
+.tl-chip[aria-pressed=true]{background:var(--ink);border-color:var(--ink);color:var(--on-ink)}
+.tl-n{font:500 12px/1 var(--font-mono);opacity:.85}
+.tl-chip:focus-visible,#tl-showall:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+.tl-more-f{margin-top:8px;font-size:14px}
+.tl-more-f>summary{cursor:pointer;font-weight:600;min-height:32px}
+.tl-tools{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-start;margin:8px 0}
 .tl-f{font-size:14px;border:1px solid var(--line);border-radius:8px;background:var(--card);padding:4px 8px;max-width:100%}
-.tl-f>summary{cursor:pointer}
+.tl-f>summary{cursor:pointer;white-space:nowrap}
 .tl-on{color:var(--muted);font-size:12px}
 .tl-opts{display:flex;flex-direction:column;gap:2px;margin-top:6px;max-height:260px;overflow:auto}
 .tl-opts label{display:flex;flex-direction:row;align-items:center;gap:6px;min-height:32px;font-size:14px;overflow-wrap:anywhere;cursor:pointer}
 .tl-count{color:var(--muted);font:500 12px var(--font-mono)}
-.tl-shown{font-size:14px;margin:6px 0}
-.tl-legend{display:flex;flex-wrap:wrap;gap:6px 12px;font-size:13px;margin-bottom:8px}
-.tl-list{list-style:none;margin:0;padding:0 0 0 14px;border-left:2px solid var(--line)}
-.tl-ev{display:flex;gap:8px;align-items:flex-start;padding:6px 0;min-width:0}
-.tl-ev[hidden]{display:none}
-.tl-mark{flex:none;width:14px;height:14px;border-radius:50%;margin-left:-22px;margin-top:4px;border:2px solid var(--paper)}
-.tl-body{min-width:0;flex:1}
-.tl-head{font-size:14px;overflow-wrap:anywhere}
+.tl-shown{font-size:14px;margin:8px 0 0;color:var(--muted)}
+.tl-days{list-style:none;margin:4px 0 8px;padding:0;position:relative}
+.tl-days::before{content:"";position:absolute;left:61px;top:6px;bottom:6px;width:2px;background:var(--line)}
+.tl-day[hidden],.tl-ev[hidden]{display:none}
+.tl-dayh{position:relative;margin:12px 0 2px;padding-left:76px;font:600 12px/1.3 var(--font-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);white-space:nowrap}
+.tl-evs{list-style:none;margin:0;padding:0}
+.tl-ev{display:grid;grid-template-columns:44px 20px minmax(0,1fr);column-gap:8px;align-items:start;padding:3px 0;position:relative}
+.tl-time{grid-column:1;font:500 12px/22px var(--font-mono);color:var(--muted);text-align:right;white-space:nowrap}
+.tl-mark{grid-column:2;justify-self:center;width:12px;height:12px;margin-top:4px;border-radius:50%;background:var(--muted);border:2px solid var(--paper);position:relative;z-index:1}
+.ek-status .tl-mark{width:18px;height:18px;margin-top:1px;background:var(--ink)}
+.ek-decision .tl-mark{width:15px;height:15px;margin-top:3px;border-radius:3px;background:var(--ball);box-shadow:0 0 0 2px var(--ink);transform:rotate(45deg)}
+.ek-comment .tl-mark{background:var(--ek-comment)}
+.ek-field .tl-mark,.ek-section .tl-mark{width:10px;height:10px;margin-top:6px;background:var(--card);border:2px solid var(--muted)}
+.ek-git .tl-mark{border-radius:3px;background:var(--ek-git)}
+.ek-attachment .tl-mark{background:var(--ek-attach)}
+.ek-created .tl-mark{background:var(--card);border:3px solid var(--ink)}
+.tl-body{grid-column:3;min-width:0;display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 10px}  /* one line per event when it fits, so the open rail stays short */
+.tl-head{display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px;font-size:13px;min-width:0}
+.tl-ekind{font:600 12px/1.3 var(--font-mono);letter-spacing:.04em;text-transform:uppercase;color:var(--muted);white-space:nowrap}
+.tl-strong .tl-ekind{color:var(--ink)}
+.tl-actor{display:inline-flex;align-items:center;gap:4px;max-width:100%;padding:3px 8px;border:1px solid var(--line);border-radius:999px;background:var(--card);font:500 12px/1.2 var(--font-body);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tl-actor small{color:var(--muted);font-size:12px}
 .tl-ev .tl-what{font-size:14px;overflow-wrap:anywhere}
-@media (max-width:600px){.tl-latest .tl-cap{display:none}.tl-latest{gap:6px;padding:8px 10px}}
+.tl-strong .tl-what{font-weight:600;font-size:15px}
+.ek-decision .tl-body{border-left:3px solid var(--ball);padding-left:8px}
+@media (prefers-reduced-motion:no-preference){.tl-ev{animation:tl-in .18s ease-out}}
+@keyframes tl-in{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:none}}
+@media (max-width:600px){.tl-latest .tl-cap,.tl-latest .tl-kind{display:none}.tl-latest{gap:6px;padding:8px 10px}.tl-strip-wrap{padding:8px 10px}}
 
 /* DESK-0149 (Chaz M1 to M6): Needs me, Today's block under Immediate Action Required and the board's Needs me view */
 .nm{margin:14px 0 0;padding:18px 20px;display:flex;flex-direction:column;gap:12px}

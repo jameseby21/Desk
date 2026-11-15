@@ -1,7 +1,7 @@
-"""DESK-0171: the ticket timeline. Protects: the latest change on one line at the top of the ticket page; Expand all events lists
-every event newest first; filters narrow by actor, kind, source, project, company, track, sprint and field with counts that match;
-colours come from people.yaml for people and a fixed palette otherwise, with a legend; `drew history` prints the same; at 390 px the
-page never scrolls sideways."""
+"""DESK-0171: the ticket timeline. Protects: the latest change on one line at the top of the ticket page; every event newest first
+on the rail (open by default since DESK-0305, which owns the strip and the rail: tests/test_visual_timeline.py); More filters narrow by
+actor, kind, source, project, company, track, sprint and field with counts that match; colours come from people.yaml for people and a
+fixed palette otherwise; `drew history` prints the same; at 390 px the page never scrolls sideways."""
 
 import re
 from contextlib import contextmanager
@@ -89,16 +89,17 @@ def test_colours_people_from_people_yaml_kinds_and_the_rest_from_a_fixed_palette
     assert len(set(kinds.values())) == len(kinds) >= 3  # people and sessions in different tints
 
 
-def test_ticket_page_shows_the_latest_line_on_top_and_every_event_under_expand(store):
+def test_ticket_page_shows_the_latest_line_on_top_and_every_event_on_the_rail(store):
+    """Protects the latest line above the sections and every event on the page with the dimension filters and their counts."""
     t = _life(store)
     page = TestClient(create_app(store.home)).get(f"/ticket/{t.id}").text
     latest = re.search(r'<p class="tl-latest" id="tl-latest".*?</p>', page, re.S).group(0)
     assert "Patch" in latest and "track: empty → First real use" in latest and "Latest change" in latest
     assert page.index('id="tl-latest"') < page.index('<div class="cols">')  # at the top, above the sections
-    assert "Expand all events (5)" in page and page.count('<li class="tl-ev"') == 5
+    assert "Expand all events" not in page and page.count('<li class="tl-ev ') == 5
     for dim in timeline.DIMENSIONS:
         assert f'<details class="tl-f" data-dim="{dim}">' in page
-    assert 'id="tl-legend"' in page and 'id="tl-by"' in page
+    assert 'id="tl-more-f"' in page and 'id="tl-by"' not in page  # DESK-0305: dots are coloured by what happened, so no Colour by
     assert '<span class="tl-count">2</span>' in page  # counts beside the options (two comments)
 
 
@@ -165,24 +166,23 @@ def test_old_tickets_have_a_timeline_after_the_migration(store):
 
 STATIC = Path(__file__).resolve().parents[1] / "src" / "desk" / "ui" / "static"
 MEASURE = """<script>addEventListener('load',function(){setTimeout(function(){
-var w=document.documentElement.clientWidth,over=[],all=document.getElementById('tl-all');all.open=true;
+var w=document.documentElement.clientWidth,over=[];document.getElementById('tl-more-f').open=true;
 document.querySelectorAll('.tl-f').forEach(function(d){d.open=true;});
 document.querySelectorAll('#timeline *').forEach(function(e){var r=e.getBoundingClientRect();if(r.width&&r.right>w+1)over.push(e.className+' '+Math.round(r.right));});
 var lat=document.getElementById('tl-latest'),lh=parseFloat(getComputedStyle(lat).lineHeight)||20;
 var small=[];document.querySelectorAll('#timeline *').forEach(function(e){if(e.childNodes.length&&e.textContent.trim()&&parseFloat(getComputedStyle(e).fontSize)<12)small.push(e.className||e.tagName);});
 var box=document.querySelector('.tl-f[data-dim=actor] input[value=james]');box.click();
 var vis=Array.prototype.filter.call(document.querySelectorAll('.tl-ev'),function(li){return !li.hidden;}).length;
-document.getElementById('tl-by').value='actor';document.getElementById('tl-by').dispatchEvent(new Event('change'));
 fetch('/m',{method:'POST',body:JSON.stringify({scroll:document.documentElement.scrollWidth,inner:w,over:over,latestH:lat.getBoundingClientRect().height,lh:lh,
- small:small,vis:vis,shown:document.getElementById('tl-shown').textContent,legend:document.getElementById('tl-legend').textContent,
+ small:small,vis:vis,shown:document.getElementById('tl-shown').textContent,
  events:document.querySelectorAll('.tl-ev').length})});},300);});</script>"""
 
 
 @pytest.mark.skipif(browser() is None, reason="no Edge or Chrome installed")
 @pytest.mark.parametrize("width", [1280, 390])
 def test_timeline_in_a_real_browser_no_sideways_scroll_one_line_latest_and_filters_work(store, width):
-    """Protects: at 1280 px and 390 px the expanded timeline never makes the page scroll sideways, the latest change stays one line,
-    no text in it is under 12 px, ticking a person narrows the list and Colour by rebuilds the legend."""
+    """Protects: at 1280 px and 390 px the timeline with its filters open never makes the page scroll sideways, the latest change
+    stays one line, no text in it is under 12 px, and ticking a person narrows the list."""
     t = _life(store)
     with acting("patch", "session"):
         ops.comment(store, store.get(t.id), "A very long comment " + "that goes on and on without a break " * 12)
@@ -196,8 +196,7 @@ def test_timeline_in_a_real_browser_no_sideways_scroll_one_line_latest_and_filte
     assert data["events"] == 6 and data["over"] == [] and data["scroll"] <= data["inner"], data
     assert data["latestH"] < 2.2 * data["lh"] + 20, data  # one line, padding included
     assert data["small"] == [], data
-    assert data["vis"] == 1 and data["shown"] == "Showing 1 of 6 events, newest first.", data
-    assert data["legend"] == "James 1", data
+    assert data["vis"] == 1 and data["shown"] == "Showing the one matching event.", data
 
 
 def test_a_300_item_list_change_is_one_short_line_naming_what_was_added_and_removed(store):
