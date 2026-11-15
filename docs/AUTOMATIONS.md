@@ -11,7 +11,7 @@
 - **Status moves follow the usual rules.** A rule moves a ticket only through the same checks as `drew move`, so a rule can never approve and never skips How to validate or open subtickets. A move the checks refuse is listed as "held back" with the reason.
 - **Notifications go to the queue.** A rule that wants to tell you something adds a line to `.desk/notify-queue.jsonl`. The sender (DESK-0289) decides when and how it reaches you.
 - **You see it moving.** `drew auto run` prints a bar per rule and, inside a slow rule, `ticket k of m` at most once a second; `drew auto undo` prints `restoring k of n`. In the browser, Run now and Undo show which rule and which ticket of how many they are on, then one plain sentence.
-- **Nothing runs on a clock by itself.** The sweep runs when a person or a session calls it (decision 63 retired timed sweeps). A ticket a rule changed earlier in the same run counts as touched today.
+- **Nothing runs on a clock by itself.** The sweep runs when a person or a session calls it (decision 63 retired timed sweeps). Rules do not run when a ticket is saved yet, although the ticket's Outcome names it: most rules look at other tickets (a parent's subtickets, a blocker), so running them on every save would read the whole store each time. That part waits for its own ticket. A ticket a rule changed earlier in the same run counts as touched today.
 - **Pull requests.** Rules that read GitHub use the `gh` command with a 20-second limit. When `gh` is missing or offline, those rules are skipped with one plain line and the others still run. The `repos:` list names folders in the store or `owner/name`. A pull request belongs to the ticket whose id starts its title (decision 62).
 
 ## The rules that ship

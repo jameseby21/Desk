@@ -1,7 +1,8 @@
 """Automation rules (DESK-0292): 'when X then Y' rules in `automations.yaml` at the store root, run by `drew auto run`.
 
 Each rule names its source (the decision, standards rule or event pattern it comes from), a `when` (conditions on one open ticket, or
-`every:` for a schedule) and a `then` (a list of actions). The sweep is the guaranteed path; nothing runs on a clock by itself.
+`every:` for a schedule) and a `then` (a list of actions). The sweep is the only path: nothing runs on a clock by itself, and
+nothing runs on save yet (the Outcome's 'on save' is not built; see docs/AUTOMATIONS.md).
 
 Who writes: every change is made by Desk's own actor `automation` with the timeline kind `rule`, set here and nowhere else. A rule file
 cannot name an actor (`as`, `actor` and `by` are refused when the file is read), and `--as automation` is refused on the command line, so
