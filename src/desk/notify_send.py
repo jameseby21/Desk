@@ -38,7 +38,9 @@ DEFAULTS = {
 }
 STATE = Path(".desk") / "notify-state.json"
 WITHHELD = "(title withheld)"
-ID_RX = re.compile(r"\b[A-Z][A-Z0-9]*-\d{2,5}\b")
+# the store's own id shape (store._ID: a prefix that may hold hyphens, such as JEBY-US, then 4+ digits), bounded so that inside free
+# text it never starts or ends in the middle of a longer id
+ID_RX = re.compile(r"(?<![A-Za-z0-9-])[A-Z0-9][A-Z0-9-]*-\d{4,}(?![A-Za-z0-9])")
 ALLOWED_ITEM_KEYS = {"id", "title", "ask", "date", "status", "due", "count", "kind"}
 MAX_LINE = 160
 

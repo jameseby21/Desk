@@ -159,6 +159,19 @@ def test_without_the_private_scan_only_ids_are_sent(store, monkeypatch):
     assert "Titles left out" in note.body
 
 
+def test_ids_with_a_hyphenated_prefix_travel_whole(store):
+    """A project key with a hyphen (prefix JEBY-US) keeps its whole id in the brief, a queued line and a withheld line, never '?' or 'US-0001'."""
+    t = store.create("Pick the hosting plan", "jeby-us", "task", owner="james", assignee="main")
+    t.meta["blocked_on"] = "james"
+    store.save(t)
+    assert t.id.startswith("JEBY-US-")
+    note = ns.brief_note(store, dt.date(2026, 11, 15))
+    assert f"{t.id}: Pick the hosting plan" in note.body and "?:" not in note.body
+    scan = ns.Scanner([("x", re.compile(PRIVATE))], True)
+    assert ns.item_line({"kind": "alert", "text": f"{PRIVATE} again", "ids": [t.id]}, scan, {}) == t.id
+    assert ns.final_pass(f"- {t.id}: {PRIVATE} again", scan) == f"- {t.id} {ns.WITHHELD}"
+
+
 def test_a_withheld_item_without_ids_never_echoes_its_kind_field():
     """A queued item whose text is withheld and has no ids goes as '1 note (text withheld)'; a free-text kind is not echoed."""
     scan = ns.Scanner([], True)
