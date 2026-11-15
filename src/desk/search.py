@@ -387,7 +387,7 @@ class Index:
         return res
 
     def _snip(self, rowid: int, terms: list[str], fuzzy: bool) -> str:
-        """The words around the first match in the body (marked [like this]) for one shown hit; the start of the text when the match
+        """The words around the first match in the body (between MARK_OPEN and MARK_CLOSE) for one shown hit; the start of the text when the match
         is only in the id or title, or was a close spelling. Cut in Python: a trigram FTS5 snippet counts three-letter tokens, which
         left a dozen characters (DESK-0290)."""
         with self.lock:
@@ -395,7 +395,7 @@ class Index:
             body = str(r[0] if r else "")
             if terms and not fuzzy:
                 hit = _like_snip(body, terms)
-                if "[" in hit:
+                if MARK_OPEN in hit:
                     return hit
             return " ".join(body[:400].split())[:120]
 
@@ -495,16 +495,25 @@ def has_fts5() -> bool:
         return False
 
 
+MARK_OPEN, MARK_CLOSE = "\x02", "\x03"  # around the match in a snippet: control characters ticket text never holds, so a Markdown
+# '- [ ]' box or '[link](..)' is never taken for a match (it was, when the marks were plain brackets)
+
+
 def _like_snip(body: str, terms: list[str], around: int = 60) -> str:
-    """The FTS5 snippet's shape without FTS5: the words around the first term found, the match in [brackets]."""
-    text = " ".join(str(body or "").split())
+    """The words around the first term found, the match between MARK_OPEN and MARK_CLOSE."""
+    text = " ".join(str(body or "").replace(MARK_OPEN, "").replace(MARK_CLOSE, "").split())
     low = text.lower()
     for t in terms:
         i = low.find(t.lower())
         if i >= 0:
             a, b = max(0, i - around), min(len(text), i + len(t) + around)
-            return ("..." if a else "") + text[a:i] + "[" + text[i:i + len(t)] + "]" + text[i + len(t):b] + ("..." if b < len(text) else "")
+            return ("..." if a else "") + text[a:i] + MARK_OPEN + text[i:i + len(t)] + MARK_CLOSE + text[i + len(t):b] + ("..." if b < len(text) else "")
     return text[:120]
+
+
+def plain_snippet(snip: str) -> str:
+    """The snippet for a terminal: the match shown as [match]."""
+    return str(snip or "").replace(MARK_OPEN, "[").replace(MARK_CLOSE, "]")
 
 
 def _file_title(text: str, p: Path) -> str:
@@ -551,11 +560,11 @@ def _similar(term: str, word: str) -> bool:
 
 
 def snippet_html(snip: str) -> str:
-    """The snippet with the `[match]` marks turned into <mark> and everything else escaped."""
+    """The snippet with the match marks turned into <mark> and everything else escaped (brackets in the text stay brackets)."""
     import html
 
     out = html.escape(snip)
-    return out.replace("[", "<mark>").replace("]", "</mark>")
+    return out.replace(MARK_OPEN, "<mark>").replace(MARK_CLOSE, "</mark>")
 
 
 def people_resolver(store):

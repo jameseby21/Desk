@@ -54,11 +54,38 @@ def test_a_word_only_in_the_body_or_a_comment_is_found_with_its_snippet(store):
     d = c_.get("/search.json", params={"q": "quokkaline"}).json()
     hits = [h for g in d["groups"] for h in g["hits"]]
     assert [h["id"] for h in hits] == [a.id]
-    assert "[quokkaline] speaker" in hits[0]["snippet"] and "mentioned the" in hits[0]["snippet"]
+    assert "[quokkaline] speaker" in search.plain_snippet(hits[0]["snippet"]) and "mentioned the" in hits[0]["snippet"]
     assert [h["id"] for g in c_.get("/search.json", params={"q": "zanzibarite"}).json()["groups"] for h in g["hits"]] == [b.id]
     assert [h["id"] for g in c_.get("/search.json", params={"q": "marmalith"}).json()["groups"] for h in g["hits"]] == [c.id]
     page = c_.get("/search", params={"q": "quokkaline"}).text
     assert a.id in page and "<mark>quokkaline</mark>" in page
+
+
+BRACKETS = "- [ ] a step with [a link](http://x) then the zorblat word and - [x] done"
+
+
+def test_markdown_brackets_in_a_snippet_are_not_marked_as_matches(store):
+    """Only the searched word is highlighted: '- [ ]' boxes and [links](..) in a body stay plain text on /search, in the palette and the CLI."""
+    t = _t(store, "Bracket body", body=BRACKETS)
+    c = TestClient(create_app(store.home))
+    page = c.get("/search", params={"q": "zorblat"}).text
+    assert page.count("<mark>") == 1 and "<mark>zorblat</mark>" in page, page.split("<main>")[1][:600]
+    assert "- [ ] a step with [a link](http://x) then the " in page and "- [x] done" in page
+    snip = [h for g in c.get("/search.json", params={"q": "zorblat"}).json()["groups"] for h in g["hits"]][0]["snippet"]
+    assert search.plain_snippet(snip).startswith("- [ ] a step with [a link](http://x) then the [zorblat] word and - [x] done")
+    fts = search.Index(None, stale_days=store.stale_days, fts=False)
+    fts.refresh(store, force=True)
+    assert search.snippet_html(fts.search("zorblat").groups[0][2][0].snippet).count("<mark>") == 1  # the LIKE path too
+    js = (STATIC / "search.js").read_text(encoding="utf-8")
+    body = re.search(r"function mark\(s\) \{ (return [^;]*;) \}", js).group(1)
+    import shutil
+    import subprocess
+
+    if shutil.which("node"):  # the palette's own mark(), run as it is in the page
+        src = "function esc(s){return String(s);}\nfunction mark(s) {" + body + "}\nprocess.stdout.write(mark(" + json.dumps(snip) + "));"
+        out = subprocess.run(["node", "-e", src], capture_output=True, text=True, encoding="utf-8", timeout=30).stdout
+        assert out.count("<mark>") == 1 and "<mark>zorblat</mark>" in out and "- [ ] a step" in out, out
+    assert t.id in page
 
 
 def test_the_body_index_refreshes_on_save(store):
@@ -81,7 +108,7 @@ def test_search_without_fts5_falls_back_to_like_with_snippets(store):
     ix.refresh(store, force=True)
     assert not ix.fts and search.has_fts5()  # this machine has FTS5; the fallback is forced
     res = ix.search("quokkaline")
-    assert _ids(res) == [a.id] and "[quokkaline]" in res.groups[0][2][0].snippet
+    assert _ids(res) == [a.id] and "[quokkaline]" in search.plain_snippet(res.groups[0][2][0].snippet)
     assert _ids(ix.search("schedul")) == [a.id]
     fz = ix.search("shceduler")
     assert _ids(fz) == [a.id] and fz.fuzzy
@@ -98,7 +125,7 @@ def test_docs_and_intake_are_searched_and_private_files_are_not(store):
     d = c.get("/search.json", params={"q": "velvetquill"}).json()
     paths = sorted(f["path"] for f in d["files"])
     assert paths == ["docs/guide.md", "intake/2026-11-15/notes.md"]
-    assert all("[velvetquill]" in f["snippet"] for f in d["files"])
+    assert all("[velvetquill]" in search.plain_snippet(f["snippet"]) for f in d["files"])
     assert {f["title"] for f in d["files"]} == {"The guide", "Notes"}
     page = c.get("/search", params={"q": "velvetquill"}).text
     assert 'href="/doc/docs/guide.md"' in page and "In docs and intake" in page

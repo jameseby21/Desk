@@ -13,7 +13,7 @@
   var tm = /^\/ticket\/([A-Za-z][A-Za-z0-9]*-\d+)\/?$/.exec(location.pathname), here = tm ? tm[1].toUpperCase() : "";
   var HELP = "Type to search. Esc closes." + (here ? " Actions for " + here + " are listed first." : "");
   function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
-  function mark(s) { return esc(s).replace(/\[/g, "<mark>").replace(/\]/g, "</mark>"); }
+  function mark(s) { return esc(s).replace(/\u0002/g, "<mark>").replace(/\u0003/g, "</mark>"); }  // the server marks a match with \u0002 ... \u0003, so a Markdown [ ] stays text
   function recent() { try { return JSON.parse(localStorage.getItem("desk:recent") || "[]") || []; } catch (e) { return []; } }
   function build() {
     if (dlg) return;
