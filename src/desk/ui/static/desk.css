@@ -140,10 +140,10 @@ a.thumb img{max-width:260px;max-height:180px;border:1px solid var(--line);border
 @keyframes spin{to{transform:rotate(360deg)}}
 /* DESK-0117: Done and Not accepted live in one fixed column at the right edge, so every box lines up whatever the line's length */
 .md:has(.chk-head){max-width:none}
-.chk-head{display:grid;grid-template-columns:minmax(0,1fr) 52px 52px;align-items:end;padding:6px 0 4px;border-bottom:1px solid var(--line);font:500 12px/1.15 var(--font-mono);letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}  /* 2026-11-10 verifier: the table headings were the last 11 px text; 12 px is the floor */
-.chk-head span+span{text-align:center;hyphens:auto;overflow-wrap:anywhere}
-.md li.task-list-item:has(.chk2){position:relative;padding:14px 104px 14px 0;min-height:52px;border-bottom:1px solid var(--line);margin:0}
-.chk2{position:absolute;right:0;top:0;display:grid;grid-template-columns:52px 52px;height:52px;place-items:center}
+.chk-head{display:grid;grid-template-columns:minmax(0,1fr) 52px 84px;align-items:end;padding:6px 0 4px;border-bottom:1px solid var(--line);font:500 12px/1.15 var(--font-mono);letter-spacing:.12em;text-transform:uppercase;color:var(--muted)}  /* 2026-11-10 verifier: the table headings were the last 11 px text; 12 px is the floor */
+.chk-head span+span{text-align:center;hyphens:manual;overflow-wrap:normal;word-break:keep-all}  /* DESK-0302: a word never splits; 84px fits ACCEPTED whole */
+.md li.task-list-item:has(.chk2){position:relative;padding:14px 136px 14px 0;min-height:52px;border-bottom:1px solid var(--line);margin:0}
+.chk2{position:absolute;right:0;top:0;display:grid;grid-template-columns:52px 84px;height:52px;place-items:center}
 li.task-list-item:focus-visible{outline:3px solid var(--focus);outline-offset:2px;border-radius:6px}
 .chk2 form.chk{display:grid;place-items:center;margin:0}
 .hit{width:44px;height:44px;display:grid;place-items:center;border:0;background:transparent;padding:0;cursor:pointer;border-radius:10px;color:inherit}
