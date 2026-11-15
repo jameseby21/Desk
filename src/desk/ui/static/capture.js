@@ -15,9 +15,12 @@
   }
   function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]; }); }
   function sentence(q) { return String(q || "").replace(/^\s*new\s*:\s*/i, "").trim(); }
+  /* The name the server saves the file under (capture.stored_name): "evil.exe." is saved as evil.exe, so it is checked as that too. */
+  function stored(name) { return String(name || "").split(/[\\/]/).pop().replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^[-.]+|[-.]+$/g, "") || "file"; }
   function refused(name) {
-    var n = String(name || "").toLowerCase();
-    for (var i = 0; i < REFUSED.length; i++) if (n.slice(-REFUSED[i].length) === REFUSED[i]) return "Desk does not take " + REFUSED[i] + " files: programs and scripts can run on this computer. Zip it first, or attach a screenshot or a note instead.";
+    var ns = [String(name || "").trim().toLowerCase(), stored(name).toLowerCase()];
+    function ends(n, x) { return n.slice(-x.length) === x; }
+    for (var i = 0; i < REFUSED.length; i++) if (ends(ns[0], REFUSED[i]) || ends(ns[1], REFUSED[i])) return "Desk does not take " + REFUSED[i] + " files: programs and scripts can run on this computer. Zip it first, or attach a screenshot or a note instead.";
     return "";
   }
   /* A one-time key plus the size limit, asked for when needed (a page on another site cannot read the answer). */

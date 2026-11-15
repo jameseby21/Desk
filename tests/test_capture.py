@@ -214,6 +214,19 @@ def test_executables_are_refused_by_extension(store, name):
     assert not store.ticket_assets_dir(t.id).exists() and [x.id for x in store.tickets()] == [t.id]
 
 
+@pytest.mark.parametrize("name", ["evil.exe.", "evil.exe-", "evil.exe;", "evil.bat..", "evil.ps1 .", "evil.ps1%", "EVIL.EXE .", "sub/evil.cmd."])
+def test_trailing_junk_cannot_smuggle_a_program_past_the_refusal(store, name):
+    """A name the saver would turn into a refused one (evil.exe. is stored as evil.exe) is refused on a ticket and in a new capture."""
+    t = ops.new(store, "Files", "desk")
+    c = _client(store)
+    r = c.post(f"/ticket/{t.id}/drop", data={"token": _tok(c)}, files={"file": (name, b"MZ", "application/octet-stream")}, headers=JSON)
+    assert r.status_code == 415 and "programs and scripts" in r.json()["error"]
+    r2 = c.post("/capture", data={"text": "look at this", "token": _tok(c)}, files={"file": (name, b"MZ", "application/octet-stream")}, headers=JSON)
+    assert r2.status_code == 415
+    assert not store.ticket_assets_dir(t.id).exists() and [x.id for x in store.tickets()] == [t.id]
+    assert capture.stored_name(name).lower().rsplit(".", 1)[-1] in ("exe", "bat", "ps1", "cmd")  # the name it would have been saved as
+
+
 def test_files_over_the_size_limit_are_refused(store):
     """Acceptance 3: the desk.toml [attachments] max_mb limit applies to dropped files."""
     toml = store.home / "desk.toml"

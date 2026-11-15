@@ -59,8 +59,10 @@ def too_big(limit_mb: float) -> str:
 def attach_bytes(store, t, filename: str, data: bytes) -> Path:
     """Write the dropped bytes under their own name and attach them through ops.attach (the same writer as screenshots)."""
     name = Path(filename or "file").name or "file"
+    if cap.refused_name(name):  # the routes refuse first; this keeps any later caller from writing a program
+        raise RuleError(cap.refused_name(name))
     with tempfile.TemporaryDirectory(prefix="desk-drop-") as tmp:
-        src = Path(tmp) / (re.sub(r"[^A-Za-z0-9._-]+", "-", name).strip("-.") or "file")
+        src = Path(tmp) / cap.stored_name(name)
         src.write_bytes(data)
         return ops.attach(store, t, src, caption=Path(name).stem[:60] or name, actor=None)
 

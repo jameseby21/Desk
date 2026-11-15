@@ -8,7 +8,8 @@ use, so it passes `drew validate` and the activity log records it.
 
 Paste-to-split: `split_asks` turns a chat excerpt or an email into one proposed row per ask (a line, bullet or sentence with please,
 can you, need, should, must, TODO or a question mark); only the rows a person ticks become tickets, all in one activity batch.
-Files: `refused_name` names the file types a drop never accepts (programs and scripts), whatever the size.
+Files: `refused_name` names the file types a drop never accepts (programs and scripts), whatever the size, checked on the name
+the file would be saved under (`stored_name`), so trailing dots or symbols cannot hide an extension.
 Docs: docs/COMMANDS.md (In the UI: Capture)."""
 
 from __future__ import annotations
@@ -205,11 +206,21 @@ def create(store: Store, text: str, creator: str, *, mvp: str = "", project: str
     return t
 
 
+_SAFE_NAME = re.compile(r"[^A-Za-z0-9._-]+")  # the same rule as ops.attach, which writes the file
+
+
+def stored_name(filename: str) -> str:
+    """The name a dropped file is saved under: its last path part, unsafe characters made '-', ends trimmed of '-' and '.'."""
+    name = re.split(r"[\\/]", filename or "")[-1]
+    return _SAFE_NAME.sub("-", name).strip("-.") or "file"
+
+
 def refused_name(filename: str) -> str:
-    """A plain refusal when a dropped file's type is never accepted (programs and scripts), else an empty string."""
-    name = (filename or "").strip().lower()
+    """A plain refusal when a dropped file's type is never accepted (programs and scripts), else an empty string.
+    Both the name as sent and the name it would be saved under are checked, so 'evil.exe.' (saved as evil.exe) is refused too."""
+    names = ((filename or "").strip().lower(), stored_name(filename).lower())
     for ext in REFUSED_EXTENSIONS:
-        if name.endswith(ext):
+        if any(n.endswith(ext) for n in names):
             return (f"Desk does not take {ext} files: programs and scripts can run on this computer. "
                     "Zip it first, or attach a screenshot or a note instead.")
     return ""
