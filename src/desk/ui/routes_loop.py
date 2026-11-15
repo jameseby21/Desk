@@ -21,6 +21,8 @@ from . import routes_lanes
 def notify_view(home) -> dict:
     """What the Notifications section says: the settings in force and the queue's counts, with no key or address in it."""
     st = ns.settings(home)
+    if st.get("problems"):  # a value Desk replaced with its default: say so instead of showing the default as if it were chosen
+        return {"error": UNREADABLE}
     try:
         sec = nc.read_secrets()
     except OSError:

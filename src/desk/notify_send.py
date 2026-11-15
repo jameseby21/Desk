@@ -32,10 +32,9 @@ DEFAULTS = {
     "urgent_bypasses_quiet": False,
     "brief_time": "07:30",         # what `drew notify schedule --print` uses for the morning brief
     "drain_minutes": 15,
-    "ntfy_server": nc.DEFAULT_SERVER,
-    "smtp_host": "smtp.gmail.com",
-    "smtp_port": 587,
-}
+}  # the hosts (ntfy server, SMTP host and port) are not settings here: they live in notify.env with the secrets (nc.HOST_KEYS)
+INTS = ("daily_budget", "drain_minutes")
+TIMES = ("quiet_start", "quiet_end", "brief_time")
 STATE = Path(".desk") / "notify-state.json"
 WITHHELD = "(title withheld)"
 # the store's own id shape (store._ID: a prefix that may hold hyphens, such as JEBY-US, then 4+ digits), bounded so that inside free
@@ -47,8 +46,33 @@ KNOWN_KINDS = frozenset({"alert", "brief", "digest-line", "note"})  # the queue 
 
 
 def settings(home: Path) -> dict:
+    """desk.toml [notify] over the defaults, checked once (whole-branch review M6): a value Desk cannot use (a word where a number
+    goes, a time that is not HH:MM) falls back to its default, and `problems` names the key in one plain sentence. The value typed
+    is never repeated, so a pasted secret is not echoed. The scheduled drain therefore never stops on a hand-edited line."""
     st = dict(DEFAULTS)
-    st.update(load_config(Path(home)).get("notify") or {})
+    raw = load_config(Path(home)).get("notify") or {}
+    st.update(raw if isinstance(raw, dict) else {})
+    problems = []
+    for k in INTS:
+        try:
+            v = st[k]
+            if isinstance(v, bool) or int(v) < 0 or int(v) != float(v):
+                raise ValueError
+            st[k] = int(v)
+        except (TypeError, ValueError):
+            problems.append(f"[notify] {k} in desk.toml is not a whole number, so Desk uses {DEFAULTS[k]}.")
+            st[k] = DEFAULTS[k]
+    for k in TIMES:
+        if st.get(k) not in (None, "") and _hm(st.get(k)) is None:
+            problems.append(f"[notify] {k} in desk.toml is not a time like 07:30, so Desk uses {DEFAULTS[k]}.")
+            st[k] = DEFAULTS[k]
+    if not isinstance(st.get("channels"), (list, tuple)):
+        problems.append(f"[notify] channels in desk.toml is not a list, so Desk uses {', '.join(DEFAULTS['channels'])}.")
+        st["channels"] = list(DEFAULTS["channels"])
+    if not isinstance(st.get("urgent_bypasses_quiet"), bool):
+        problems.append("[notify] urgent_bypasses_quiet in desk.toml is not true or false, so Desk uses false.")
+        st["urgent_bypasses_quiet"] = DEFAULTS["urgent_bypasses_quiet"]
+    st["problems"] = problems
     return st
 
 
@@ -277,6 +301,8 @@ def brief_note(store, today: dt.date | None = None, scan: Scanner | None = None,
             body += f"\n- and {len(held) - 10} more"
     if not scan.ready:
         body += f"\nTitles left out: {scan.why}."
+    for p in settings(store.home).get("problems") or []:  # M6: a bad desk.toml line is said once a day where the owner reads
+        body += f"\nSettings: {p}"
     return nc.Note(f"Desk brief {today.isoformat()}", final_pass(body, scan))
 
 
@@ -390,7 +416,9 @@ def status(store) -> dict:
             "quiet": f"{st.get('quiet_start') or '-'} to {st.get('quiet_end') or '-'}", "urgent_bypasses_quiet": bool(st.get("urgent_bypasses_quiet")),
             "budget": int(st.get("daily_budget") or 0), "used_today": used_today(state, dt.date.today()),
             "queued": len(queued), "unreadable": unreadable, "held": len(state.get("held") or []), "scan_ready": scan.ready, "scan_why": scan.why,
-            "brief_time": st.get("brief_time"), "last_brief": state.get("last_brief", "")}
+            "brief_time": st.get("brief_time"), "last_brief": state.get("last_brief", ""),
+            "hosts": {"ntfy": nc.host("ntfy_server", sec).rstrip("/"), "smtp": f"{nc.host('smtp_host', sec)}:{nc.host('smtp_port', sec)}"},
+            "problems": list(st.get("problems") or []) + [w for w in (nc.host_conflict(k, st, sec) for k in nc.HOST_KEYS) if w]}
 
 
 def schedule_commands(home: Path, st: dict, python: str | None = None) -> list[str]:

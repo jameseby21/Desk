@@ -8,6 +8,7 @@ passed in, so tests run every adapter against a fake and no test touches the net
 
 Secrets (passwords, API keys, the ntfy topic, addresses) live in %USERPROFILE%\\.desk\\notify.env (or the file named by
 DESK_NOTIFY_ENV), one KEY=value per line; they are never printed, only masked. desk.toml holds the settings that are not secret.
+Where the secrets go (NTFY_SERVER, SMTP_HOST, SMTP_PORT) lives in notify.env too, never in desk.toml (see HOST_KEYS).
 Docs: docs/NOTIFICATIONS.md."""
 
 from __future__ import annotations
@@ -29,6 +30,11 @@ from pathlib import Path
 TIMEOUT_SECONDS = 15
 TOPIC_LENGTH = 32
 DEFAULT_SERVER = "https://ntfy.sh"
+# Where a secret is sent is itself security-relevant (whole-branch review H2): desk.toml is committed and edited through store pull
+# requests, so a line there could send the app password or the ntfy topic to another host. The hosts live in notify.env with the
+# secrets; a desk.toml line that names a different host stops that channel, with the reason, before anything connects.
+HOST_KEYS = {"ntfy_server": "NTFY_SERVER", "smtp_host": "SMTP_HOST", "smtp_port": "SMTP_PORT"}
+HOST_DEFAULTS = {"ntfy_server": DEFAULT_SERVER, "smtp_host": "smtp.gmail.com", "smtp_port": "587"}
 
 
 # -- the secrets file -------------------------------------------------------------------------
@@ -90,6 +96,25 @@ def mask(value: str) -> str:
     if not v:
         return "(not set)"
     return v[:2] + "*" * 6 + f" ({len(v)} characters)"
+
+
+def host(name: str, sec: dict) -> str:
+    """The host (or port) in force for `name` (ntfy_server, smtp_host, smtp_port): notify.env's value, else the default."""
+    return str(sec.get(HOST_KEYS[name]) or HOST_DEFAULTS[name]).strip()
+
+
+def _same_host(name: str, a, b) -> bool:
+    a, b = str(a).strip().lower(), str(b).strip().lower()
+    return a.rstrip("/") == b.rstrip("/") if name == "ntfy_server" else a == b
+
+
+def host_conflict(name: str, settings: dict, sec: dict) -> str:
+    """'' when desk.toml says nothing about `name` or says the same as notify.env; otherwise why the channel sends nothing."""
+    v = (settings or {}).get(name)
+    if v in (None, "") or _same_host(name, v, host(name, sec)):
+        return ""
+    return (f"desk.toml [notify] names {name}, but where Desk sends secrets is set only in notify.env ({HOST_KEYS[name]}), so nothing "
+            f"was sent. Put {HOST_KEYS[name]} in notify.env, or delete the {name} line from desk.toml.")
 
 
 def new_topic() -> str:
@@ -187,7 +212,10 @@ def _check(name: str, r: Response, ok_when=lambda r: 200 <= r.status < 300) -> R
 
 class Ntfy(Channel):
     def send(self, note, sec, post=http_post, smtp=smtp_connect):
-        server = str(self.settings.get("ntfy_server") or DEFAULT_SERVER).rstrip("/")
+        why = host_conflict("ntfy_server", self.settings, sec)
+        if why:
+            return Result(self.name, False, why)
+        server = host("ntfy_server", sec).rstrip("/")
         headers = {"Title": _ascii(note.title), "Priority": "high" if note.urgent else "default", "Tags": "desk",
                    "Content-Type": "text/plain; charset=utf-8"}
         if sec.get("NTFY_TOKEN"):
@@ -197,12 +225,14 @@ class Ntfy(Channel):
 
 class Smtp(Channel):
     def send(self, note, sec, post=http_post, smtp=smtp_connect):
-        host = str(self.settings.get("smtp_host") or "smtp.gmail.com")
-        port = int(self.settings.get("smtp_port") or 587)
+        why = host_conflict("smtp_host", self.settings, sec) or host_conflict("smtp_port", self.settings, sec)
+        if why:  # checked before any connection, so the app password never reaches a host a committed file named
+            return Result(self.name, False, why)
+        server, port = host("smtp_host", sec), int(host("smtp_port", sec))
         msg = EmailMessage()
         msg["From"], msg["To"], msg["Subject"] = sec["SMTP_USER"], sec.get("SMTP_TO") or sec["SMTP_USER"], note.title
         msg.set_content(note.body)
-        conn = smtp(host, port)
+        conn = smtp(server, port)
         try:
             if port != 465:
                 conn.starttls(context=tls_context())
@@ -213,7 +243,7 @@ class Smtp(Channel):
                 conn.quit()
             except Exception:  # noqa: BLE001 - closing a connection that already failed
                 pass
-        return Result(self.name, True, f"sent through {host}:{port}")
+        return Result(self.name, True, f"sent through {server}:{port}")
 
 
 class Postmark(Channel):

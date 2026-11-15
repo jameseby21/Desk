@@ -7,7 +7,8 @@ import datetime as dt
 
 import pytest
 
-from desk import automations as au
+from desk import automations as au, notify_channels as nc, notify_queue, notify_send as ns
+from desk.cli import main
 
 TODAY = dt.date.today()
 
@@ -76,3 +77,103 @@ def test_h1_a_rule_built_by_hand_still_cannot_set_status(store):
     res = au.sweep(store, [rule], [], today=TODAY, apply=True)
     assert store.get(t.id).status == "ready"
     assert any("may not set status" in i.skipped for i in res.items)
+
+
+# ---- H2: the committed desk.toml never decides where the secrets go -----------------------------------------------------
+
+class _Post:
+    def __init__(self):
+        self.urls = []
+
+    def __call__(self, url, data, headers):
+        self.urls.append(url)
+        return nc.Response(200, "")
+
+
+class _Smtp:
+    seen: list = []
+
+    def __init__(self, host, port):
+        _Smtp.seen.append(("connect", host, int(port)))
+
+    def starttls(self, context=None):
+        pass
+
+    def login(self, user, pw):
+        _Smtp.seen.append(("login", user))
+
+    def send_message(self, msg):
+        _Smtp.seen.append(("send",))
+
+    def quit(self):
+        pass
+
+
+def _notify_toml(store, block: str) -> None:
+    p = store.home / "desk.toml"
+    p.write_bytes(p.read_bytes() + ("\n[notify]\n" + block + "\n").encode("utf-8"))
+
+
+def _secrets(**kv):
+    for k, v in kv.items():
+        nc.write_secret(k, v)
+
+
+def test_h2_a_mail_host_in_desk_toml_never_gets_the_app_password(store):
+    """H2: smtp_host in desk.toml (a committed file) sends nothing: no connection, no login; the reason names notify.env."""
+    _secrets(SMTP_USER="owner@example.com", SMTP_PASSWORD="app-password-123")
+    _notify_toml(store, 'channels = ["smtp"]\nsmtp_host = "mail.attacker.example"')
+    _Smtp.seen = []
+    _, results, names = ns.send_test(store.home, smtp=_Smtp)
+    assert names == ["smtp"] and _Smtp.seen == []
+    assert results and not results[0].ok and "notify.env" in results[0].detail and "SMTP_HOST" in results[0].detail
+
+
+def test_h2_an_ntfy_server_in_desk_toml_never_gets_the_topic(store):
+    """H2: ntfy_server in desk.toml posts nothing anywhere; the topic and token stay home."""
+    _secrets(NTFY_TOPIC="t" * 32, NTFY_TOKEN="tok-secret-1")
+    _notify_toml(store, 'channels = ["ntfy"]\nntfy_server = "https://ntfy.attacker.example"')
+    post = _Post()
+    _, results, _ = ns.send_test(store.home, post=post)
+    assert post.urls == [] and not results[0].ok and "NTFY_SERVER" in results[0].detail
+
+
+def test_h2_hosts_come_from_notify_env_and_status_names_them(store, capsys):
+    """H2: NTFY_SERVER, SMTP_HOST and SMTP_PORT in notify.env (outside every repo) are used, and `drew notify status` prints them."""
+    _secrets(NTFY_TOPIC="t" * 32, SMTP_USER="owner@example.com", SMTP_PASSWORD="pw-1234",
+             NTFY_SERVER="https://push.example.org", SMTP_HOST="mail.example.org", SMTP_PORT="2525")
+    _Smtp.seen = []
+    post = _Post()
+    _, results, _ = ns.send_test(store.home, post=post, smtp=_Smtp)
+    assert all(r.ok for r in results), results
+    assert post.urls == ["https://push.example.org/" + "t" * 32]
+    assert ("connect", "mail.example.org", 2525) in _Smtp.seen
+    main(["--home", str(store.home), "notify", "status"])
+    out = capsys.readouterr().out
+    assert "https://push.example.org" in out and "mail.example.org:2525" in out
+
+
+def test_h2_the_same_host_in_both_places_still_sends(store):
+    """H2: a desk.toml line that matches the host in force (the old documented default) is harmless and still sends."""
+    _secrets(NTFY_TOPIC="t" * 32)
+    _notify_toml(store, 'channels = ["ntfy"]\nntfy_server = "https://ntfy.sh/"')
+    post = _Post()
+    _, results, _ = ns.send_test(store.home, post=post)
+    assert results[0].ok and post.urls == ["https://ntfy.sh/" + "t" * 32]
+
+
+# ---- M6: a bad value in desk.toml never stops the drain ----------------------------------------------------------------
+
+def test_m6_a_word_for_daily_budget_falls_back_and_the_drain_still_runs(store, capsys):
+    """M6: daily_budget = "ten" made the scheduled drain raise ValueError and stop silently; now it uses the default and says so."""
+    _secrets(NTFY_TOPIC="t" * 32)
+    _notify_toml(store, 'daily_budget = "ten"\nquiet_start = ""\nquiet_end = ""')
+    notify_queue.enqueue(store.home, "alert", "DESK-0001 needs a look", ["DESK-0001"], False, source="test")
+    post = _Post()
+    rep = ns.drain(store, post=post)
+    assert rep.sent == 1 and len(post.urls) == 1
+    st = ns.settings(store.home)
+    assert st["daily_budget"] == ns.DEFAULTS["daily_budget"] and any("daily_budget" in p for p in st["problems"])
+    main(["--home", str(store.home), "notify", "status"])
+    out = capsys.readouterr().out
+    assert "daily_budget" in out and "ten" not in out  # the problem is named; the hand-typed value is never echoed

@@ -69,7 +69,7 @@ def cmd_pair(args):
         except ValueError as e:
             sys.exit(str(e))
         print(f"Paired: a new random topic is saved in {path} (outside every repository).")
-    server = str(st.get("ntfy_server") or nc.DEFAULT_SERVER).rstrip("/")
+    server = nc.host("ntfy_server", nc.read_secrets()).rstrip("/")  # notify.env decides where the topic goes (H2), never desk.toml
     print(f"""
 Topic (treat it like a password; anyone who has it can read these messages):
   {topic}
@@ -142,6 +142,9 @@ def cmd_status(args):
           + (f"; {st['unreadable']} unreadable queue line(s) will be skipped by the next drain" if st["unreadable"] else ""))
     print(f"Brief time: {st['brief_time']}" + (f"; last sent {st['last_brief']}" if st["last_brief"] else ""))
     print("Private-term scan: ready" if st["scan_ready"] else f"Private-term scan: not ready ({st['scan_why']}); only ids are sent")
+    print(f"Sends to: ntfy {st['hosts']['ntfy']} · smtp {st['hosts']['smtp']} (set in notify.env, never in desk.toml)")
+    for p in st["problems"]:
+        print(f"Problem: {p}")
 
 
 def cmd_schedule(args):

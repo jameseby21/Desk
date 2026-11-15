@@ -33,7 +33,7 @@ Owner: DESK-0289. Commands: [COMMANDS.md](COMMANDS.md#notifications).
 | Service | **Your own mail account over SMTP** (adapter `smtp`, on once configured; Gmail settings by default) | **Postmark** (adapter `postmark`, off) | SMTP: free with your account. Postmark: free for 100 emails a month, then $15 a month for 10,000 | SMTP: turn on 2-Step Verification, create an app password at myaccount.google.com/apppasswords, then put `SMTP_USER` (your address), `SMTP_PASSWORD` (the app password) and `SMTP_TO` (where the brief goes) in notify.env. Postmark: create an account, confirm a sender signature, then put `POSTMARK_TOKEN`, `POSTMARK_FROM` and `POSTMARK_TO` in notify.env and add `"postmark"` to `channels` |
 
 - **Gmail app passwords need 2-Step Verification.** They are not offered when 2-Step Verification uses only security keys, on a work or school account, or with Advanced Protection.
-- Another mail provider works too. Set `smtp_host` and `smtp_port` in `[notify]`; port 465 uses SSL, and any other port uses STARTTLS. Either way Desk checks the server's certificate and name before it sends the password.
+- Another mail provider works too. Put `SMTP_HOST` and `SMTP_PORT` in notify.env (not desk.toml); port 465 uses SSL, and any other port uses STARTTLS. Either way Desk checks the server's certificate and name before it sends the password.
 - **Other services checked:**
   - Resend is free for 3,000 emails a month (100 a day), then $20 a month for 50,000.
   - Brevo's pricing page could not be read, so it was not checked.
@@ -65,16 +65,16 @@ quiet_end = "07:00"           # ... to here; they fold into the next brief ("" t
 urgent_bypasses_quiet = false # true lets an urgent alert through during quiet hours
 brief_time = "07:30"          # used by `drew notify schedule --print`
 drain_minutes = 15
-ntfy_server = "https://ntfy.sh"
-smtp_host = "smtp.gmail.com"
-smtp_port = 587
 ```
 
-Leave out any line to keep its default.
+Leave out any line to keep its default. A value Desk cannot use (a word where a number goes, a time that is not HH:MM) falls back to its default; `drew notify status`, the Settings page and the next brief say which line, without repeating what was typed.
+
+**Where messages go is not a desk.toml setting.** desk.toml is committed and changed through store pull requests, so a line there must never decide where the app password or the ntfy topic is sent. The ntfy server and the mail host and port live in notify.env with the secrets (below). If desk.toml still names `ntfy_server`, `smtp_host` or `smtp_port` with a different value, that channel sends nothing and says why.
 
 ## Secrets (outside every repository)
 
 - **Where they live.** Secrets are in `%USERPROFILE%\.desk\notify.env`, or the file named by `DESK_NOTIFY_ENV`. The file has one `KEY=value` per line, and Desk refuses to write it inside a git repository.
+- **Where they go.** `NTFY_SERVER` (default `https://ntfy.sh`), `SMTP_HOST` (default `smtp.gmail.com`) and `SMTP_PORT` (default 587) go in notify.env too. `drew notify status` prints the hosts in force on its `Sends to:` line.
 - **Never printed.** `drew notify status` shows each key as its first two characters and a length.
 - **One exception.** `drew notify pair` prints the ntfy topic once, because your phone needs it.
 - **Never committed.** Never paste a key into a ticket, a chat or a commit. If one is ever exposed, change it at the service.
