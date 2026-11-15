@@ -32,6 +32,7 @@
 </div>
 {% include "_lanes_bar.html" %}
 {% if review_line %}<p class="muted" style="margin:10px 0 0"><span class="label">Ticket review</span> <a href="/ticket/{{ review_line[0].id }}">{{ review_line[0].meta.get('title') }}</a> · {{ review_line[1] }} waiting</p>{% endif %}
+{% include "_brief_today.html" %}{# DESK-0288: where the work sits, review debt #}
 
 <section id="immediate" class="t-sec imm{% if v.imm_missed %} imm-missed{% endif %}" aria-label="Immediate Action Required">
   {% if v.imm %}

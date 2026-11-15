@@ -1,0 +1,107 @@
+/* DESK-0288: the daily brief, the week page, flow time, repeats, company pages and the two Today tiles. Colours come from desk.css
+   tokens, so light and dark follow the theme; every bar has its numbers written beside it. The print rules put /brief and the week
+   page on one Letter page in black ink (DESK-0243). */
+.brief{max-width:980px;margin:0 auto}
+.br-head{margin:0 0 18px}
+.br-head h1{margin:4px 0 4px;font-size:clamp(24px,5vw,34px);line-height:1.15}
+.br-sub{margin:0;color:var(--muted)}
+.br-tools{margin:12px 0 0;display:flex;flex-wrap:wrap;gap:8px}
+.br-tools .btn.small,.br-acts .btn.small,.br-more>summary.btn{min-height:40px;padding:0 14px;font-size:14px}
+.br-sec{margin:22px 0 0}
+.br-sec h2 small{font-family:var(--font-mono)}
+.br-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px}
+.br-tile{display:flex;flex-direction:column;gap:6px;min-width:0}
+.br-tile h3{margin:0;font-size:16px;line-height:1.35;overflow-wrap:anywhere}
+.br-tile h2{margin:0 0 6px;font-size:18px}
+.br-chip{margin:0}
+.br-why{margin:0;color:var(--muted);font-size:14px}
+.br-emerg{border:2px solid var(--red)}
+.br-late{border-left:4px solid var(--red)}
+.br-acts{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-top:auto;padding-top:6px}
+.br-act{margin:0}
+.br-more{flex-basis:auto}
+.br-more[open]{flex-basis:100%}
+.br-more>summary{list-style:none;cursor:pointer;background:var(--card);color:var(--ink)}
+.br-more>summary::-webkit-details-marker{display:none}
+.br-more form{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px}
+.br-more input[type=text]{flex:1 1 180px;min-height:40px;padding:8px 10px;font:inherit;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink)}
+.br-lab{flex-basis:100%;font-size:13px;color:var(--muted)}
+.br-snooze{font-size:14px;color:var(--muted)}
+.btn.ghost{border-color:var(--line)}
+.br-list{list-style:none;margin:0;padding:0}
+.br-list li{padding:8px 0;border-bottom:1px solid var(--line);overflow-wrap:anywhere}
+.br-list li:last-child{border-bottom:0}
+.br-list q{color:var(--muted);font-size:14px}
+.br-when{font:600 13px var(--font-mono);display:inline-block;min-width:9em}
+.br-missed .br-when{color:var(--red)}
+.br-foot{margin:22px 0 0;color:var(--muted)}
+.brief a:focus-visible,.brief button:focus-visible,.brief summary:focus-visible,.bt-row a:focus-visible{outline:3px solid var(--focus);outline-offset:2px}
+
+/* The Today tiles */
+.bt-row{display:grid;grid-template-columns:minmax(0,3fr) minmax(0,2fr);gap:12px;margin:16px 0 0}
+.bt-row .bt-more{grid-column:1/-1;margin:0;font-size:14px;color:var(--muted)}
+.bt-tile{display:flex;flex-direction:column;gap:8px;min-width:0}
+.bt-big{margin:0;font-size:15px}
+.bt-big>b{font:800 28px/1 var(--font-head);margin-right:4px}
+.bt-bar,.fl-bar{display:flex;gap:2px;height:14px;border-radius:7px;overflow:hidden;background:var(--paper)}
+.bt-seg,.fl-seg{display:block;min-width:4px;height:100%}
+.bt-now,.fl-waiting{background:var(--red)}
+.bt-planned,.fl-worked{background:var(--ink)}
+.bt-later,.fl-queued{background:var(--muted)}
+.bt-parked,.fl-held{background:var(--line);box-shadow:inset 0 0 0 1px var(--muted)}
+.bt-keys{display:flex;flex-wrap:wrap;gap:4px 14px;margin:0;padding:0;list-style:none;font-size:13px}
+.bt-dot{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;vertical-align:-1px}
+.bt-line{margin:0;font-size:13.5px;color:var(--muted)}
+.bt-up{color:var(--red)}
+.bt-meter{height:10px;border-radius:5px;background:var(--paper);border:1px solid var(--line);overflow:hidden}
+.bt-meter>i{display:block;height:100%;background:var(--ink);border-radius:4px}
+.bt-debt.bt-high .bt-meter>i{background:var(--red)}
+.bt-debt.bt-high{border-color:var(--red)}
+
+/* Flow time */
+.fl-fact>summary{cursor:pointer}
+.fl-fact .fl-bar{margin:8px 0 6px}
+.fl-fact .bt-keys{gap:2px 10px;font-size:12.5px}
+.fl-note{font-size:13px;margin:8px 0 0}
+.fl-table td,.fl-table th{white-space:nowrap}
+.fl-table td:first-child{white-space:normal;min-width:14em}
+.br-sec:has(.fl-table){overflow-x:auto}
+
+/* The week page */
+.wk-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px 24px}
+.wk-grid .br-sec{margin-top:8px}
+.wk-pick p{font-size:16px}
+.co-list li{font-size:16px}
+
+@media (max-width:700px){
+  .bt-row{grid-template-columns:1fr}
+  .br-grid,.wk-grid{grid-template-columns:1fr}
+  .br-when{min-width:0;display:block}
+}
+
+@media print{
+  @page{size:letter;margin:0.4in}
+  :root{--paper:#fff;--card:#fff;--ink:#000;--muted:#333;--line:#999;--red:#000;--ball:#fff}
+  body{background:#fff;color:#000;font-size:9pt;line-height:1.25}
+  body>header,body>footer,.no-print,.stale-bar,.reload-bar,.notice,.dp{display:none!important}
+  main{max-width:none;padding:0}
+  .brief{max-width:none}
+  .br-head{margin:0 0 6px}
+  .br-head h1{font-size:15pt;margin:2px 0}
+  .br-sec{margin:6px 0 0}
+  .br-sec h2{font-size:10.5pt;margin:0 0 2px}
+  .br-grid{grid-template-columns:1fr 1fr 1fr;gap:4px}
+  .br-tile,.bt-tile{padding:4px 6px;gap:2px;border:1px solid #000;border-radius:4px;box-shadow:none;break-inside:avoid}
+  .br-tile h3{font-size:9pt}
+  .br-why{font-size:8pt}
+  .br-chip .nm-ask,.br-chip .nm-emerg{padding:1px 4px;font-size:7.5pt;background:#fff;color:#000;border:1px solid #000}
+  .br-list li{padding:1px 0;border:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .br-when{min-width:7em;font-size:8pt}
+  .wk-grid{grid-template-columns:1fr 1fr;gap:2px 18px}
+  .bt-row{grid-template-columns:1fr 1fr;gap:6px;margin-top:6px}
+  .bt-big>b{font-size:14pt}
+  .br-foot{margin:4px 0 0}
+  a{color:#000;text-decoration:none}
+  .bt-seg,.fl-seg,.bt-dot,.bt-meter>i{-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .bt-now{background:#000}.bt-planned{background:#555}.bt-later{background:#999}.bt-parked{background:#ddd}
+}

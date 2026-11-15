@@ -18,6 +18,7 @@ TAG = "review-week"
 
 ACC_START, ACC_END = "<!-- review:start -->", "<!-- review:end -->"
 KPI_START, KPI_END = "<!-- kpi:start -->", "<!-- kpi:end -->"
+WEEK_START, WEEK_END = "<!-- week:start -->", "<!-- week:end -->"  # DESK-0288: the block the review writes by itself
 _ITEM = re.compile(r"^- \[( |x|X)\] ([A-Za-z0-9-]+-\d{4,}) · (.*)$")
 _INITIAL = re.compile(r"<!-- initial: ([^>]*?) -->")
 _DECISION_DATE = re.compile(r"^\s*-\s*(\d{4}-\d{2}-\d{2})\b", re.M)
@@ -258,6 +259,8 @@ def apply(store: Store, review: Ticket, today: dt.date | None = None) -> dict:
     res = compute(store, review, today)
     review.set_section("Acceptance", _replace_block(review.section("Acceptance"), ACC_START, ACC_END, render_block(res["items"], res["initial"], {t.id: ops_assignee(t) for t in store.tickets()})))
     review.set_section("Report", _replace_block(review.section("Report"), KPI_START, KPI_END, kpi_text(res["kpi"])))
+    from . import brief  # DESK-0288: decided, shipped, slipped, balance and the first-version pick, written by itself
+    review.set_section("Report", _replace_block(review.section("Report"), WEEK_START, WEEK_END, brief.week_text(brief.weekly(store, week_of(review), today or dt.date.today()))))
     store.save(review)
     return res
 

@@ -1551,6 +1551,8 @@ def build_parser() -> argparse.ArgumentParser:
     from . import cli_undo  # DESK-0284
     cli_undo.register(sub)
     cli_capture.register(sub)  # DESK-0286: drew capture hotkey
+    from . import cli_brief  # DESK-0288: drew brief
+    cli_brief.register(sub)
     return p
 
 

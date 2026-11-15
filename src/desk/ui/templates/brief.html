@@ -1,0 +1,81 @@
+{% extends "base.html" %}
+{% from "_brief_tiles.html" import balance_bar, debt_meter %}
+{% block title %}Desk · Daily brief{% endblock %}
+{% macro ship_row(r) -%}
+<li><a class="tid" href="/ticket/{{ r.id }}">{{ r.id }}</a> {{ r.title }}{% if r.link %} · <a href="{{ r.link }}" rel="noopener">see it live</a>{% endif %}</li>
+{%- endmacro %}
+{% block body %}
+<link rel="stylesheet" href="{{ asset('brief.css') }}">
+<div class="brief">
+<div class="br-head">
+  <p class="label">{{ long_today }}</p>
+  <h1 id="brief-answer">{% if b.counts.decisions %}{{ b.counts.decisions }} decision{{ 's' if b.counts.decisions != 1 }} for you today{% else %}Nothing to decide today{% endif %}</h1>
+  <p class="br-sub">{{ b.counts.deadlines }} hard deadline{{ 's' if b.counts.deadlines != 1 }} this week · {{ b.counts.shipped }} shipped yesterday{% if b.snoozed %} · {{ b.snoozed }} snoozed{% endif %}</p>
+  <p class="br-tools no-print"><a class="btn small" href="/brief/week">This week</a> <button type="button" class="btn small" onclick="window.print()">Print</button> <a class="btn small" href="/deadlines.ics" title="Add this address to your calendar to see hard deadlines and review-by dates there">Calendar feed</a></p>
+</div>
+
+<section class="br-sec" id="decide" aria-labelledby="decide-h">
+  <h2 id="decide-h">Decide</h2>
+  {% if b.decisions %}
+  <div class="br-grid">
+  {% for d in b.decisions[:shown] %}
+    <article class="card br-tile{% if d.emergency %} br-emerg{% elif d.overdue %} br-late{% endif %}" data-ticket="{{ d.id }}">
+      <p class="br-chip"><span class="nm-ask">{{ d.chip }}</span>{% if d.emergency %} <span class="nm-emerg">Emergency</span>{% endif %}</p>
+      <h3><a class="tid" href="/ticket/{{ d.id }}">{{ d.id }}</a> {{ d.title }}</h3>
+      <p class="br-why">{{ d.why }}</p>
+      <div class="br-acts no-print">
+        {% if can_answer %}{# decision 110: only the owner answers; anyone else gets Open #}
+        {% for a in d.answers if not a.needs_words %}
+        <form class="post-once br-act" method="post" action="/ticket/{{ d.id }}/decide" data-inplace="refresh" data-progress="Sending,Saving,Done">
+          <input type="hidden" name="token" value="{{ token() }}"><input type="hidden" name="action" value="{{ a.action }}"><input type="hidden" name="next" value="/brief">
+          {% if a.reply %}<input type="hidden" name="reply" value="1">{% endif %}{% if a.option %}<input type="hidden" name="option" value="{{ a.option }}">{% endif %}<input type="hidden" name="words" value="{{ a.words }}">
+          <button class="btn small{% if loop.first %} ball{% endif %}" type="submit">{{ a.label }}</button>
+        </form>
+        {% endfor %}
+        {% for a in d.answers if a.needs_words %}
+        <details class="br-more"><summary class="btn small{% if a.label == 'Approve' %} ball{% endif %}">{{ a.label }}</summary>
+          <form class="post-once br-act" method="post" action="/ticket/{{ d.id }}/decide" data-inplace="refresh" data-progress="Sending,Saving,Done">
+            <input type="hidden" name="token" value="{{ token() }}"><input type="hidden" name="action" value="{{ a.action }}"><input type="hidden" name="next" value="/brief">
+            {% if a.reply %}<input type="hidden" name="reply" value="1">{% endif %}
+            <label class="br-lab" for="w-{{ d.id }}-{{ loop.index }}">{% if a.action == 'changes' %}What should change?{% elif a.label == 'Approve' %}Approve, in your words{% else %}Your answer{% endif %}</label>
+            <input type="text" id="w-{{ d.id }}-{{ loop.index }}" name="words" required minlength="4" autocomplete="off">
+            <button class="btn small" type="submit">Send</button>
+          </form>
+        </details>
+        {% endfor %}
+        {% endif %}
+        <a class="btn small ghost" href="{{ d.open_href }}">Open</a>
+        {% if can_answer %}<a class="br-snooze" href="{{ d.snooze_href }}">Snooze</a>{% endif %}
+      </div>
+    </article>
+  {% endfor %}
+  </div>
+  {% if b.decisions|length > shown %}<p class="br-foot"><a href="/board?needs=1">{{ b.decisions|length - shown }} more wait for you, most urgent first above. See them all on the board</a></p>{% endif %}
+  {% else %}<p class="muted">Nothing needs you right now. New requests show up here first.</p>{% endif %}
+</section>
+
+<section class="br-sec" id="deadlines" aria-labelledby="dl-h">
+  <h2 id="dl-h">Hard deadlines this week</h2>
+  {% if b.deadlines %}<ul class="br-list">{% for r in b.deadlines %}<li class="{% if r.missed %}br-missed{% endif %}"><span class="br-when">{{ r.words }}</span> <a class="tid" href="/ticket/{{ r.id }}">{{ r.id }}</a> {{ r.title }}</li>{% endfor %}</ul>
+  {% else %}<p class="muted">No hard deadline falls in the next seven days.</p>{% endif %}
+</section>
+
+<section class="br-sec" id="shipped" aria-labelledby="sh-h">
+  <h2 id="sh-h">Shipped yesterday</h2>
+  {% if b.shipped %}<ul class="br-list">{% for r in b.shipped %}{{ ship_row(r) }}{% endfor %}</ul>
+  {% else %}<p class="muted">Nothing moved to done yesterday.</p>{% endif %}
+</section>
+
+<section class="br-sec" id="shipped-week" aria-labelledby="sw-h">
+  <h2 id="sw-h">Shipped this week <small>{{ b.shipped_week|length }}</small></h2>
+  {% if b.shipped_week %}<ul class="br-list">{% for r in b.shipped_week %}{{ ship_row(r) }}{% endfor %}</ul>
+  {% else %}<p class="muted">Nothing has shipped since Monday yet.</p>{% endif %}
+</section>
+
+<section class="bt-row" aria-label="Your week at a glance">
+  {{ balance_bar(b.balance) }}
+  {{ debt_meter(b.review_debt) }}
+</section>
+<p class="br-foot no-print"><a href="/flow">Where time goes</a> · <a href="/repeats">Asked twice</a> · <a href="/company">Companies</a>{% if review_t %} · <a href="/ticket/{{ review_t.id }}">This week's review ticket</a>{% endif %}</p>
+</div>
+{% endblock %}

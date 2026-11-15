@@ -1395,6 +1395,8 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
     app.include_router(routes_undo.router(templates, ctx, store, tokens))
     app.include_router(routes_decide.build(templates=templates, ctx=ctx, store=store, tokens=tokens, acting=acting))  # DESK-0285
     app.include_router(routes_capture.router(store, templates, ctx, tokens, acting))  # DESK-0286: capture, paste-to-split, file drop
+    from . import routes_brief  # DESK-0288: /brief, /flow, /repeats, /company, /deadlines.ics
+    routes_brief.register(app, templates, ctx, store)
     return app
 
 

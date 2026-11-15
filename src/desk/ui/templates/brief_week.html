@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% block title %}Desk · This week{% endblock %}
+{% macro rows(list, empty, extra=none) -%}
+{% if list %}<ul class="br-list">{% for r in list[:8] %}<li><a class="tid" href="/ticket/{{ r.id }}">{{ r.id }}</a> {{ r.title }}{% if extra == 'link' and r.link %} · <a href="{{ r.link }}" rel="noopener">see it live</a>{% elif extra == 'slip' %} <span class="muted">· {{ r.what }} {{ r.date.strftime('%b') }} {{ r.date.day }}</span>{% endif %}</li>{% endfor %}{% if list|length > 8 %}<li class="muted">and {{ list|length - 8 }} more</li>{% endif %}</ul>
+{% else %}<p class="muted">{{ empty }}</p>{% endif %}
+{%- endmacro %}
+{% block body %}
+<link rel="stylesheet" href="{{ asset('brief.css') }}">
+{% set b = w.balance %}
+<div class="brief week">
+<div class="br-head">
+  <p class="label">Week of {{ w.monday.strftime('%B') }} {{ w.monday.day }}</p>
+  <h1>{{ w.decided|length }} decided · {{ w.shipped|length }} shipped · {{ w.slipped|length }} slipped</h1>
+  <p class="br-sub">Filled from the store up to {{ w.last.strftime('%A') }}. The review ticket gets the same lines when you run <code>drew review sync</code>.</p>
+  <p class="br-tools no-print"><a class="btn small" href="/brief/week?week={{ prev_week }}">Previous week</a> <a class="btn small" href="/brief/week?week={{ next_week }}">Next week</a> <button type="button" class="btn small" onclick="window.print()">Print on one page</button>{% if review_t %} <a class="btn small" href="/ticket/{{ review_t.id }}">Review ticket</a>{% endif %}</p>
+</div>
+<div class="wk-grid">
+  <section class="br-sec" aria-labelledby="wd-h"><h2 id="wd-h">Decided</h2>{{ rows(w.decided, "Nothing was decided this week.") }}</section>
+  <section class="br-sec" aria-labelledby="ws-h"><h2 id="ws-h">Shipped</h2>{{ rows(w.shipped, "Nothing shipped this week.", 'link') }}</section>
+  <section class="br-sec" aria-labelledby="wl-h"><h2 id="wl-h">Slipped</h2>{{ rows(w.slipped, "Nothing slipped: no open ticket missed its date.", 'slip') }}</section>
+  <section class="br-sec" aria-labelledby="wb-h"><h2 id="wb-h">Where the work sits</h2>
+    <p>Now <b>{{ b.counts.now }}</b> · Planned <b>{{ b.counts.planned }}</b> · Later <b>{{ b.counts.later }}</b> · Parked <b>{{ b.counts.parked }}</b></p>
+    <p class="muted">{% if b.now_oldest %}Oldest now: {{ b.now_oldest[0] }}, {{ b.now_oldest[1] }} days. {% endif %}Last 7 days: {{ b.created }} new, {{ b.closed }} closed.</p>
+  </section>
+</div>
+<section class="br-sec wk-pick" aria-labelledby="wm-h"><h2 id="wm-h">Build this first</h2>
+  {% if w.mvp %}<p><a class="tid" href="/ticket/{{ w.mvp.id }}">{{ w.mvp.id }}</a> <b>{{ w.mvp.title }}</b> <span class="muted">· size {{ w.mvp.size }} · {% if w.mvp.tagged %}the oldest planned ticket tagged mvp{% else %}the smallest planned ticket (none is tagged mvp){% endif %}</span></p>
+  {% else %}<p class="muted">Nothing is planned, so there is nothing to recommend.</p>{% endif %}
+</section>
+</div>
+{% endblock %}

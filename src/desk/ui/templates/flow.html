@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}Desk · Where time goes{% endblock %}
+{% macro table(rows) -%}
+<table class="fl-table"><thead><tr><th>Ticket</th><th>Total</th><th>Waiting on you</th><th>Worked</th><th>Queued</th><th>Held up</th></tr></thead><tbody>
+{% for t, v in rows %}<tr><td><a class="tid" href="/ticket/{{ t.id }}#flow">{{ t.id }}</a> {{ t.meta.get('title') }}</td><td>{{ v.total_text }}</td>{% for r in v.rows if r.part == 'waiting' %}<td><b>{{ r.time }}</b></td>{% endfor %}{% for p in ('worked', 'queued', 'held') %}{% for r in v.rows if r.part == p %}<td>{{ r.time }}</td>{% endfor %}{% endfor %}</tr>{% endfor %}
+</tbody></table>
+{%- endmacro %}
+{% block body %}
+<link rel="stylesheet" href="{{ asset('brief.css') }}">
+<div class="brief">
+<div class="br-head">
+  <p class="label">Last {{ days }} days</p>
+  <h1>{% set wt = summary|selectattr('part', 'equalto', 'waiting')|first %}{% if n_closed %}{{ wt.pct }}% of the time on closed tickets was waiting on you{% else %}No ticket closed in the last {{ days }} days{% endif %}</h1>
+  <p class="br-sub">{{ n_closed }} ticket{{ 's' if n_closed != 1 }} closed · {% for x in summary %}{{ x.label|lower }} {{ x.pct }}%{{ ' · ' if not loop.last }}{% endfor %}. Times come from the event log.</p>
+</div>
+<section class="br-sec" aria-labelledby="fw-h"><h2 id="fw-h">Open, and waiting on you the longest</h2>
+  {% if waiting %}{{ table(waiting) }}{% else %}<p class="muted">No open ticket has waited on you.</p>{% endif %}</section>
+<section class="br-sec" aria-labelledby="fc-h"><h2 id="fc-h">Closed in the last {{ days }} days</h2>
+  {% if closed %}{{ table(closed) }}{% else %}<p class="muted">Nothing closed in this window.</p>{% endif %}</section>
+</div>
+{% endblock %}

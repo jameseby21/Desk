@@ -1,0 +1,2 @@
+<div class="fl-bar" role="img" aria-label="{% for r in fl.rows %}{{ r.label }} {{ r.time }}{{ ', ' if not loop.last }}{% endfor %}">{% for r in fl.rows if r.pct %}<span class="fl-seg fl-{{ r.part }}" style="flex-grow:{{ r.pct }}" title="{{ r.label }}: {{ r.time }} ({{ r.pct }}%)"></span>{% endfor %}</div>
+<ul class="bt-keys">{% for r in fl.rows %}<li><i class="bt-dot fl-{{ r.part }}"></i>{{ r.label }} <b>{{ r.time }}</b></li>{% endfor %}</ul>
