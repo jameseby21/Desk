@@ -43,6 +43,7 @@ WITHHELD = "(title withheld)"
 ID_RX = re.compile(r"(?<![A-Za-z0-9-])[A-Z0-9][A-Z0-9-]*-\d{4,}(?![A-Za-z0-9])")
 ALLOWED_ITEM_KEYS = {"id", "title", "ask", "date", "status", "due", "count", "kind"}
 MAX_LINE = 160
+KNOWN_KINDS = frozenset({"alert", "brief", "digest-line", "note"})  # the queue contract's kinds; any other kind goes as "note"
 
 
 def settings(home: Path) -> dict:
@@ -156,7 +157,7 @@ def item_line(item: dict, scan: Scanner, titles: dict[str, str]) -> str:
     if ids:
         return "; ".join(f"{i}: {clean_title(titles.get(i, ''), scan)}" if titles.get(i) and scan.ready else i for i in ids)
     kind = str(item.get("kind") or "")
-    return f"1 {kind if re.fullmatch(r'[a-z][a-z-]{0,19}', kind) else 'note'} (text withheld)"  # kind is a plain word or nothing
+    return f"1 {kind if kind in KNOWN_KINDS else 'note'} (text withheld)"  # a writer's kind is never echoed, even as a plain word
 
 
 # -- state: budget used today and the items held for the next brief ---------------------------

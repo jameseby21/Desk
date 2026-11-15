@@ -179,6 +179,14 @@ def test_a_withheld_item_without_ids_never_echoes_its_kind_field():
     assert line == "1 note (text withheld)"
 
 
+def test_a_withheld_kind_is_named_only_from_the_fixed_list_even_without_the_scan():
+    """With the private-term scan not ready, a writer-supplied kind that looks like a plain word is still not echoed; only known kinds are."""
+    for ready in (False, True):
+        scan = ns.Scanner([], ready)
+        assert ns.item_line({"kind": f"{PRIVATE.lower()}-family", "text": "", "ids": []}, scan, {}) == "1 note (text withheld)"
+        assert ns.item_line({"kind": "alert", "text": "", "ids": []}, scan, {}) == "1 alert (text withheld)"
+
+
 def test_brief_fields_outside_the_allow_list_are_dropped():
     """The brief filter keeps ids, titles, asks, dates and counts; any other field (a note, a context) is dropped."""
     scan = ns.Scanner([], True)

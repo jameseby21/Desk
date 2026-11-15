@@ -82,7 +82,7 @@ Leave out any line to keep its default.
 ## Privacy rules (what may leave this computer)
 
 - **An allow-list decides.** A notification carries ticket ids, titles, counts, dates and the brief's plain text. It never carries a ticket's Context, Report, comments or files, because Desk never reads them to build a message.
-- **Every title and every queued line is scanned.** The private-term scan comes from the owner's private folder, and the secret-shape scan (`desk.secretscan`) runs too. A hit becomes `(title withheld)` or the bare ids. It is never sent.
+- **Every title and every queued line is scanned.** The private-term scan comes from the owner's private folder, and the secret-shape scan (`desk.secretscan`) runs too. A hit becomes `(title withheld)` or the bare ids. It is never sent. A withheld line with no ids goes as "1 alert (text withheld)", and only a known kind (alert, brief, digest-line) is named; any other becomes "note".
 - **No scan, no titles.** If the private-term scan cannot be loaded, or its list is empty, only ids are sent, and the message says so.
 - **Brief fields are allow-listed.** Only `id`, `title`, `ask`, `date`, `status`, `due`, `count` and `kind` survive, plus plain count tables. Any other field the brief grows is dropped.
 - **One sender.** Other parts of Desk never send anything. They call `notify_queue.enqueue(...)`, and only `drew notify drain` sends. The filter, the budget and quiet hours therefore live in one place.
