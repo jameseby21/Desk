@@ -412,10 +412,15 @@ header .search-open kbd{position:absolute;right:10px;top:50%;transform:translate
 .tl-kind{font:500 12px/1 var(--font-mono);padding:3px 6px;border:1px solid var(--line);border-radius:6px;color:var(--muted);white-space:nowrap}
 /* The status strip: one segment per status period, width by time, the current one taller and outlined. */
 .tl-strip-wrap{margin:12px 0 0;padding:10px 12px;background:var(--card);border:1px solid var(--line);border-radius:10px;min-width:0}
-.tl-strip{list-style:none;margin:6px 0 0;padding:0;display:flex;align-items:flex-end;gap:2px;height:34px;min-width:0;overflow:hidden}
+/* 6 px of room on every side so a focus ring is drawn outside its segment and never clipped (the negative margin keeps the bar's
+   edges where Created and Now are); with more periods than fit, the oldest overflow on the left and the current one stays whole. */
+.tl-strip{list-style:none;margin:0 -6px;padding:6px;display:flex;align-items:flex-end;justify-content:flex-end;gap:2px;height:46px;min-width:0;overflow:hidden}
 .tl-seg{flex:0 1 0%;min-width:6px;height:24px;border-radius:4px;position:relative;display:flex;align-items:center;justify-content:center;overflow:hidden;white-space:nowrap;background:var(--line);color:var(--ink);cursor:default}
 .tl-seg.tl-now{height:34px;box-shadow:inset 0 0 0 2px var(--ink)}
-.tl-seg:focus-visible{outline:3px solid var(--focus);outline-offset:-3px}
+/* Focus: a ring outside the segment, with a card-coloured gap, in ink (dark on light, light on dark): the segment keeps its own colour,
+   and the ring is never lime, which on this strip means Sent for review. */
+.tl-seg:focus-visible{outline:none;z-index:1;box-shadow:0 0 0 2px var(--card),0 0 0 5px var(--ink)}
+.tl-seg.tl-now:focus-visible{box-shadow:inset 0 0 0 2px var(--ink),0 0 0 2px var(--card),0 0 0 5px var(--ink)}
 .tl-lab{display:inline-block;padding:0 4px;font:600 12px/1 var(--font-body);white-space:nowrap;word-break:keep-all}
 .tl-now .tl-lab{font-weight:800;font-size:13px}
 .tl-lab.tl-hide{visibility:hidden}

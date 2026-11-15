@@ -536,3 +536,101 @@ fetch('/m',{method:'POST',body:JSON.stringify({w:w,missing:missing,split:split,n
     assert d["segs"] == 11 and d["missing"] == [] and d["split"] == [], d  # the ten logged periods and review, set in the file
     assert d["reviews"] == 3 and d["noOwner"] == [] and d["onyou"], d
     assert len(d["ticks"]) >= 1 and d["over"] == [], d
+
+
+# -- keyboard focus keeps the segment's colour; the current status is never clipped (findings 7 and 8) ----------------------------
+
+def _hex_lum(h):
+    h = h.lstrip("#")
+    c = [int(h[i:i + 2], 16) / 255 for i in (0, 2, 4)]
+    c = [x / 12.92 if x <= 0.03928 else ((x + 0.055) / 1.055) ** 2.4 for x in c]
+    return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]
+
+
+def _contrast(a, b):
+    la, lb = sorted((_hex_lum(a), _hex_lum(b)), reverse=True)
+    return (la + 0.05) / (lb + 0.05)
+
+
+def test_static_the_focus_ring_is_outside_the_segment_in_ink_with_3_to_1_contrast_in_both_themes():
+    """Protects finding 7 by reading the stylesheet: the segment's focus ring has no negative offset and is not the lime focus colour
+    of dark mode; it is ink with a card-coloured gap, and ink on card is at least 3:1 in light and dark; the strip leaves room for it
+    and right-aligns its segments so the oldest overflow, not the current one (finding 8)."""
+    css = (STATIC / "desk.css").read_text(encoding="utf-8")
+    rule = re.search(r"\.tl-seg:focus-visible\{([^}]*)\}", css).group(1)
+    assert "outline-offset:-" not in rule and "var(--focus)" not in rule and "var(--ball)" not in rule, rule
+    assert re.search(r"box-shadow:0 0 0 2px var\(--card\),0 0 0 5px var\(--ink\)", rule), rule
+    light = dict(re.findall(r"--(ink|card|ball):(#[0-9A-Fa-f]{6})", css.split("@media (prefers-color-scheme:dark){:root{")[0]))
+    dark = dict(re.findall(r"--(ink|card|ball):(#[0-9A-Fa-f]{6})", css.split("@media (prefers-color-scheme:dark){:root{")[1].split("}}")[0]))
+    dark = {**light, **dark}
+    for theme in (light, dark):
+        assert _contrast(theme["ink"], theme["card"]) >= 3 and theme["ink"].lower() != theme["ball"].lower(), theme
+    strip = re.search(r"\.tl-strip\{([^}]*)\}", css).group(1)
+    assert "padding:6px" in strip and "justify-content:flex-end" in strip and "overflow:hidden" in strip, strip
+
+
+FOCUS = r"""<script>addEventListener('load',function(){setTimeout(function(){
+var segs=Array.prototype.slice.call(document.querySelectorAll('.tl-seg')),strip=document.querySelector('.tl-strip'),info=document.getElementById('tl-st-info');
+var sb=strip.getBoundingClientRect(),cs=getComputedStyle(strip),clip={l:sb.left,r:sb.right,t:sb.top,b:sb.bottom};
+var card=getComputedStyle(document.querySelector('.tl-strip-wrap')).backgroundColor,res=[],n0=document.querySelector('.tl-now').getBoundingClientRect();
+var nowIn=n0.left>=sb.left-0.5&&n0.right<=sb.right+0.5&&n0.width>=5;  // before any focus: focusing scrolls a clipped strip
+function rgb(c){var m=c.match(/[0-9.]+/g);return m?m.slice(0,3).map(Number):[0,0,0];}
+function lum(c){return 0.2126*f(c[0])+0.7152*f(c[1])+0.0722*f(c[2]);function f(x){x/=255;return x<=0.03928?x/12.92:Math.pow((x+0.055)/1.055,2.4);}}
+function ratio(a,b){var x=lum(rgb(a)),y=lum(rgb(b));return (Math.max(x,y)+0.05)/(Math.min(x,y)+0.05);}
+segs.forEach(function(s){var before=getComputedStyle(s).backgroundColor;s.focus();var st=getComputedStyle(s),r=s.getBoundingClientRect();
+ var outer=(st.boxShadow.match(/rgba?\([^)]*\)\s+0px\s+0px\s+0px\s+([0-9.]+)px(?!\s*inset)/g)||[]),ring=0,col='';
+ outer.forEach(function(x){var m=x.match(/(rgba?\([^)]*\)).*?([0-9.]+)px$/);if(m&&parseFloat(m[2])>ring){ring=parseFloat(m[2]);col=m[1];}});
+ var off=st.outlineStyle!=='none'?parseFloat(st.outlineOffset):null;
+ res.push({bg:before===st.backgroundColor,outside:ring>=3||(off!==null&&off>=0),ring:ring,
+  inClip:r.left-ring>=clip.l-0.5&&r.right+ring<=clip.r+0.5&&r.top-ring>=clip.t-0.5,
+  lime:/200, 240, 60/.test(st.boxShadow+st.outlineColor),contrast:col?ratio(col,card):(st.outlineStyle!=='none'?ratio(st.outlineColor,card):0),
+  said:info.textContent===s.getAttribute('data-text')});s.blur();});
+fetch('/m',{method:'POST',body:JSON.stringify({res:res,n:segs.length,nowIn:nowIn})});},300);});</script>"""
+
+
+def _focus_page(store, t, width, dark):
+    html = _page(store, t)
+    css = (STATIC / "desk.css").read_text(encoding="utf-8")
+    if dark:  # the headless browser has no dark preference switch: the page's own dark rules are applied unconditionally
+        css = css.replace("@media (prefers-color-scheme:dark){", "@media all{")
+    js = (STATIC / "timeline.js").read_text(encoding="utf-8")
+    html = re.sub(r'<link rel="stylesheet" href="/static/desk.css[^"]*">', lambda m: f"<style>{css}</style>", html)
+    html = re.sub(r'<link rel="stylesheet" href="https://fonts[^>]*>|<link rel="preconnect"[^>]*>', "", html)
+    html = re.sub(r'<script src="[^"]*"[^>]*></script>', "", html).replace("</body>", f"<script>{js}</script>" + FOCUS + "</body>")
+    return run_in_browser(html, width)
+
+
+@pytest.mark.skipif(browser() is None, reason="no Edge or Chrome installed")
+@pytest.mark.parametrize("dark", [False, True], ids=["light", "dark"])
+def test_browser_a_focused_segment_keeps_its_colour_and_its_ring_is_outside_never_lime(store, dark):
+    """Protects finding 7 in a real layout, light and dark at 1280 px: focusing each of the 10 segments, the thin ones included, leaves
+    its background colour as it was, draws a ring of 3 px or more outside it that is not lime and stands out 3:1 against the card,
+    and the line under the strip names the focused segment."""
+    d = _focus_page(store, _busy(store), 1280, dark)
+    assert d["n"] == 10, d
+    for i, r in enumerate(d["res"]):
+        assert r["bg"] and r["outside"] and not r["lime"] and r["contrast"] >= 3 and r["said"], (i, r)
+
+
+@pytest.mark.skipif(browser() is None, reason="no Edge or Chrome installed")
+def test_browser_at_320_px_every_segment_in_order_shows_a_whole_ring_and_a_long_history_keeps_the_current_status(store):
+    """Protects focus on a phone and the newest period (findings 7 and 8): at 320 px, focusing every segment of a 60-period strip in
+    order names each under the strip and leaves its whole ring inside the strip's visible box; the current segment is whole on the
+    right, with the oldest periods the ones that overflow."""
+    t = ops.new(store, "A long history", "desk")
+    activity.path(store.home, t.id).unlink()
+    base = dt.datetime.now().replace(microsecond=0) - dt.timedelta(days=30)
+    flow = ["ready", "in_progress", "review", "changes_requested"]
+    evs = [activity.Event(t.id, base.isoformat(), "owner-a", "owner", "ui", "created", "created", "", "x", "Created: x")]
+    for i in range(60):
+        evs.append(activity.Event(t.id, (base + dt.timedelta(hours=11 * (i + 1))).isoformat(), "main-a", "main", "cli", "field", "status",
+                                  flow[i % 4] if i else "inbox", flow[(i + 1) % 4], "status change"))
+    activity.append(store.home, evs)
+    x = store.get(t.id)
+    x.meta["status"], x.meta["created"] = flow[60 % 4], base.date().isoformat()
+    x.write()
+    d = _focus_page(store, store.get(t.id), 320, False)
+    assert d["n"] == 61 and d["nowIn"], d
+    shown = [r for r in d["res"] if r["inClip"]]
+    assert all(r["said"] and r["outside"] for r in d["res"]), d["res"][:3]
+    assert d["res"][-1]["inClip"] and len(shown) >= 20, (len(shown), d["res"][-3:])
