@@ -160,8 +160,46 @@ def test_snooze_and_lane_write_the_fields_with_one_batch_each(store):
     assert any(e.field == "lane" and e.batch == r.json()["batch"] for e in evs)
     park = {a["key"]: a for a in c.get(f"/palette/actions/{t.id}").json()["actions"]}["park"]
     assert c.post(park["url"], data=park["fields"], headers=JSON).status_code == 422  # parking needs a reason
-    plain = c.post(f"/ticket/{t.id}/lane", data={"to": "now", "token": _tok(c)}, follow_redirects=False)
+    plain = c.post(f"/ticket/{t.id}/lane", data={"lane": "now", "token": _tok(c)}, follow_redirects=False)
     assert plain.status_code == 303 and "undo=b-" in plain.headers["location"] and "msg=" in plain.headers["location"]
+
+
+LANE_FORM = {"token", "lane", "reason", "snooze", "next"}  # the fields DESK-0283's POST /ticket/<ID>/lane reads (its lane menu posts them)
+
+
+def test_palette_lane_park_and_snooze_post_the_lane_menus_fields_to_its_one_route(store):
+    """Lane, Park and Snooze post DESK-0283's lane-menu fields (lane, reason, snooze) to /ticket/<ID>/lane; no second snooze route exists."""
+    t = _t(store, "Later maybe", status="ready")
+    c = TestClient(create_app(store.home))
+    acts = {a["key"]: a for a in c.get(f"/palette/actions/{t.id}").json()["actions"]}
+    for key in ("snooze", "lane-now", "lane-later", "park"):
+        assert acts[key]["url"] == f"/ticket/{t.id}/lane", key
+        assert set(acts[key]["fields"]) <= LANE_FORM, (key, acts[key]["fields"])
+    assert acts["lane-later"]["fields"]["lane"] == "later" and acts["snooze"]["fields"]["snooze"] == "1w"
+    assert acts["park"]["fields"]["lane"] == "parked" and acts["park"]["words_field"] == "reason"
+    assert not [r for r in c.app.routes if getattr(r, "path", "") == "/ticket/{ticket_id}/snooze"]
+    r = c.post(acts["snooze"]["url"], data=acts["snooze"]["fields"], headers=JSON)
+    assert r.status_code == 200 and r.json()["batch"].startswith("b-"), r.text
+    assert lanes.snooze_until(store.get(t.id)) == dt.date.today() + dt.timedelta(days=7)
+    un = {a["key"]: a for a in c.get(f"/palette/actions/{t.id}").json()["actions"]}["unsnooze"]
+    assert un["url"] == f"/ticket/{t.id}/lane" and un["fields"]["snooze"] == "clear"
+    assert c.post(un["url"], data=un["fields"], headers=JSON).status_code == 200
+    assert "snooze_until" not in store.get(t.id).meta
+    park = {a["key"]: a for a in c.get(f"/palette/actions/{t.id}").json()["actions"]}["park"]
+    r = c.post(park["url"], data={**park["fields"], park["words_field"]: "not this quarter"}, headers=JSON)
+    assert r.status_code == 200 and lanes.lane_of(store.get(t.id)) == "parked" and store.get(t.id).meta["park_reason"] == "not this quarter"
+    menu = c.post(f"/ticket/{t.id}/lane", data={"lane": "now", "next": f"/ticket/{t.id}", "token": _tok(c)}, follow_redirects=False)
+    assert menu.status_code == 303 and menu.headers["location"].startswith(f"/ticket/{t.id}?undo=b-")  # the lane menu's plain form
+    assert lanes.lane_of(store.get(t.id)) == "now" and "park_reason" not in store.get(t.id).meta
+
+
+def test_the_stand_in_lane_route_steps_aside_when_the_lanes_package_is_present(store, monkeypatch):
+    """Once DESK-0283's routes_lanes is in the app, the palette adds no lane route of its own, whatever order the two register in."""
+    from desk.ui import routes_keys
+
+    monkeypatch.setattr(routes_keys, "lanes_package_present", lambda: True)
+    c = TestClient(create_app(store.home))
+    assert not [r for r in c.app.routes if getattr(r, "path", "") == "/ticket/{ticket_id}/lane" and "POST" in (getattr(r, "methods", None) or ())]
 
 
 # -- display settings ------------------------------------------------------------------------------------------------------

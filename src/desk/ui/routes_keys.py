@@ -2,11 +2,11 @@
 
 One code path: the palette never writes anything itself. `GET /palette/actions/<ID>` lists what can be done to the open ticket as
 (route, form fields, a fresh one-time token), and the palette posts those fields to that route, exactly the post the page's own
-button makes: Approve and Send back go to /ticket/<ID>/decide, Assign to /ticket/<ID>/assign, Snooze and the lane moves to
-/ticket/<ID>/snooze and /ticket/<ID>/lane.
+button makes: Approve and Send back go to /ticket/<ID>/decide, Assign to /ticket/<ID>/assign, and Snooze, End snooze, the lane moves
+and Park to /ticket/<ID>/lane with the fields of DESK-0283's lane menu (lane, reason, snooze=1w or clear).
 
-The lane and snooze routes belong to DESK-0283 (lanes). Its package is built in parallel; until it is merged, `register` adds the two
-routes here, and only when no route with that path exists yet, so the integrated app keeps a single route per action either way.
+The lane route belongs to DESK-0283 (lanes), built in parallel. Until it is merged, `register` adds a stand-in that reads exactly the
+same fields; it steps aside when DESK-0283's module is present or the route already exists, so the merged app has one lane route.
 Every write runs inside `activity.batch(...)` and answers with the batch id and a plain sentence (the undo contract of DESK-0284).
 
 Theme (system, light, dark) and type size (small, normal, large) are per device: two cookies the server reads to write
@@ -15,6 +15,7 @@ Theme (system, light, dark) and type size (small, normal, large) are per device:
 from __future__ import annotations
 
 import datetime as dt
+import re
 import secrets
 from urllib.parse import quote
 
@@ -70,17 +71,17 @@ def palette_actions(t, people, issue, today: dt.date | None = None) -> list[dict
         add("changes", "Send back", base + "/decide", {"action": "changes"}, "Records your words and moves it to changes requested.",
             words="Why send it back? Your words go in the Decision.", keywords="no reject changes")
     if lanes.is_snoozed(t, today):
-        add("unsnooze", "End snooze", base + "/snooze", {"until": ""}, "Brings it back to Today and Needs me now.", keywords="wake")
+        add("unsnooze", "End snooze", base + "/lane", {"snooze": "clear"}, "Brings it back to Today and Needs me now.", keywords="wake")
     else:
         until = today + dt.timedelta(days=SNOOZE_DAYS)
-        add("snooze", "Snooze 1 week", base + "/snooze", {"until": until.isoformat()}, f"Off Today and Needs me until {until.isoformat()}.",
+        add("snooze", "Snooze 1 week", base + "/lane", {"snooze": "1w"}, f"Off Today and Needs me until {until.isoformat()}.",
             keywords="snooze 1w week hide")
     cur = lanes.lane_of(t)
     for lane in ("now", "planned", "later"):
         if lane != cur:
-            add(f"lane-{lane}", f"Move to {LANE_WORDS[lane]}", base + "/lane", {"to": lane}, LANE_HINT[lane], keywords="lane")
+            add(f"lane-{lane}", f"Move to {LANE_WORDS[lane]}", base + "/lane", {"lane": lane}, LANE_HINT[lane], keywords="lane")
     if cur != "parked":
-        add("park", "Park", base + "/lane", {"to": "parked"}, "Decided not now. Nothing is deleted.", words="Why park it? One line.",
+        add("park", "Park", base + "/lane", {"lane": "parked"}, "Decided not now. Nothing is deleted.", words="Why park it? One line.",
             words_field="reason", keywords="lane park not now")
     now = str(t.meta.get("assignee") or "").strip().lower()
     for _group, ps in people.groups():
@@ -125,9 +126,9 @@ def register(app, templates, store, ctx) -> None:
         return JSONResponse({"id": t.id, "title": str(t.meta.get("title") or ""), "status": t.status, "lane": lanes.lane_of(t), "actions": acts},
                             headers={"Cache-Control": "no-store"})
 
-    def lane_write(request, ticket_id: str, token: str, change, done: str):
+    def lane_write(request, ticket_id: str, token: str, change, done: str, back: str):
         if not tokens.use(token):
-            return answer(request, False, "That form was already sent; reload the page.", f"/ticket/{ticket_id}", code=409)
+            return answer(request, False, "That form was already sent; reload the page.", back, code=409)
         s = store()
         bid = new_batch()
         try:
@@ -140,47 +141,49 @@ def register(app, templates, store, ctx) -> None:
         except KeyError:
             return answer(request, False, f"No ticket {ticket_id}.", "/", code=404)
         except (RuleError, ValueError) as e:
-            return answer(request, False, str(e).strip("'\""), f"/ticket/{ticket_id}", code=422)
+            return answer(request, False, str(e).strip("'\""), back, code=422)
         from . import events as ev
 
-        return answer(request, True, msg, f"/ticket/{t.id}", batch=bid, stamp=str(ev.ticket_stamp(s, t.id)))
+        return answer(request, True, msg, back, batch=bid, stamp=str(ev.ticket_stamp(s, t.id)))
 
-    def post_lane(request: Request, ticket_id: str, to: str = Form(""), reason: str = Form(""), token: str = Form("")):
-        """Move a ticket to a lane (now, planned, later, parked). Parking takes a one-line reason and deletes nothing."""
-        to = to.strip().lower()
+    def post_lane(request: Request, ticket_id: str, token: str = Form(""), lane: str = Form(""), reason: str = Form(""),
+                  snooze: str = Form(""), next: str = Form("")):
+        """Stand-in for DESK-0283's lane route, reading its exact fields: lane (now, planned, later, parked, or auto for the usual
+        lane), reason (parking needs one), snooze (1d, 1w, 2w, a date, or clear). One batch per post. Parking deletes nothing."""
+        lane, snooze = lane.strip().lower(), snooze.strip().lower()
 
         def change(t):
-            if to not in lanes.LANES:
-                raise ValueError("Pick Now, Planned, Later or Parked.")
-            if to == "parked" and len(reason.strip()) < 3:
-                raise ValueError("Say in a few words why it is parked.")
-            t.meta["lane"] = to
-            if to == "parked":
-                t.meta["park_reason"] = " ".join(reason.split())[:200]
-            else:
-                t.meta.pop("park_reason", None)
-            return f"{t.id} is parked. Nothing was deleted." if to == "parked" else f"{t.id} is now marked {LANE_WORDS[to]}."
-        return lane_write(request, ticket_id, token, change, "lane")
-
-    def post_snooze(request: Request, ticket_id: str, until: str = Form(""), token: str = Form("")):
-        """Snooze a ticket until a date (YYYY-MM-DD or 1w); an empty date ends the snooze."""
-        def change(t):
-            u = until.strip().lower()
-            if not u:
+            if not lane and not snooze:
+                raise ValueError("Pick a lane or a snooze time.")
+            bits = []
+            if lane:
+                if lane != "auto" and lane not in lanes.LANES:
+                    raise ValueError("Pick Now, Planned, Later or Parked.")
+                why = " ".join(reason.split())
+                if lane == "parked" and not why:
+                    raise ValueError("Say in a few words why it is parked.")
+                if lane == "parked":
+                    t.meta["park_reason"] = why[:200]
+                else:
+                    t.meta.pop("park_reason", None)
+                if lane == "auto":
+                    t.meta.pop("lane", None)
+                else:
+                    t.meta["lane"] = lane
+                bits.append(f"{t.id} is parked. Nothing was deleted" if lane == "parked" else f"{t.id} is in the {LANE_WORDS[lanes.lane_of(t)]} lane")
+            if snooze == "clear":
                 t.meta.pop("snooze_until", None)
-                return f"{t.id} is back on Today and Needs me."
-            day = dt.date.today() + dt.timedelta(days=SNOOZE_DAYS) if u in ("1w", "week") else dt.date.fromisoformat(u)
-            if day <= dt.date.today():
-                raise ValueError("Pick a date after today.")
-            t.meta["snooze_until"] = day.isoformat()
-            return f"{t.id} is snoozed until {day.isoformat()}."
-        return lane_write(request, ticket_id, token, change, "snooze")
+                bits.append(f"{t.id} is back on Today now")
+            elif snooze:
+                day = _snooze_day(snooze)
+                t.meta["snooze_until"] = day.isoformat()
+                bits.append(f"{t.id} is snoozed until {day.isoformat()}")
+            return ". ".join(bits) + "."
+        return lane_write(request, ticket_id, token, change, "lane", _local(next) or f"/ticket/{ticket_id}")
 
     have = {(r.path, m) for r in app.routes for m in getattr(r, "methods", None) or ()}
-    if ("/ticket/{ticket_id}/lane", "POST") not in have:
+    if not lanes_package_present() and ("/ticket/{ticket_id}/lane", "POST") not in have:
         router.add_api_route("/ticket/{ticket_id}/lane", post_lane, methods=["POST"])
-    if ("/ticket/{ticket_id}/snooze", "POST") not in have:
-        router.add_api_route("/ticket/{ticket_id}/snooze", post_snooze, methods=["POST"])
 
     # -- saved views ------------------------------------------------------------------
     @router.get("/views", response_class=HTMLResponse)
@@ -225,6 +228,32 @@ def register(app, templates, store, ctx) -> None:
         return r
 
     app.include_router(router)
+
+
+def lanes_package_present() -> bool:
+    """True once DESK-0283's lane routes are part of this install: the palette then posts to its route and adds none of its own."""
+    import importlib.util
+
+    return importlib.util.find_spec("desk.ui.routes_lanes") is not None
+
+
+def _snooze_day(text: str) -> dt.date:
+    """A snooze date from the lane menu's choices (1d, 1w, 2w and the like) or a YYYY-MM-DD date; it must be after today."""
+    m = re.fullmatch(r"(\d{1,3})([dw])", text)
+    today = dt.date.today()
+    try:
+        day = today + dt.timedelta(days=int(m.group(1)) * (7 if m.group(2) == "w" else 1)) if m else dt.date.fromisoformat(text)
+    except ValueError:
+        raise ValueError(f"'{text}' is not a date Desk knows. Use a date like 2026-11-22, or 1d, 1w, 2w.") from None
+    if day <= today:
+        raise ValueError("Pick a date after today.")
+    return day
+
+
+def _local(url: str) -> str:
+    """A path on this Desk, never another site; '' when it is not one."""
+    url = (url or "").split("#")[0]
+    return url if re.fullmatch(r"/(?!/)[^\s\\]*", url) else ""
 
 
 def _save_view_url(request) -> str:
