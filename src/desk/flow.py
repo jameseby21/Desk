@@ -58,7 +58,7 @@ def _start(t: Ticket, events: list) -> dt.datetime | None:
 
 
 def segments(t: Ticket, events: list, owner: str, now: dt.datetime | None = None) -> list[tuple[dt.datetime, dt.datetime, str, str]]:
-    """[(from, to, status, blocked_on)] in time order, from the ticket's creation to its close (or `now`)."""
+    """[(from, to, status, blocked_on)] in time order, from the ticket's creation to its close (or `now`), closed spans left out."""
     now = now or dt.datetime.now()
     evs = sorted((e for e in events if e.change == "field" and e.field in ("status", "blocked_on") and _ts(e)), key=lambda e: (_ts(e), e.seq))
     first_status = next((e for e in evs if e.field == "status"), None)
@@ -71,9 +71,7 @@ def segments(t: Ticket, events: list, owner: str, now: dt.datetime | None = None
     out, at = [], start
     for e in evs:
         when = max(_ts(e), at)
-        if status in CLOSED:
-            break
-        if when > at:
+        if when > at and status not in CLOSED:  # time while closed is skipped; a reopen (a hand edit or a revert) counts again
             out.append((at, when, status or "inbox", blocked))
         at = when
         if e.field == "status":

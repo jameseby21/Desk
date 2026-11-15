@@ -234,3 +234,37 @@ def test_new_ui_sentences_read_plainly():
     assert plainwords.jargon(words) == []
     sentences = ". ".join(s for s in re.split(r"(?<=[.!?])\s", words) if len(s.split()) >= 6)
     assert (plainwords.grade(sentences) or 0) <= 10
+
+
+# ---- fixer regressions (DESK-0288 review findings) --------------------------------------------------------------------------
+
+def test_past_week_review_lists_only_dates_inside_that_week_as_slipped(store):
+    """Protects the weekly review of a past week: a review-by date after that week's Sunday is not listed as slipped."""
+    (store.projects_dir / "management.md").write_text("# Management\n", encoding="utf-8")
+    this_monday = rv.monday_of(TODAY)
+    last_monday = this_monday - dt.timedelta(days=7)
+    later = this_monday + dt.timedelta(days=3)  # a fixed "today" inside this week, whatever day the test runs
+    inside = mk(store, "Review-by inside last week", review_by=(last_monday + dt.timedelta(days=1)).isoformat())
+    after = mk(store, "Review-by after last week", review_by=this_monday.isoformat())
+    w = brief.weekly(store, last_monday, later)
+    assert [r["id"] for r in w["slipped"]] == [inside.id] and w["last"] == last_monday + dt.timedelta(days=6)
+    rt, _ = rv.create(store, last_monday, project="management")
+    rv.apply(store, store.get(rt.id), today=later)
+    line = next(x for x in store.get(rt.id).section("Report").splitlines() if x.startswith("- Slipped"))
+    assert inside.id in line and after.id not in line
+
+
+def test_flow_skips_closed_time_and_counts_a_reopen(store):
+    """Protects flow time on a ticket reopened after done: the closed gap is skipped and the time after the reopen counts."""
+    t, base = _flow_ticket(store, [(1, "status", "ready", "in_progress"), (2, "status", "in_progress", "done"),
+                                   (5, "status", "done", "in_progress")], "in_progress")
+    f = flow.of(store, store.get(t.id), now=base + dt.timedelta(hours=10))
+    assert f["total"] == 7 * 3600 and f["parts"]["worked"] == 6 * 3600 and f["by_status"].get("done", 0) == 0
+
+
+def test_bad_query_values_fall_back_instead_of_422(store, fx):
+    """Protects /repeats and /deadlines.ics: a bad query value gives the page with its default, never raw 422 JSON."""
+    c = TestClient(create_app(store.home))
+    assert c.get("/repeats?weeks=abc").status_code == 200
+    cal = c.get("/deadlines.ics?all=yes")
+    assert cal.status_code == 200 and cal.content.startswith(b"BEGIN:VCALENDAR\r\n")

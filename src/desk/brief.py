@@ -280,7 +280,8 @@ def _decided_on(t: Ticket, first: dt.date, last: dt.date) -> bool:
 
 
 def weekly(store, monday: dt.date, today: dt.date | None = None) -> dict:
-    """The week of `monday` up to `today` (or Sunday): decided, shipped, slipped, the balance and one recommended first version."""
+    """The week of `monday` up to `today` (or Sunday): decided, shipped, slipped, the balance and one recommended first version.
+    `today` is the real date: a past week stops at its Sunday (`last`), and only dates that have passed count as slipped."""
     today = today or dt.date.today()
     last = min(monday + dt.timedelta(days=6), today)
     tickets = [t for t in store.tickets() if "review-week" not in t.tags]
@@ -290,12 +291,12 @@ def weekly(store, monday: dt.date, today: dt.date | None = None) -> dict:
         if not t.is_open or t.status == "approved":
             continue
         for what, d in (("review by", _date(t.meta.get("review_by"))), ("deadline", deadlines.of(t)[0])):
-            if d and monday <= d < today:
+            if d and monday <= d <= last and d < today:
                 slipped.append(_row(t, what=what, date=d))
                 break
     pick = mvp_pick(tickets)
     return {"monday": monday, "last": last, "decided": decided, "shipped": shipped(store, tickets, monday, last),
-            "slipped": sorted(slipped, key=lambda r: (r["date"], r["id"])), "balance": balance(store, tickets, today),
+            "slipped": sorted(slipped, key=lambda r: (r["date"], r["id"])), "balance": balance(store, tickets, last),
             "mvp": _row(pick, size=pick.meta.get("size"), tagged="mvp" in [x.lower() for x in pick.tags]) if pick else None}
 
 

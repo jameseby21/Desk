@@ -59,7 +59,7 @@ def register(app, templates, ctx, store) -> None:
         except ValueError:
             day = dt.date.today()
         monday = rv.monday_of(day)
-        w = bf.weekly(s, monday, min(dt.date.today(), monday + dt.timedelta(days=6)) if monday <= dt.date.today() else monday)
+        w = bf.weekly(s, monday, dt.date.today())  # the same call the review ticket makes, so the page and the ticket agree
         return templates.TemplateResponse(request, "brief_week.html", ctx(request, s, w=w, s=s, review_t=rv.find(s, monday),
                                                                         prev_week=(monday - dt.timedelta(days=7)).isoformat(),
                                                                         next_week=(monday + dt.timedelta(days=7)).isoformat()))
@@ -83,9 +83,9 @@ def register(app, templates, ctx, store) -> None:
                                                                   n_closed=sum(1 for r in rows if r[1]["closed"]), days=FLOW_DAYS))
 
     @router.get("/repeats", response_class=HTMLResponse)
-    def repeats_page(request: Request, weeks: int = 8):
+    def repeats_page(request: Request, weeks: str = "8"):
         s = store()
-        weeks = min(max(weeks, 1), 52)
+        weeks = min(max(int(weeks) if weeks.strip().isdigit() else 8, 1), 52)  # a bad value falls back, never a 422
         return templates.TemplateResponse(request, "repeats.html", ctx(request, s, s=s, weeks=weeks, groups=bf.repeats_by_week(s, weeks)))
 
     @router.get("/company", response_class=HTMLResponse)
@@ -102,9 +102,10 @@ def register(app, templates, ctx, store) -> None:
         return templates.TemplateResponse(request, "company.html", ctx(request, s, s=s, c=c, all_companies=[]))
 
     @router.get("/deadlines.ics")
-    def deadlines_ics(request: Request, all: int = 0):
+    def deadlines_ics(request: Request, all: str = ""):
         s = store()
-        body = ics.calendar(s.tickets(), s.owner, base_url=str(request.base_url), everyone=bool(all))
+        everyone = all.strip().lower() in ("1", "yes", "true", "on")  # anything else is the owner's own dates, never a 422
+        body = ics.calendar(s.tickets(), s.owner, base_url=str(request.base_url), everyone=everyone)
         return Response(body.encode("utf-8"), media_type="text/calendar; charset=utf-8",
                         headers={"Content-Disposition": "inline; filename=desk-deadlines.ics", "Cache-Control": "no-cache"})
 
