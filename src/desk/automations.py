@@ -15,6 +15,8 @@ it touched in `.desk/automations/<batch>.json`, which `drew auto undo <batch>` r
 Hand-set values: a rule's `set`, `lane` and `priority` never change a value a person set (the last change of that field in the event log
 was not a rule, or the field has a value and no change on record) unless the rule says `override: true`; a tag a person added is never
 removed. Status moves always go through rules.check_transition, so every lifecycle rule still applies (a rule never approves).
+`set` names only SET_KEYS, `move` never names a verdict, and `create.sections` never writes Decision, Report, Evidence or Comments:
+each is refused when the file is read, so a rule file cannot forge an approval line and then approve (whole-branch review H1).
 Docs: docs/AUTOMATIONS.md."""
 
 from __future__ import annotations
@@ -45,7 +47,13 @@ WHEN_KEYS = {"status", "not_status", "type", "project", "priority", "tags_any", 
 THEN_KEYS = {"set", "lane", "priority", "add_tags", "remove_tags", "move", "reason", "note", "comment", "notify", "urgent", "ci",
              "create", "weekly_review", "unblock", "link_pr"}
 EVERY = ("weekly", "monthly", "yearly")
-DAYS = ("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
+# What a rule may write (whole-branch review H1): `set` names only these fields, never status, owner, a decision or who did the work;
+# no rule moves a ticket to a verdict (approved, changes requested: the owner's judgment, decision 10); and a ticket a rule creates
+# never carries a section that stands for a person's verdict or report.
+SET_KEYS = frozenset({"lane", "park_reason", "snooze_until", "ci", "ci_pr"})
+VERDICTS = frozenset({"approved", "changes_requested"})
+OWNER_SECTIONS = frozenset({"decision", "report", "evidence", "comments"})
+DAYS =("monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday")
 _PR_ID = re.compile(r"^\W*([A-Za-z][A-Za-z0-9]*-\d{3,})\b")
 
 
@@ -151,6 +159,14 @@ def parse(data) -> tuple[list[Rule], list]:
                 raise AutomationError(f"Rule {name} names who writes; rules always write as automation.")
             if a.get("move") and a["move"] not in STATUSES:
                 raise AutomationError(f"Rule {name}: `{a['move']}` is not a status.")
+            if a.get("move") in VERDICTS:
+                raise AutomationError(f"Rule {name} moves tickets to {a['move']}; only the owner gives that verdict, so no rule can.")
+            if "set" in a:
+                if not isinstance(a["set"] or {}, dict):
+                    raise AutomationError(f"Rule {name}: set takes field: value pairs.")
+                bad = sorted(str(k) for k in (a["set"] or {}) if str(k) not in SET_KEYS)
+                if bad:
+                    raise AutomationError(f"Rule {name} sets {', '.join(bad)}; a rule may set only {', '.join(sorted(SET_KEYS))}.")
             if a.get("priority") and a["priority"] not in PRIORITIES:
                 raise AutomationError(f"Rule {name}: `{a['priority']}` is not a priority.")
             if a.get("lane") and a["lane"] not in lanes.LANES:
@@ -160,6 +176,13 @@ def parse(data) -> tuple[list[Rule], list]:
             raise AutomationError(f"Rule {name}: every is one of {', '.join(EVERY)}.")
         if not str(r.get("source") or "").strip():
             raise AutomationError(f"Rule {name} needs a source: the decision, rule or event pattern it comes from.")
+        create = r.get("create") or {}
+        if not isinstance(create, dict):
+            raise AutomationError(f"Rule {name}: create takes a ticket template (project, title, sections).")
+        owned = sorted(str(k) for k in (create.get("sections") or {}) if str(k).strip().lower() in OWNER_SECTIONS)
+        if owned:
+            raise AutomationError(f"Rule {name} writes the {', '.join(owned)} section of a new ticket; those hold a person's verdict "
+                                  "or report, so a rule never writes them.")
         out.append(Rule(name, str(r["source"]).strip(), str(r.get("does") or "").strip(), when, then, bool(r.get("enabled", True)),
                         bool(r.get("override", False)), every, str(r.get("day") or "").strip().lower(), _list(r.get("repos")), r.get("create") or {}))
     return out, _list(data.get("repos"))
@@ -485,6 +508,8 @@ def _act(rule: Rule, t: Ticket, vals: dict, c: Ctx, write: bool, journal: _Journ
     for a in rule.then:
         if "set" in a:
             for k, v in (a["set"] or {}).items():
+                if str(k) not in SET_KEYS:  # parse refuses it already; a Rule built in code is held to the same list
+                    return [], f"a rule may not set {k}"
                 set_field(str(k), _fill(v, fill) if isinstance(v, str) else v)
         if a.get("lane"):
             cur = lanes.explicit_lane(t)  # the lane field, or a lane:<name> tag a person put on
@@ -569,6 +594,8 @@ def _create(rule: Rule, c: Ctx, key: str, write: bool, journal: _Journal | None)
                        owner=owner, assignee=str(tpl.get("assignee") or "") or None, source=f"automation rule {rule.name} ({rule.source})")
     t.meta.update(status=status, tags=_list(tpl.get("tags")), recurring=tag)
     for sec, text in (tpl.get("sections") or {}).items():
+        if str(sec).strip().lower() in OWNER_SECTIONS:  # parse refuses it already; never a person's verdict in a rule's ticket
+            continue
         t.set_section(str(sec), _fill(text, fill).rstrip() + "\n")
     c.store.save(t)
     if journal is not None:
