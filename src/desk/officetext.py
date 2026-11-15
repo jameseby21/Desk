@@ -1,15 +1,18 @@
-"""Plain text out of Word, Excel and PowerPoint files (DESK-0291), with the standard library only: zipfile and xml.etree.
+"""Plain text out of Word, Excel and PowerPoint files (DESK-0291), with the standard library only: zipfile, xml.etree and expat.
 
 An Office file is a zip of XML parts. A hostile file can be a zip bomb (tiny on disk, huge unpacked) or carry XML entity tricks, so:
 the file, the number of parts, each part and the total unpacked size are capped (the real bytes read are counted, not the sizes the
-zip claims), a part that packs more than 200 to 1 is refused, and any part with a DOCTYPE or ENTITY is refused before it is parsed."""
+zip claims), a part that packs more than 200 to 1 is refused, and any part with a DOCTYPE or ENTITY, in UTF-8 or UTF-16, is refused
+before it is parsed. A damaged part (bad checksum, broken packing) gives a plain sentence, never a crash."""
 
 from __future__ import annotations
 
 import re
 import zipfile
+import zlib
 from pathlib import Path
 from xml.etree import ElementTree as ET
+from xml.parsers import expat
 
 MAX_FILE = 25 * 1024 * 1024
 MAX_ENTRIES = 3000
@@ -23,10 +26,41 @@ S = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
 A = "{http://schemas.openxmlformats.org/drawingml/2006/main}"
 R = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
 _DTD = re.compile(rb"<!\s*(DOCTYPE|ENTITY)", re.I)
+DAMAGED = "Part of that file is damaged, so Desk cannot read it."
 
 
 class OfficeError(Exception):
     """The file cannot be shown as text; args[0] is the plain sentence for the person."""
+
+
+class _Root(Exception):
+    """The first element was reached with no document type declaration before it."""
+
+
+def _has_dtd(data: bytes) -> bool:
+    """True when the XML declares a document type, in any encoding expat reads (UTF-16 hides it from a byte search).
+
+    A DOCTYPE, and with it every ENTITY declaration, can only come before the first element, so expat stops there."""
+
+    def doctype(*_):
+        raise OfficeError("That file carries a document type declaration, which Desk refuses for safety.")
+
+    def root(*_):
+        raise _Root
+
+    p = expat.ParserCreate()
+    p.StartDoctypeDeclHandler = doctype
+    p.EntityDeclHandler = doctype
+    p.StartElementHandler = root
+    try:
+        p.Parse(data, True)
+    except _Root:
+        return False
+    except OfficeError:
+        return True
+    except expat.ExpatError:
+        raise OfficeError(DAMAGED)
+    return False
 
 
 class _Zip:
@@ -52,17 +86,21 @@ class _Zip:
             return None
         if info.file_size > MAX_PART or (info.compress_size and info.file_size > 1024 * 1024 and info.file_size / info.compress_size > MAX_RATIO):
             raise OfficeError("That file unpacks to far more than its size, so Desk does not open it.")
-        with self.z.open(info) as fh:
-            data = fh.read(MAX_PART + 1)
+        try:
+            with self.z.open(info) as fh:
+                data = fh.read(MAX_PART + 1)
+        except (zipfile.BadZipFile, zlib.error, RuntimeError, NotImplementedError, EOFError, ValueError):
+            # a bad checksum, broken compressed data, a password or an unknown packing method
+            raise OfficeError(DAMAGED)
         self.total += len(data)
         if len(data) > MAX_PART or self.total > MAX_TOTAL:
             raise OfficeError("That file unpacks to far more than its size, so Desk does not open it.")
-        if _DTD.search(data):
+        if _DTD.search(data) or _has_dtd(data):
             raise OfficeError("That file carries a document type declaration, which Desk refuses for safety.")
         try:
             return ET.fromstring(data)
         except ET.ParseError:
-            raise OfficeError("Part of that file is damaged, so Desk cannot read it.")
+            raise OfficeError(DAMAGED)
 
     def close(self):
         self.z.close()

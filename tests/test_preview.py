@@ -399,3 +399,48 @@ def test_clicking_an_attachment_opens_the_panel_in_a_real_browser(store):
     assert got["open"] and "first line of the notes" in got["text"] and got["dialog"] == "dialog", got
     assert got["closed"] and got["focusBack"], got
     assert "first line of the notes" in got["card"] and "click to preview" in got["card"], got
+
+
+# -- review fixes (DESK-0291 QA) ------------------------------------------------------------------------------------------------------
+
+def _damaged_docx(path: Path, method: int) -> Path:
+    """A docx whose document part has one changed byte after packing: a bad checksum (stored) or broken compressed data (deflated)."""
+    body = f'<?xml version="1.0"?><w:document {W}><w:body><w:p><w:r><w:t>{"Damaged draft text " * 40}</w:t></w:r></w:p></w:body></w:document>'
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", method) as z:
+        z.writestr("word/document.xml", body)
+    data = bytearray(buf.getvalue())
+    at = data.index(b"word/document.xml") + len("word/document.xml") + 40  # inside the part's data, after its local header
+    data[at] ^= 0xFF
+    path.write_bytes(bytes(data))
+    return path
+
+
+def test_a_damaged_office_file_shows_a_sentence_not_an_error_page(client, roots):
+    """A docx with a bad checksum or broken compressed data gives the panel's plain sentence and a hover card, never HTTP 500."""
+    root, _ = roots
+    for name, method in (("stored.docx", zipfile.ZIP_STORED), ("deflated.docx", zipfile.ZIP_DEFLATED)):
+        path = _damaged_docx(root / name, method)
+        with pytest.raises(officetext.OfficeError, match="damaged"):
+            officetext.extract(path)
+        panel = _local(client, path)
+        assert panel.status_code == 200 and "damaged" in panel.text, (name, panel.status_code)
+        card = _local(client, path, "card")
+        assert card.status_code == 200 and name in card.text, (name, card.status_code)
+
+
+def test_a_utf16_part_with_a_doctype_is_refused(roots):
+    """A document type declaration is refused in UTF-16 parts too, so an entity is never expanded whatever the encoding."""
+    root, _ = roots
+    xml = (f'<?xml version="1.0" encoding="UTF-16"?><!DOCTYPE d [<!ENTITY e "ENTITY-EXPANDED">]><w:document {W}><w:body><w:p><w:r>'
+           f'<w:t>&e;</w:t></w:r></w:p></w:body></w:document>')
+    for enc in ("utf-16", "utf-16-le", "utf-16-be"):
+        data = xml.encode(enc)
+        if enc != "utf-16":
+            data = "\ufeff".encode(enc) + data
+        path = _zip(root / f"u16-{enc}.docx", {"word/document.xml": data})
+        with pytest.raises(officetext.OfficeError, match="document type"):
+            officetext.extract(path)
+    plain = xml.replace(' encoding="UTF-16"', "").replace('<!DOCTYPE d [<!ENTITY e "ENTITY-EXPANDED">]>', "").replace("&e;", "kept")
+    ok = _zip(root / "u16-plain.docx", {"word/document.xml": "\ufeff".encode("utf-16-le") + plain.encode("utf-16-le")})
+    assert officetext.extract(ok)["paragraphs"] == ["kept"]
