@@ -18,16 +18,19 @@ import hashlib
 import json
 import re
 import subprocess
+import contextlib
+import contextvars
 from dataclasses import dataclass
 from pathlib import Path
 
 DIR = "events"
 SOURCES = ("ui", "cli", "mcp", "migration", "git")
 # The kind of actor, as the timeline shows it. owner = the store owner (James); main = the main session (Patch).
-KINDS = ("owner", "main", "coworker", "code", "subagent", "person")
+KINDS = ("owner", "main", "coworker", "code", "subagent", "person", "rule")  # rule = an automation (DESK-0292), never a person
 CHANGES = ("created", "field", "section", "comment", "git")
 SKIP_FIELDS = {"updated"}  # moves on every save; the save itself is the event
 MAX_VALUE = 120
+_BATCH: contextvars.ContextVar[str] = contextvars.ContextVar("desk_batch", default="")
 _AI_COAUTHOR = re.compile(r"\bclaude\b|anthropic\.com", re.I)  # a Co-Authored-By trailer that names an AI session
 _ID = re.compile(r"^([A-Za-z][A-Za-z0-9]*-\d+)")
 _ANY_COMMENT = re.compile(r"^- (\d{4}-\d{2}-\d{2})(?:[ T](\d{2}:\d{2}))? · (.+?) · (.*)$")
@@ -56,9 +59,13 @@ class Event:
     key: str = ""  # a stable key for migrated events, so a second migration skips them
     seq: int = 0  # position in the file, from 1
     prev: str = ""  # hash of the line before this one
+    batch: str = ""  # one id shared by every event of one bulk action, so it can be undone as one (DESK-0282 contract)
 
     def as_dict(self) -> dict:
-        return dataclasses.asdict(self)
+        d = dataclasses.asdict(self)
+        if not d.get("batch"):
+            d.pop("batch", None)  # lines without a batch keep the format they always had
+        return d
 
 
 # -- where -------------------------------------------------------------------------------
@@ -245,6 +252,16 @@ def diff(old, new) -> list[dict]:
     return out
 
 
+@contextlib.contextmanager
+def batch(batch_id: str):
+    """Every save inside this block records `batch_id` on its events (DESK-0282 contract: bulk actions undo as one)."""
+    token = _BATCH.set(batch_id)
+    try:
+        yield batch_id
+    finally:
+        _BATCH.reset(token)
+
+
 def record_save(store, old, new, now: dt.datetime | None = None) -> list[Event]:
     """Append one event per change made by this save, named for the actor of the current command or request."""
     from . import people as peoplemod
@@ -258,7 +275,7 @@ def record_save(store, old, new, now: dt.datetime | None = None) -> list[Event]:
     kind = kind_for(actor, a.kind, store.owner, pe)
     ts = (now or dt.datetime.now()).replace(microsecond=0).isoformat()
     evs = [Event(new.id, ts, actor, kind, a.source if a.source in SOURCES else "cli", c["change"], c["field"], c["old"], c["new"], c["what"],
-                 a.instance, bool(a.confirmed)) for c in changes]
+                 a.instance, bool(a.confirmed), batch=_BATCH.get()) for c in changes]
     return append(store.home, evs)
 
 
