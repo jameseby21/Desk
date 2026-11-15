@@ -24,6 +24,7 @@
       <h3><a class="tid" href="/ticket/{{ d.id }}">{{ d.id }}</a> {{ d.title }}</h3>
       <p class="br-why">{{ d.why }}</p>
       <div class="br-acts no-print">
+        {% if can_answer %}{# decision 110: only the owner answers; anyone else gets Open #}
         {% for a in d.answers if not a.needs_words %}
         <form class="post-once br-act" method="post" action="/ticket/{{ d.id }}/decide" data-inplace="refresh" data-progress="Sending,Saving,Done">
           <input type="hidden" name="token" value="{{ token() }}"><input type="hidden" name="action" value="{{ a.action }}"><input type="hidden" name="next" value="/brief">
@@ -32,18 +33,19 @@
         </form>
         {% endfor %}
         {% for a in d.answers if a.needs_words %}
-        <details class="br-more"><summary class="btn small">{{ a.label }}</summary>
+        <details class="br-more"><summary class="btn small{% if a.label == 'Approve' %} ball{% endif %}">{{ a.label }}</summary>
           <form class="post-once br-act" method="post" action="/ticket/{{ d.id }}/decide" data-inplace="refresh" data-progress="Sending,Saving,Done">
             <input type="hidden" name="token" value="{{ token() }}"><input type="hidden" name="action" value="{{ a.action }}"><input type="hidden" name="next" value="/brief">
             {% if a.reply %}<input type="hidden" name="reply" value="1">{% endif %}
-            <label class="br-lab" for="w-{{ d.id }}-{{ loop.index }}">{% if a.action == 'changes' %}What should change?{% else %}Your answer{% endif %}</label>
+            <label class="br-lab" for="w-{{ d.id }}-{{ loop.index }}">{% if a.action == 'changes' %}What should change?{% elif a.label == 'Approve' %}Approve, in your words{% else %}Your answer{% endif %}</label>
             <input type="text" id="w-{{ d.id }}-{{ loop.index }}" name="words" required minlength="4" autocomplete="off">
             <button class="btn small" type="submit">Send</button>
           </form>
         </details>
         {% endfor %}
+        {% endif %}
         <a class="btn small ghost" href="{{ d.open_href }}">Open</a>
-        <a class="br-snooze" href="{{ d.snooze_href }}">Snooze</a>
+        {% if can_answer %}<a class="br-snooze" href="{{ d.snooze_href }}">Snooze</a>{% endif %}
       </div>
     </article>
   {% endfor %}

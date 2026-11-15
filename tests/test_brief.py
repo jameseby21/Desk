@@ -59,7 +59,7 @@ def test_brief_sections_from_a_fixture_store(store, fx):
     assert fx["snoozed"].id not in ids
     rev = next(d for d in b["decisions"] if d["id"] == fx["rev"].id)
     assert [a["label"] for a in rev["answers"]] == ["Approve", "Send back"]
-    assert rev["answers"][0]["action"] == "approve" and len(rev["answers"][0]["words"]) >= 4
+    assert rev["answers"][0]["action"] == "approve" and rev["answers"][0]["needs_words"] and not rev["answers"][0]["words"]
     assert rev["answers"][1]["needs_words"] and rev["snooze_href"].startswith(f"/ticket/{fx['rev'].id}")
     assert [d["id"] for d in b["deadlines"]] == [fx["near"].id]
     assert [s["id"] for s in b["shipped"]] == [fx["shipped"].id]
@@ -192,11 +192,11 @@ def test_pages_render_answer_first(store, fx):
 
 
 def test_approve_from_the_brief_uses_the_decide_route(store, fx):
-    """Protects the one-click answer: the Approve form on /brief posts what the existing decide route accepts, and the ticket moves."""
+    """Protects the brief's answer: the Approve form on /brief, with the owner's typed words, posts what the decide route accepts."""
     c = TestClient(create_app(store.home))
     page = c.get("/brief").text
     form = page.split(f'action="/ticket/{fx["rev"].id}/decide"')[1].split("</form>")[0]
-    data = dict(re.findall(r'name="(\w+)" value="([^"]*)"', form))
+    data = dict(re.findall(r'name="(\w+)" value="([^"]*)"', form), words="Looks right to me.")
     r = c.post(f"/ticket/{fx['rev'].id}/decide", data=data, headers={"Accept": "application/json"})
     assert r.status_code == 200 and r.json()["ok"]
     assert store.get(fx["rev"].id).status == "approved"
@@ -252,6 +252,38 @@ def test_past_week_review_lists_only_dates_inside_that_week_as_slipped(store):
     rv.apply(store, store.get(rt.id), today=later)
     line = next(x for x in store.get(rt.id).section("Report").splitlines() if x.startswith("- Slipped"))
     assert inside.id in line and after.id not in line
+
+
+def test_brief_approve_needs_the_owners_typed_words(store, fx):
+    """Protects rule 10 on /brief: Approve carries no fixed sentence, asks for typed words, and records exactly those words."""
+    rev = next(d for d in brief.build_brief(store, TOMORROW)["decisions"] if d["id"] == fx["rev"].id)
+    assert all(a["needs_words"] and not a["words"] for a in rev["answers"])
+    c = TestClient(create_app(store.home))
+    page = c.get("/brief").text
+    assert "Approved from the daily brief" not in page
+    form = page.split(f'action="/ticket/{fx["rev"].id}/decide"')[1].split("</form>")[0]
+    assert 'name="action" value="approve"' in form and 'name="words" required' in form
+    assert 'type="hidden" name="words"' not in form
+    data = dict(re.findall(r'name="(\w+)" value="([^"]*)"', form))
+    c.post(f"/ticket/{fx['rev'].id}/decide", data=data, headers={"Accept": "application/json"})
+    assert store.get(fx["rev"].id).status == "review"  # no words, nothing recorded
+    data.update(token=c.app.state.tokens.issue(), words="Ship it as it stands.")
+    assert c.post(f"/ticket/{fx['rev'].id}/decide", data=data, headers={"Accept": "application/json"}).json()["ok"]
+    t = store.get(fx["rev"].id)
+    assert t.status == "approved" and '"Ship it as it stands."' in t.section("Decision")
+
+
+def test_brief_answer_forms_only_for_the_owner(store, fx, monkeypatch):
+    """Protects decision 110 on /brief: a viewer named as someone else sees the tiles but no answer forms."""
+    from desk import identity, people
+
+    monkeypatch.setattr(identity, "os_user", lambda: "someone-unlisted")
+    people.add_person(store.home, "coworker", "A coworker")
+    c = TestClient(create_app(store.home))
+    assert f'action="/ticket/{fx["rev"].id}/decide"' in c.get("/brief").text  # the owner, assumed, may answer
+    c.cookies.set("desk_who", "coworker")
+    page = c.get("/brief").text
+    assert fx["rev"].id in page and "/decide" not in page
 
 
 def test_flow_skips_closed_time_and_counts_a_reopen(store):

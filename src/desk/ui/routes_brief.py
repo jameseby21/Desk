@@ -48,8 +48,11 @@ def register(app, templates, ctx, store) -> None:
         s = store()
         b = bf.build_brief(s)
         today = dt.date.today()
+        from .app import acting
+
+        can_answer = acting(request).name.lower() == s.owner.lower()  # decision 110: a viewer named as someone else sees no answer forms
         return templates.TemplateResponse(request, "brief.html", ctx(request, s, b=b, s=s, long_today=f"{today.strftime('%A, %B')} {today.day}",
-                                                                   review_t=rv.find(s, rv.monday_of(today)), shown=SHOWN))
+                                                                   review_t=rv.find(s, rv.monday_of(today)), shown=SHOWN, can_answer=can_answer))
 
     @router.get("/brief/week", response_class=HTMLResponse)
     def brief_week(request: Request, week: str = ""):

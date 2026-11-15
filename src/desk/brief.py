@@ -109,19 +109,20 @@ def shipped(store, tickets: list[Ticket], first: dt.date, last: dt.date) -> list
 # ---- decisions -------------------------------------------------------------------------------------------------------------
 
 def answers(store, t: Ticket, kind: str) -> list[dict]:
-    """The buttons a decision tile carries, each a post the existing decide route accepts. `words` is the default sentence written to
-    Decision; `needs_words` asks the person for their own (Send back always does: a send-back needs a reason)."""
+    """The buttons a decision tile carries, each a post the existing decide route accepts. A choose option needs only the click (the
+    option's text is the answer); Approve, Send back and Answer set `needs_words`, so the Decision line quotes words the owner typed
+    (rule 10: no fixed sentence is ever recorded as his words)."""
     ask = asks.ask_of(t)
     if ask and str(t.meta.get("owner") or "").lower() == store.owner.lower() and t.status in ("ready", "review"):
         if ask["kind"] == "choose":
             return [{"label": f"{lab}" if lab == text else f"{lab}: {text}", "action": "approve", "reply": "1", "option": str(i), "words": ""}
                     for i, (lab, text) in enumerate(ask["options"])]
         if ask["kind"] == "approve":
-            return [{"label": "Approve", "action": "approve", "reply": "1", "option": "", "words": "Approved from the daily brief."},
+            return [{"label": "Approve", "action": "approve", "reply": "1", "option": "", "words": "", "needs_words": True},
                     {"label": "Send back", "action": "changes", "reply": "1", "option": "", "words": "", "needs_words": True}]
         return [{"label": "Answer", "action": "approve", "reply": "1", "option": "", "words": "", "needs_words": True}]
     if kind == "approve" and t.status == "review":
-        return [{"label": "Approve", "action": "approve", "reply": "", "option": "", "words": "Approved from the daily brief."},
+        return [{"label": "Approve", "action": "approve", "reply": "", "option": "", "words": "", "needs_words": True},
                 {"label": "Send back", "action": "changes", "reply": "", "option": "", "words": "", "needs_words": True}]
     return []
 
