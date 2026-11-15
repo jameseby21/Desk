@@ -334,6 +334,28 @@ def test_a_delegation_is_written_to_the_store_file_shown_on_settings_and_removab
     assert delegations.load(store.home) == [] and store.get(t.id).status == "ready"  # nothing was approved by saying so
 
 
+def test_a_removed_delegation_can_be_put_back_and_both_writes_are_committed(store, monkeypatch):
+    """Protects: reversible writes, Remove offers Put back (the same line returns as it was) and add, remove and put back go to git sync."""
+    from desk.store import Store
+
+    synced = []
+    monkeypatch.setattr(Store, "sync_after", lambda self, message: synced.append(message))
+    t = _ask(store, "Approve: alt text wording on cards", "Plain.")
+    c = _owner(store, monkeypatch)
+    c.post("/decide/delegate", data={"token": _tok(c), "id": t.id, "who": "main", "pattern": "alt text wording"}, follow_redirects=False)
+    before = delegations.load(store.home)
+    r = c.post("/settings/delegations/remove", data={"token": _tok(c), "index": "0", "pattern": "alt text wording"}, follow_redirects=False)
+    assert delegations.load(store.home) == []
+    page = c.get(r.headers["location"].split("#")[0]).text
+    assert 'action="/settings/delegations/restore"' in page and "Put it back" in page
+    key = _q(r)["put_back"]
+    r = c.post("/settings/delegations/restore", data={"token": _tok(c), "key": key}, follow_redirects=False)
+    assert delegations.load(store.home) == before and "Put back" in _q(r)["msg"]
+    r = c.post("/settings/delegations/restore", data={"token": _tok(c), "key": key}, follow_redirects=False)
+    assert delegations.load(store.home) == before  # a second Put back adds nothing
+    assert [m.split(":")[0] for m in synced] == ["desk"] * 3 and all("delegation" in m for m in synced), synced
+
+
 def test_someone_else_cannot_add_a_delegation(store, monkeypatch):
     """Protects: decision 110, only the owner can hand his approvals to someone."""
     t = _ask(store, "Approve: alt text wording", "Plain.")

@@ -2,17 +2,24 @@
 kind of ask for the owner, since when and who said so. The owner reads and removes them on /settings (or edits the file).
 
 Nothing approves on its own from this file yet: it is a record of the owner's word. The automation engine (DESK-0292) may read it
-later; until then a delegate still answers through the normal path. Docs: docs/COMMANDS.md (`/settings` Delegations)."""
+later; until then a delegate still answers through the normal path.
+
+Every change is reversible: an added line is taken back with Remove, and a removed line is kept in `.desk/delegations-removed.jsonl`
+(local, never committed) under a short key, so Put back returns it exactly as it was. The web routes commit each change through the
+store's git sync. Docs: docs/COMMANDS.md (`/settings` Delegations)."""
 
 from __future__ import annotations
 
 import datetime as dt
+import json
+import secrets
 from pathlib import Path
 
 from . import yamlio
 from .secretscan import looks_secret
 
 FILE = "delegations.yaml"
+REMOVED = Path(".desk") / "delegations-removed.jsonl"
 HEADER = ("# Delegations (DESK-0285): who may approve what kind of ask for the owner. Written from Decide mode; remove a line on /settings.\n"
           "# Nothing approves on its own from this file yet; the automation engine may read it later.\n")
 MAX_PATTERN = 200
@@ -64,4 +71,34 @@ def remove(home: Path, index: int, pattern: str) -> dict:
         raise ValueError("That line has changed since the page opened. Reload Settings and try again.")
     gone = rows.pop(index)
     _write(home, rows)
-    return gone
+    key = secrets.token_hex(4)
+    p = Path(home) / REMOVED
+    p.parent.mkdir(parents=True, exist_ok=True)
+    with p.open("a", encoding="utf-8", newline="\n") as fh:
+        fh.write(json.dumps({"key": key, "row": gone}, ensure_ascii=False) + "\n")
+    return {**gone, "key": key}
+
+
+def removed(home: Path, key: str) -> dict | None:
+    """The line removed under `key`, while it is not back on the list; None otherwise."""
+    try:
+        text = (Path(home) / REMOVED).read_text(encoding="utf-8")
+    except OSError:
+        return None
+    for ln in reversed(text.splitlines()):
+        try:
+            r = json.loads(ln)
+        except ValueError:
+            continue
+        if r.get("key") == key and isinstance(r.get("row"), dict):
+            return None if r["row"] in load(home) else r["row"]
+    return None
+
+
+def put_back(home: Path, key: str) -> dict:
+    """Return the line removed under `key` to the list, exactly as it was (its date and who said it kept)."""
+    row = removed(home, key)
+    if row is None:
+        raise ValueError("That line is already back, or it can not be found. Nothing changed.")
+    _write(home, load(home) + [row])
+    return row

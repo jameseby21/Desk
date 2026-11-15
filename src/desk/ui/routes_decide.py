@@ -55,6 +55,7 @@ def _find(items, tid: str):
 def build(*, templates, ctx, store, tokens, acting) -> APIRouter:
     r = APIRouter()
     templates.env.globals["delegations"] = lambda: dg.load(store().home)
+    templates.env.globals["delegation_removed"] = lambda key: dg.removed(store().home, key) if key else None
 
     def may_decide(request, s) -> tuple[bool, str]:
         return dm.may_decide(acting(request), s.owner)  # the same rule decidemode.record checks again on every write
@@ -142,7 +143,9 @@ def build(*, templates, ctx, store, tokens, acting) -> APIRouter:
             return refuse(why_not)
         try:
             t = s.get(id)
+            s.sync_before()
             row = dg.add(s.home, who, pattern, by=s.owner, project=t.project, source=t.id)
+            s.sync_after(f"desk: delegation added from {t.id}")
         except (KeyError, ValueError) as e:
             return go("/decide", at=id.upper(), error=e.args[0] if isinstance(e, KeyError) and e.args else str(e))
         name = peoplemod.load(s.home).display(row["who"]) if peoplemod.load(s.home).get(row["who"]) else row["who"]
@@ -236,9 +239,29 @@ def build(*, templates, ctx, store, tokens, acting) -> APIRouter:
         if not can:
             return refuse(why_not, "/settings")
         try:
+            s.sync_before()
             gone = dg.remove(s.home, index, pattern)
+            s.sync_after("desk: delegation removed")
         except ValueError as e:
             return RedirectResponse(f"/settings?msg={quote(str(e))}#delegations", status_code=303)
-        return RedirectResponse(f"/settings?msg={quote('Removed: ' + gone['pattern'])}#delegations", status_code=303)
+        return RedirectResponse(f"/settings?{urlencode({'msg': 'Removed: ' + gone['pattern'], 'put_back': gone['key']})}#delegations", status_code=303)
+
+    @r.post("/settings/delegations/restore")
+    def delegation_restore(request: Request, key: str = Form(""), token: str = Form("")):
+        if not from_here(request):
+            return refuse(FOREIGN)
+        if not tokens.use(token):
+            return spent()
+        s = store()
+        can, why_not = may_decide(request, s)
+        if not can:
+            return refuse(why_not, "/settings")
+        try:
+            s.sync_before()
+            row = dg.put_back(s.home, key)
+            s.sync_after("desk: delegation put back")
+        except ValueError as e:
+            return RedirectResponse(f"/settings?{urlencode({'msg': str(e)})}#delegations", status_code=303)
+        return RedirectResponse(f"/settings?{urlencode({'msg': 'Put back: ' + row['pattern']})}#delegations", status_code=303)
 
     return r
