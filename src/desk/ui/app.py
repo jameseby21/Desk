@@ -233,6 +233,9 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
     app.state.stopping = False
     app.add_middleware(timing.TimingMiddleware)
     app.add_middleware(IdentityMiddleware, find_store=lambda: Store(home or find_home()))
+    from .origin_guard import LocalOnly
+
+    app.add_middleware(LocalOnly)  # added last, so outermost: pages from this computer only (rule 80 item 10; DESK-0290 review)
     tokens = Tokens()
     app.state.tokens = tokens
     shown = {"censor": None, "style": "plain"}  # per request: the profanity filter (None when switched off) and the style that picks the words on screen

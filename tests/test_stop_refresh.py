@@ -69,7 +69,7 @@ def test_ctrl_c_stops_the_real_server_within_two_seconds_with_a_stream_open(stor
                 time.sleep(0.2)
         else:
             pytest.fail("the server did not start")
-        c.sendall(b"GET /events HTTP/1.1\r\nHost: x\r\nAccept: text/event-stream\r\n\r\n")
+        c.sendall(b"GET /events HTTP/1.1\r\nHost: 127.0.0.1\r\nAccept: text/event-stream\r\n\r\n")
         time.sleep(1.0)
         assert b"200" in c.recv(200).split(b"\r\n")[0]  # the stream is open
         t0 = time.time()
