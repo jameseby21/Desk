@@ -122,6 +122,7 @@ class Period:
     end: dt.datetime
     current: bool = False
     share: float = 0.0  # percent of the strip's width, by time
+    today: dt.date | None = None  # the strip's own "now", so its words name the year by that date, never by the machine clock
 
     @property
     def seconds(self) -> float:
@@ -142,7 +143,7 @@ class Period:
     @property
     def text(self) -> str:
         """What a person reads for this period: status, from when, for how long."""
-        return f"{self.label}, from {day_text(self.start, with_time=True)}, for {duration_text(self.seconds)}" + (" (now)" if self.current else "")
+        return f"{self.label}, from {day_text(self.start, self.today, with_time=True)}, for {duration_text(self.seconds)}" + (" (now)" if self.current else "")
 
 
 @dataclass
@@ -252,6 +253,7 @@ def periods(created, events, status: str, now: dt.datetime | None = None) -> lis
     out.append(Period(cur, start, max(now, start), current=True))
     total = sum(p.seconds for p in out)
     for p in out:
+        p.today = now.date()
         p.share = round(100 * p.seconds / total, 3) if total else round(100 / len(out), 3)
     return out
 

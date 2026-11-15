@@ -120,6 +120,44 @@ def test_event_kinds_sort_every_change_into_a_dot_and_a_chip():
     assert timeline.STRONG == {"status", "decision"}
 
 
+
+# -- the strip's own clock (finding: the period words used the machine's date, not the strip's now) -----------------------------
+
+def _clock(monkeypatch, today):
+    """Make the machine's date `today` for the timeline module only; datetime itself stays real."""
+    import types
+
+    class FakeDate(dt.date):
+        @classmethod
+        def today(cls):
+            return today
+
+    monkeypatch.setattr(timeline, "dt", types.SimpleNamespace(datetime=dt.datetime, date=FakeDate, timedelta=dt.timedelta))
+
+
+def test_period_words_take_the_year_from_the_strips_now_not_the_machine_clock(monkeypatch):
+    """Protects the strip's dates against the machine clock: with now in 2025 and the clock in 2030, a 2025 start has no year
+    and, with now in 2026, a 2025 start says 2025; unit method, clock patched."""
+    _clock(monkeypatch, dt.date(2030, 6, 1))
+    now = dt.datetime(2025, 11, 15, 12, 0)
+    ps = timeline.periods("2025-11-14", [ev("2025-11-14T00:00:00", "created", "created", seq=1), move("2025-11-15T00:00:00", "inbox", "ready", 2)],
+                          "ready", now)
+    assert ps[-1].text == "Ready, from Sat 15 Nov, for 12 hours (now)", ps[-1].text
+    _clock(monkeypatch, dt.date(2025, 6, 1))
+    later = timeline.periods("2025-11-14", [ev("2025-11-14T08:00:00", "created", "created", seq=1), move("2025-11-14T09:00:00", "inbox", "ready", 2)],
+                             "ready", NOW)
+    assert later[-1].text.startswith("Ready, from Fri 14 Nov 2025 09:00, for "), later[-1].text  # now in 2026, start in 2025: the year is named
+
+
+def test_one_move_reads_the_same_in_the_new_year(monkeypatch):
+    """Protects test_one_move_is_two_periods_with_widths_by_time from going red on 1 Jan 2027 with no code change: the same strip,
+    the clock patched to 2027-01-02, reads the same words."""
+    _clock(monkeypatch, dt.date(2027, 1, 2))
+    ps = timeline.periods("2026-11-14", [ev("2026-11-14T00:00:00", "created", "created", seq=1), move("2026-11-15T00:00:00", "inbox", "ready", 2)],
+                          "ready", NOW)
+    assert ps[0].text == "Inbox, from Sat 14 Nov, for 1 day" and ps[1].text == "Ready, from Sun 15 Nov, for 12 hours (now)"
+
+
 # -- route: through the real app ----------------------------------------------------------
 
 def _busy(store, n=20):
@@ -305,3 +343,21 @@ def test_the_visual_timeline_in_a_real_browser(store, width):
     assert d["segs"] == 10 and d["labels"] >= 1 and d["nowH"] > d["pastH"], d
     assert d["all"] == 31 and d["btn"] == "Show the newest 12", d
     assert 0 < d["dec"] < 31 and d["decOk"] and d["back"] == 31, d
+
+
+def test_the_strip_line_and_the_rail_agree_on_the_year_across_new_year(store, monkeypatch):
+    """Protects one clock per page: with the page's now injected in 2027 and a ticket that spans New Year, the status line under the
+    strip and the rail's day heading both name 2026 for 31 Dec; route method through the real app."""
+    t = ops.new(store, "Across the new year", "desk")
+    activity.path(store.home, t.id).unlink()
+    activity.append(store.home, [activity.Event(t.id, "2026-12-30T10:00:00", "owner-a", "owner", "ui", "created", "created", "", "x", "Created: x"),
+                                 activity.Event(t.id, "2026-12-31T09:00:00", "main-a", "main", "cli", "field", "status", "inbox", "ready", "status: inbox → ready")])
+    x = store.get(t.id)
+    x.meta["status"], x.meta["created"] = "ready", "2026-12-30"
+    x.write()
+    real = timeline.view
+    monkeypatch.setattr(timeline, "view", lambda s, tk, filters=None, now=None: real(s, tk, filters, now=dt.datetime(2027, 1, 5, 9, 0)))
+    page = _page(store, t)
+    info = re.search(r'<p class="tl-st-info" id="tl-st-info"[^>]*>([^<]*)</p>', page).group(1)
+    assert "Thu 31 Dec 2026" in info, info
+    assert ">Thu 31 Dec 2026</h3>" in page
