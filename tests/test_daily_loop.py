@@ -214,6 +214,25 @@ def test_a_bad_notify_value_in_desk_toml_never_breaks_settings(store, monkeypatc
     assert 'id="lanes"' in r.text and 'id="motivation"' in r.text and 'id="delegations"' in r.text
 
 
+# ---- capture and the auto-refresh (DESK-0286 + the page's live reload) --------------------------------------------------------
+
+def test_capture_writes_hand_the_page_their_own_stamp(store, monkeypatch):
+    """Protects the drop and the capture box from reloading themselves: their JSON carries the file stamp of the write (at least the
+    ticket page's and Today's stream stamps), so DeskLive ignores that change and the page moves on to the address with the Undo.
+    Without it the browser drop test reloaded, dropped again and never finished (2 runs in 3)."""
+    from desk.ui import events as ev
+
+    JSON = {"Accept": "application/json"}
+    c = _owner(store, monkeypatch)
+    t = ops.new(store, "Meeting follow-up", "desk")
+    tok = c.get("/capture/token.json").json()["token"]
+    j = c.post(f"/ticket/{t.id}/drop", data={"token": tok}, files={"file": ("notes.txt", b"meeting notes", "text/plain")}, headers=JSON).json()
+    assert j["ok"] and int(j["stamp"]) >= max(ev.ticket_stamp(store, t.id), ev.tickets_stamp(store)), j
+    tok = c.get("/capture/token.json").json()["token"]
+    j = c.post("/capture", data={"text": "new: try the brief on the phone", "token": tok}, headers=JSON).json()
+    assert j["ok"] and int(j["stamp"]) >= max(ev.ticket_stamp(store, j["id"]), ev.tickets_stamp(store)), j
+
+
 # ---- the origin guard stays outermost ---------------------------------------------------------------------------------------
 
 def test_the_origin_guard_runs_before_every_other_middleware(store):

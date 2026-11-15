@@ -33,6 +33,7 @@
     if (window.DeskProgress) return DeskProgress.failText(res, err);
     return (res && res.j && res.j.error) || "Desk could not save it. Try again.";
   }
+  function mine(res) { if (res && res.ok && res.j && res.j.stamp && window.DeskLive) window.DeskLive.mine(res.j.stamp); }  // DESK-0282: our own write, so no auto-refresh
   function send(url, fields, host) {
     var p = bar(host);
     return key().then(function (k) {
@@ -41,6 +42,7 @@
       fd.append("token", k.token);
       return DeskProgress.post(url, fd, { progress: p });
     }).then(function (res) {
+      mine(res);
       if (res.ok && res.j && res.j.url) { if (p) p.done(res.j.message || "Saved."); setTimeout(function () { location.href = res.j.url; }, 250); return res; }
       if (p) p.fail(failText(res)); return res;
     }, function (err) { if (p) p.fail(failText(null, err)); });
@@ -119,6 +121,7 @@
         var fd = new FormData(); fd.append("file", f, f.name); fd.append("token", k.token);
         return DeskProgress.post("/ticket/" + encodeURIComponent(ticket) + "/drop", fd, {});
       }).then(function (res) {
+        mine(res);
         if (res.ok) last = { url: res.j.url, message: files.length > 1 ? "Attached " + (i - bad.length) + " of " + files.length + " files to " + ticket + "." : res.j.message };
         else bad.push(f.name + ": " + failText(res));
         next();
@@ -148,6 +151,7 @@
         var fd = new FormData(); fd.append("text", text.value); fd.append("mvp", box.querySelector("#cap-drop-mvp").value); fd.append("how", "file drop"); fd.append("file", f, f.name); fd.append("token", k.token);
         return DeskProgress.post("/capture", fd, { progress: p });
       }).then(function (res) {
+        mine(res);
         if (res.ok) { if (p) p.done(res.j.message); setTimeout(function () { location.href = res.j.url; }, 300); }
         else if (p) p.fail(failText(res));
       }, function (err) {

@@ -18,6 +18,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, Uplo
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from .. import activity, capture as cap, ops
+from . import events as ev
 from ..rules import RuleError
 from ..ticket import TYPES
 
@@ -45,6 +46,13 @@ def local_only(request: Request) -> None:
 
 def _json(request: Request) -> bool:
     return "application/json" in request.headers.get("accept", "")
+
+
+def own_stamp(s, tid: str) -> str:
+    """The file stamp of this write, for `DeskLive.mine` (DESK-0282): the page's auto-refresh then knows the change was its own
+    and does not reload before the page moves to the address with the Undo. The larger of the ticket's stamp (a ticket page's
+    stream) and the tickets folder's (Today's and the board's stream), so it holds on any page."""
+    return str(max(ev.ticket_stamp(s, tid), ev.tickets_stamp(s)))
 
 
 def ticket_url(tid: str, batch: str, msg: str, anchor: str = "", done: str = "") -> str:
@@ -154,7 +162,8 @@ def router(store, templates, ctx, tokens, acting) -> APIRouter:
         msg = created_text(s, t, named) + (f" {Path(fname).name} is attached." if data is not None else "")
         url = ticket_url(t.id, b, msg, done="new")
         if js:
-            return JSONResponse({"ok": True, "id": t.id, "url": url, "batch": b, "message": msg, "lane": t.meta.get("lane"), "project": t.project, "type": t.meta.get("type")})
+            return JSONResponse({"ok": True, "id": t.id, "url": url, "batch": b, "message": msg, "lane": t.meta.get("lane"), "project": t.project, "type": t.meta.get("type"),
+                                 "stamp": own_stamp(s, t.id)})
         return RedirectResponse(url, status_code=303)
 
     @r.get("/capture/paste", response_class=HTMLResponse)
@@ -259,7 +268,7 @@ def router(store, templates, ctx, tokens, acting) -> APIRouter:
         msg = f"Attached {dest.name} to {t.id}."
         url = ticket_url(t.id, b, msg, anchor="attachments")
         if js:
-            return JSONResponse({"ok": True, "name": dest.name, "url": url, "batch": b, "message": msg})
+            return JSONResponse({"ok": True, "name": dest.name, "url": url, "batch": b, "message": msg, "stamp": own_stamp(s, t.id)})
         return RedirectResponse(url, status_code=303)
 
     return r
