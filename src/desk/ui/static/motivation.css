@@ -1,0 +1,42 @@
+/* Motivation (DESK-0293): the decided-today line, the celebration and the focus timer in the header; the agents list in the empty
+   state; the Motivation settings group. Colours come from the tokens in desk.css, so light and dark both work. One bold moment only. */
+.mot{display:inline-flex;flex-wrap:wrap;align-items:center;gap:6px 10px}
+.mot ~ .user{margin-left:0}
+.mot-count{position:relative;display:inline-flex;align-items:center;min-height:32px;padding:0 10px;border:1px solid var(--line);border-radius:999px;font:500 12.5px/1 var(--font-mono);color:var(--muted);text-decoration:none;white-space:nowrap}
+.mot-count.met{background:var(--ball);border-color:var(--ink);color:#141414}
+.mot-count:focus-visible,.mot-clock:focus-visible,.mot-x:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.mot-plus{margin-left:6px;font-weight:700;color:var(--ink)}
+.mot-count.met .mot-plus{color:#141414}
+.mot-pop{animation:mot-pop .45s cubic-bezier(.2,1.6,.4,1)}
+@keyframes mot-pop{0%{transform:scale(1)}40%{transform:scale(1.18)}100%{transform:scale(1)}}
+.mot-burst{position:absolute;left:50%;top:50%;width:0;height:0;pointer-events:none}
+.mot-burst i{position:absolute;left:-3px;top:-3px;width:6px;height:6px;border-radius:50%;background:var(--ball);border:1px solid var(--ink);
+  transform:rotate(var(--a)) translateY(0);opacity:1;animation:mot-burst .8s ease-out forwards}
+@keyframes mot-burst{to{transform:rotate(var(--a)) translateY(-30px);opacity:0}}
+.mot-still{background:var(--ball);border-color:var(--ink);color:#141414}
+@media (prefers-reduced-motion:reduce){.mot-pop,.mot-burst i{animation:none}.mot-burst{display:none}}
+
+.mot-focus{display:inline-flex;flex-wrap:wrap;align-items:center;gap:6px}
+.mot-clock{display:inline-flex;align-items:center;min-height:32px;padding:0 10px;border-radius:999px;background:var(--ink);color:var(--on-ink);font:600 12.5px/1 var(--font-mono);text-decoration:none;font-variant-numeric:tabular-nums}
+.mot-clock:hover{color:var(--on-ink)}
+.mot-x{min-width:32px;min-height:32px;border:1px solid var(--line);border-radius:999px;background:var(--card);color:var(--ink);font:600 16px/1 inherit;cursor:pointer}
+.mot-focus.ended{padding:4px 6px 4px 10px;border:1.5px solid var(--ink);border-radius:12px;background:var(--card);box-shadow:3px 3px 0 var(--ball)}
+.mot-ask{font-size:13.5px}
+.mot-slot{display:inline-flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:13px}
+.mot-open{font-weight:600}
+.mot-start{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 0 10px}
+.mot-start .btn{min-height:36px}
+
+.mot-agents{margin-top:10px}
+.mot-agents ul{list-style:none;margin:6px 0 0;padding:0;display:grid;gap:6px}
+.mot-agents li{display:flex;flex-wrap:wrap;gap:2px 8px;align-items:baseline;overflow-wrap:anywhere}
+.mot-title{font-weight:600}
+
+.mot-set{display:block;margin:12px 0 2px;font-weight:600}
+.mot-num{display:flex;align-items:center;gap:10px}
+.mot-num input{width:6em;font:inherit;padding:8px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink)}
+
+@media (max-width:600px){
+  .mot{flex-basis:100%;order:5}
+  .mot-focus.ended{width:100%}
+}

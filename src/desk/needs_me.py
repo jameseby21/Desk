@@ -31,7 +31,7 @@ SLACK = dt.timedelta(minutes=2)  # a write follows the minute stamped on its own
 CHIP = {"approve": "Approve this", "choose": "Choose one", "answer": "Answer this", "provide": "Provide this", "do": "Do a step"}
 ACT = {"approve": "Review", "choose": "Choose", "answer": "Answer", "provide": "Provide", "do": "Start"}
 EMPTY = {
-    "plain": ("Nothing needs you", "Every open ticket has someone else on it. New requests and changes show up here."),
+    "plain": ("Nothing needs you right now", "Every open ticket has someone else on it. New requests and changes show up here."),
     "dogs": ("Nothing needs you (nothing to fetch)", "Drew has every ticket covered. New requests and changes show up here."),
     "cat": ("Nothing needs you (nothing on your doorstep)", "Soot has it handled. New requests and changes show up here."),
 }

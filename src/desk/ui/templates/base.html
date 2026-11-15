@@ -21,6 +21,7 @@
   {% include "_saved_views.html" %}
   <form class="search-open" action="/search" method="get" role="search" data-progress="none"><input type="search" name="q" id="search-open" placeholder="Find a ticket or project" aria-label="Find a ticket or project" autocomplete="off"><kbd title="Press / to search from any page">/</kbd></form>
   <span class="notify-ctl" role="group" aria-label="Popup notifications"><button type="button" class="btn small" id="notify-allow" aria-pressed="false">Notify me</button><button type="button" class="btn small" id="notify-mute" aria-pressed="false">Mute</button></span>
+  {% include "_motivation_head.html" %}
   <a class="user" href="/settings" title="You are {{ me.display() }}. Settings, and the store this Desk reads."><span class="uinit">{{ (me.name or '?')[0]|upper }}</span>{{ me.display() }}</a>
 </header>
 {% if unnamed %}<div class="notice" role="status">Desk does not know who you are on this machine yet, so it records you as {{ owner }} (claimed). <a href="/whoami">Say who you are, once</a>.</div>{% endif %}
