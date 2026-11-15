@@ -128,6 +128,7 @@ class Period:
     today: dt.date | None = None  # the strip's own "now", so its words name the year by that date, never by the machine clock
     since_unknown: bool = False  # the status is on record at `start`, but nothing says when it began (it may be earlier)
     note: str = ""  # for a span with no record: what the next record says about it
+    on_owner: bool = False  # the ticket was waiting on the owner: in review, or blocked with blocked_on naming them (set by view)
 
     @property
     def unknown(self) -> bool:
@@ -165,6 +166,21 @@ class Period:
             out += ": no status record covers this time" + (f"; {self.note}" if self.note else "")
         return out + (" (now)" if self.current else "")
 
+    @property
+    def key(self) -> dict:
+        """The key's words after the status name, in parts, so a phone can drop the weekday, the time and the note and keep each
+        period to about one line: {pre, wd, dm, tm, post, note}; joined they read as `text` without the name."""
+        now = " (now)" if self.current else ""
+        if self.since_unknown and self.seconds < 60:
+            return {"pre": "now; when it started is not recorded", "wd": "", "dm": "", "tm": "", "post": "", "note": ""}
+        d, today = self.start, self.today or dt.date.today()
+        tm = f" {d:%H:%M}" if (d.hour, d.minute, d.second) != (0, 0, 0) else ""
+        dm = f"{d.day} {d:%b}" + ("" if d.year == today.year else f" {d.year}")
+        how = f"for at least {duration_text(self.seconds)}" if self.since_unknown else f"for {duration_text(self.seconds)}"
+        post = (" or earlier, " if self.since_unknown else ", ") + how + ("" if self.unknown else now)
+        note = (": no status record covers this time" + (f"; {self.note}" if self.note else "") + now) if self.unknown else ""
+        return {"pre": "from ", "wd": f"{d:%a}", "dm": dm, "tm": tm, "post": post, "note": note}
+
 
 @dataclass
 class Day:
@@ -199,6 +215,9 @@ class View:
     git_after: int = 0  # git saves newer than `latest`
     units: int = 0  # rows on the rail once git saves are folded
     first_events: int = 0  # events the rail shows before Show all (a fold counts all its saves)
+    axis: list = field(default_factory=list)  # date marks between Created and Now: (percent from the left, label, css class)
+    on_you: str = ""  # how long the ticket waited on the owner, in words, or ""
+    key_first: int = 12  # the newest periods listed in the key before "Show the earlier periods"
     periods: list = field(default_factory=list)  # status periods, oldest first
     days: list = field(default_factory=list)  # the rail: every event grouped by day, newest first
     counts: dict = field(default_factory=dict)  # chip key -> events
@@ -378,6 +397,41 @@ def _finish(out: list[Period], now: dt.datetime) -> list[Period]:
     return joined
 
 
+def axis_marks(start: dt.datetime, now: dt.datetime) -> list[tuple[float, str, str]]:
+    """Date marks for a strip longer than two days: the midnight nearest the middle (always drawn) and the ones nearest a quarter and
+    three quarters (wide screens only), each as (percent from the left, `Wed 11 Nov`, class). None within 12% of either end, where
+    they would crowd Created and Now."""
+    total = (now - start).total_seconds()
+    if total <= 2 * 86400:
+        return []
+    out, used = [], set()
+    for frac, cls in ((0.5, "mid"), (0.25, "q"), (0.75, "q")):
+        at = start + dt.timedelta(seconds=total * frac)
+        day = dt.datetime(at.year, at.month, at.day) + (dt.timedelta(days=1) if at.hour >= 12 else dt.timedelta())
+        pct = round(100 * (day - start).total_seconds() / total, 2)
+        if day.date() in used or not 12 <= pct <= 88:
+            continue
+        used.add(day.date())
+        out.append((pct, day_text(day, now.date()), cls))
+    return sorted(out)
+
+
+def waiting_on_owner(ps: list[Period], t, owner: str) -> str:
+    """Mark the periods the ticket waited on the owner (review; blocked when blocked_on names the owner, known only for the current
+    blocked period) and say how long in words: `now, for 9 hours; 6 days in all`, or `6 days in all`, or ""."""
+    who = str(t.meta.get("blocked_on") or "").lower()
+    for p in ps:
+        p.on_owner = p.status == "review" or (p.status == "blocked" and p.current and bool(owner) and owner.lower() in who)
+    mine = [p for p in ps if p.on_owner]
+    if not mine:
+        return ""
+    total = duration_text(sum(p.seconds for p in mine))
+    cur = ps[-1] if ps and ps[-1].on_owner else None
+    if cur is not None:
+        return f"now, for {'at least ' if cur.since_unknown else ''}{duration_text(cur.seconds)}" + ("" if len(mine) == 1 else f"; {total} in all")
+    return f"{total} in all"
+
+
 def fold_git(rs: list) -> int:
     """Give every row its rail position (`unit`), folding each run of two or more consecutive git saves by one actor on one day into
     one position (`run`). Returns the number of positions."""
@@ -539,10 +593,11 @@ def view(store, t, filters: dict[str, set[str]] | None = None, now: dt.datetime 
     shown = [r for r in rs if matches(r, filters)]
     counts = {k: (len(rs) if k == "all" else sum(1 for r in rs if r.group == k)) for k, _lab in CHIPS}
     created = _ts(t.meta.get("created"))
+    ps = periods(t.meta.get("created"), evs, str(t.meta.get("status") or ""), now, snapshots=[(x.ts, x.status, x.first) for x in snaps],
+                 done_at=t.meta.get("done_at"), saved_at=saved)
     return View(t.id, str(t.meta.get("title") or ""), rs, shown, latest, facets, filters, git_after=git_after, units=units,
-                first_events=sum(1 for r in rs if r.unit < FIRST),
-                periods=periods(t.meta.get("created"), evs, str(t.meta.get("status") or ""), now,
-                                snapshots=[(x.ts, x.status, x.first) for x in snaps], done_at=t.meta.get("done_at"), saved_at=saved),
+                first_events=sum(1 for r in rs if r.unit < FIRST), axis=axis_marks(ps[0].start, now) if ps else [],
+                on_you=waiting_on_owner(ps, t, store.owner), periods=ps,
                 days=rail_days(rs, now.date()), counts=counts, created_text=day_text(created, now.date()) if created else "not recorded")
 
 

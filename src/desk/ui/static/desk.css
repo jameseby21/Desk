@@ -437,6 +437,21 @@ header .search-open kbd{position:absolute;right:10px;top:50%;transform:translate
 .st-blocked{background:var(--red);color:var(--on-red)}
 .st-rejected{background:var(--st-rejected);color:#FFFFFF}
 .tl-ends{display:flex;justify-content:space-between;gap:8px;margin-top:4px}
+.tl-axis{position:relative;height:20px;margin-top:2px}
+.tl-tick{position:absolute;top:0;transform:translateX(-50%);padding-top:5px;font:500 12px/1.3 var(--font-mono);color:var(--muted);white-space:nowrap}
+.tl-tick::before{content:"";position:absolute;left:50%;top:0;width:1px;height:4px;background:var(--muted)}
+@media (max-width:600px){.tl-tick.q{display:none}}
+/* The key: every period in words, so the strip never needs hover or a colour to be read; lime "on you" means waiting on the owner. */
+.tl-key{list-style:none;margin:6px 0 0;padding:0;display:flex;flex-direction:column;gap:3px;font-size:13px}
+.tl-k{display:flex;flex-wrap:wrap;align-items:center;gap:2px 6px;min-width:0}
+.tl-k[hidden]{display:none}
+.tl-k .tl-sw{margin-right:0}
+.tl-kname{white-space:nowrap;font-weight:600}
+.tl-k-now .tl-kname{font-weight:800}
+.tl-krest{color:var(--muted);min-width:0}
+.tl-onme{display:inline-block;font:600 12px/1.3 var(--font-mono);letter-spacing:.04em;text-transform:uppercase;background:var(--ball);color:#141414;border:1px solid var(--ink);border-radius:999px;padding:1px 7px;white-space:nowrap}
+.tl-onyou{margin:6px 0 0;font-size:14px}
+@media (max-width:600px){.tl-key .tl-wd,.tl-key .tl-tm,.tl-key .tl-knote{display:none}.tl-key{gap:1px;font-size:12.5px}}  /* a phone: about one line per period */
 .tl-end{font:500 12px/1.3 var(--font-mono);color:var(--muted);white-space:nowrap}
 .tl-st-info{margin:4px 0 0;font-size:14px;min-height:21px}
 /* The event rail: a vertical line, one dot per event, newest first, grouped by day; decisions and status changes stronger. */

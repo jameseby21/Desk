@@ -1,5 +1,6 @@
 /* DESK-0171 and DESK-0305: the ticket timeline. Everything is already on the page, so nothing waits on the server.
-   The status strip: a segment's label shows only when it fits whole; hovering or focusing a segment names it under the strip.
+   The status strip: a segment's label shows only when it fits whole; hovering or focusing a segment names it under the strip, and
+   the key under it names every period in words (status, from, for how long, on you), so no colour needs hover to be read.
    The event rail: the chips (All, Decisions, Status, Comments, Changes, Git) and the More filters boxes (ANDed across
    dimensions, either within one) narrow the events; the first 12 that match show until Show all is pressed. Consecutive git saves
    by one actor on one day are one row (a fold) that opens in place. */
@@ -25,6 +26,14 @@
     s.addEventListener("blur", function () { say(null); });
   });
   fit();
+  var keyMore = document.getElementById("tl-key-more");
+  if (keyMore) keyMore.addEventListener("click", function () {  // the key lists the newest 12 periods; older ones open in place
+    var on = keyMore.getAttribute("aria-expanded") !== "true";
+    root.querySelectorAll(".tl-k[data-old]").forEach(function (li) { li.hidden = !on; });
+    keyMore.setAttribute("aria-expanded", on ? "true" : "false");
+    keyMore.textContent = on ? "Show only the newest periods" : keyMore.getAttribute("data-label") || keyMore.textContent;
+  });
+  if (keyMore) keyMore.setAttribute("data-label", keyMore.textContent);
   var tick;
   window.addEventListener("resize", function () { clearTimeout(tick); tick = setTimeout(fit, 100); });
 

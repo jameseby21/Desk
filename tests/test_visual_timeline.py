@@ -454,3 +454,85 @@ fetch('/m',{method:'POST',body:JSON.stringify(out)});},300);});</script>"""
     assert 0 <= d["firstRow"] < 6 and 0 < d["firstTop"] < 1.5 * 844, d
     assert d["after"] == d["before"] + 6 and d["exp"] == "true" and d["back"] == d["before"], d
     assert d["over"] == [], d  # nothing in the timeline past the right edge (the page-wide 320 px scroll is DESK-0303)
+
+
+# -- the strip reads without colour or hover (DESK-0305 review, finding 5) --------------------------------------------------------
+
+def test_unit_date_marks_and_the_time_on_the_owner():
+    """Protects the axis and the 'on you' words: a strip over 2 days gets a mark at the midnight nearest its middle (quarter marks too),
+    none near either end; a 1-day strip gets none; review, and blocked on the owner, count as waiting on the owner."""
+    start = dt.datetime(2026, 11, 8, 4, 10)
+    marks = timeline.axis_marks(start, NOW)
+    assert [m[2] for m in marks].count("mid") == 1 and all(12 <= m[0] <= 88 for m in marks)
+    mid = next(m for m in marks if m[2] == "mid")
+    assert mid[1] == "Thu 12 Nov" and 45 < mid[0] < 55
+    assert timeline.axis_marks(NOW - dt.timedelta(hours=30), NOW) == []
+    ps = timeline.periods("2026-11-10", [created_at("2026-11-10T09:00:00"), move("2026-11-11T09:00:00", "inbox", "review", 2),
+                                         move("2026-11-12T09:00:00", "review", "blocked", 3)], "blocked", NOW)
+
+    class T:
+        meta = {"blocked_on": "owner-a: a decision"}
+    assert timeline.waiting_on_owner(ps, T, "owner-a") == "now, for 3 days; 4 days in all"
+    assert [p.on_owner for p in ps] == [False, True, True]
+    T.meta = {"blocked_on": "a vendor"}
+    assert timeline.waiting_on_owner(ps, T, "owner-a") == "1 day in all" and [p.on_owner for p in ps] == [False, True, False]
+
+
+def test_route_the_key_names_every_period_in_words_outside_hover_text(store):
+    """Protects the key under the strip: every period, the thin ones included, has its status name and its from and for words in the
+    page's visible text (not only a title or screen-reader text); review periods say 'on you'; the strip carries a date mark."""
+    t = _busy(store)
+    v = timeline.view(store, t)
+    page = _page(store, t)
+    key = page[page.index('id="tl-key"'):page.index("</ol>", page.index('id="tl-key"'))]
+    items = re.findall(r'<li class="tl-k( tl-k-now)?"[^>]*><i class="tl-sw st-([a-z_]+)"[^>]*></i><b class="tl-kname">([^<]+)</b>(.*?)</li>', key, re.S)
+    assert len(items) == len(v.periods) == 10
+    for (now, css, name, rest), p in zip(items, v.periods):
+        words = re.sub(r"<[^>]+>", "", rest)
+        assert css == p.css and name == p.label and bool(now) == p.current
+        assert words.replace("on you", "", 1) == p.text[len(p.label):].lstrip(", ").replace("from ", "from ", 1), (words, p.text)
+        assert ("on you" in words) == (p.status == "review")
+    thin = [p for p in v.periods if p.share < 18]
+    assert thin and all(p.label in key for p in thin)
+    assert re.search(r'<span class="tl-tick mid" style="left:[0-9.]+%">[A-Z][a-z]{2} \d{1,2} [A-Z][a-z]{2}</span>', page)
+    assert re.search(r'<p class="tl-onyou" id="tl-onyou"><span class="tl-onme">On you</span> \d+ hours in all</p>', page)  # approved now: past time only
+    x = store.get(t.id)
+    x.meta["status"] = "review"
+    x.write()
+    assert re.search(r'<p class="tl-onyou" id="tl-onyou"><span class="tl-onme">On you</span> now, for ', _page(store, store.get(t.id)))
+
+
+@pytest.mark.skipif(browser() is None, reason="no Edge or Chrome installed")
+@pytest.mark.parametrize("width", [320, 390, 1280])
+def test_browser_every_strip_colour_has_a_visible_name_and_the_time_on_the_owner_reads_without_hover(store, width):
+    """Protects the phone (finding 5): at 320, 390 and 1280 px every colour drawn in the strip has a visible name on one line (in its
+    segment or in the key), each review period says 'on you' in visible words, the time on the owner is a visible line when the ticket
+    waits on them, and a date mark sits between Created and Now; nothing in the timeline passes the right edge."""
+    t = _busy(store)
+    x = store.get(t.id)
+    x.meta["status"] = "review"
+    x.write()
+    html = _page(store, store.get(t.id))
+    css = (STATIC / "desk.css").read_text(encoding="utf-8")
+    js = (STATIC / "timeline.js").read_text(encoding="utf-8")
+    measure = """<script>addEventListener('load',function(){setTimeout(function(){
+var w=document.documentElement.clientWidth,missing=[],split=[],noOwner=[],over=[];
+function shown(el){return !!el&&el.offsetWidth>0&&el.offsetHeight>0&&getComputedStyle(el).visibility!=='hidden';}
+function oneLine(el){var g=document.createRange();g.selectNodeContents(el);var tops={};Array.prototype.forEach.call(g.getClientRects(),function(r){if(r.width>0)tops[Math.round(r.top)]=1;});return Object.keys(tops).length===1;}
+document.querySelectorAll('.tl-seg').forEach(function(s){var css=(s.className.match(/st-([a-z_]+)/)||[])[1],lab=s.querySelector('.tl-lab');
+ if(lab&&shown(lab))return;
+ var k=Array.prototype.filter.call(document.querySelectorAll('.tl-k .tl-sw.st-'+css),function(sw){var n=sw.parentNode.querySelector('.tl-kname');return shown(sw.parentNode)&&shown(n);});
+ if(!k.length)missing.push(css);});
+document.querySelectorAll('.tl-k').forEach(function(li){var n=li.querySelector('.tl-kname');if(shown(li)&&!oneLine(n))split.push(n.textContent);
+ if(li.querySelector('.tl-sw.st-review')&&shown(li)&&!shown(li.querySelector('.tl-onme')))noOwner.push(n.textContent);});
+document.querySelectorAll('#timeline *').forEach(function(e){var r=e.getBoundingClientRect();if(r.width&&r.right>w+1&&!e.closest('[hidden]')&&getComputedStyle(e).visibility!=='hidden')over.push(e.className+' '+Math.round(r.right));});
+var ticks=Array.prototype.filter.call(document.querySelectorAll('.tl-tick'),shown).map(function(t){return t.textContent;});
+fetch('/m',{method:'POST',body:JSON.stringify({w:w,missing:missing,split:split,noOwner:noOwner,over:over,ticks:ticks,onyou:shown(document.getElementById('tl-onyou')),
+ reviews:document.querySelectorAll('.tl-k .tl-sw.st-review').length,segs:document.querySelectorAll('.tl-seg').length})});},300);});</script>"""
+    html = re.sub(r'<link rel="stylesheet" href="/static/desk.css[^"]*">', lambda m: f"<style>{css}</style>", html)
+    html = re.sub(r'<link rel="stylesheet" href="https://fonts[^>]*>|<link rel="preconnect"[^>]*>', "", html)
+    html = re.sub(r'<script src="[^"]*"[^>]*></script>', "", html).replace("</body>", f"<script>{js}</script>" + measure + "</body>")
+    d = run_in_browser(html, width)
+    assert d["segs"] == 11 and d["missing"] == [] and d["split"] == [], d  # the ten logged periods and review, set in the file
+    assert d["reviews"] == 3 and d["noOwner"] == [] and d["onyou"], d
+    assert len(d["ticks"]) >= 1 and d["over"] == [], d

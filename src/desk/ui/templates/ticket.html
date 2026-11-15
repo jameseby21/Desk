@@ -53,8 +53,14 @@
     <ol class="tl-strip" aria-label="Status over time, oldest first">
       {% for p in tl.periods %}<li class="tl-seg st-{{ p.css }}{% if p.current %} tl-now{% endif %}" style="flex-grow:{{ p.share }}" tabindex="0" title="{{ p.text }}" data-text="{{ p.text }}"><span class="tl-lab{% if p.share < 18 %} tl-hide{% endif %}" aria-hidden="true">{{ p.label }}</span><span class="vh">{{ p.text }}</span></li>{% endfor %}
     </ol>
+    {% if tl.axis %}<div class="tl-axis" id="tl-axis" aria-hidden="true">{% for pct, lab, cls in tl.axis %}<span class="tl-tick {{ cls }}" style="left:{{ pct }}%">{{ lab }}</span>{% endfor %}</div>{% endif %}
     <div class="tl-ends"><span class="tl-end">Created {{ tl.created_text }}</span><span class="tl-end">Now</span></div>
     {% set C = tl.periods[-1] %}<p class="tl-st-info" id="tl-st-info" data-now="{{ C.text }}">{{ C.text }}</p>
+    {% if tl.on_you %}<p class="tl-onyou" id="tl-onyou"><span class="tl-onme">On you</span> {{ tl.on_you }}</p>{% endif %}
+    {% set older = tl.periods|length - tl.key_first %}<ol class="tl-key" id="tl-key" aria-label="Each status period, oldest first">
+      {% if older > 0 %}<li class="tl-k-more"><button type="button" class="btn small" id="tl-key-more" aria-expanded="false">Show the {{ older }} earlier periods</button></li>{% endif %}
+      {% for p in tl.periods %}<li class="tl-k{% if p.current %} tl-k-now{% endif %}"{% if loop.index0 < older %} data-old hidden{% endif %}><i class="tl-sw st-{{ p.css }}" aria-hidden="true"></i><b class="tl-kname">{{ p.label }}</b>{% if p.on_owner %}<span class="tl-onme">on you</span>{% endif %}{% set k = p.key %}<span class="tl-krest">{{ k.pre }}{% if k.wd %}<span class="tl-wd">{{ k.wd }} </span>{% endif %}{{ k.dm }}{% if k.tm %}<span class="tl-tm">{{ k.tm }}</span>{% endif %}{{ k.post }}{% if k.note %}<span class="tl-knote">{{ k.note }}</span>{% endif %}</span></li>{% endfor %}
+    </ol>
     {% if tl.periods|selectattr('unknown')|list %}<p class="tl-gap" id="tl-gap"><i class="tl-sw st-unknown" aria-hidden="true"></i>Hatched: Not recorded. No status record (Desk's log, a git commit of the ticket file, or its done date) says what the status was then.</p>{% endif %}
   </div>
   {% if tl.rows %}
