@@ -4,7 +4,9 @@ last-seen marker per viewer drives a diff since the last visit and /changes per 
 unless they ask the owner something; rows on Today carry a short 'why' line; at 390 px nothing scrolls sideways."""
 
 import datetime as dt
+import json
 import re
+import threading
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -300,3 +302,23 @@ def test_a_lone_heading_or_bold_lead_is_not_a_report_summary(store):
         store.save(x)
     _errors, warns = validate_store(store)
     assert any(w.startswith(f"{t.id}: Report is ") and "no summary on top" in w for w in warns), warns
+
+
+def test_last_seen_markers_survive_tickets_opened_at_the_same_time(store):
+    """Protects: forty ticket pages opened at once each keep their last-seen marker (no lost read-modify-write on last-seen.json)."""
+    with acting("patch", "session"):
+        base = store.get(ops.new(store, "Opened in many tabs", "desk").id)
+    tickets = [reading.Ticket.parse(base.render().replace(base.id, f"DESK-{n + 100:04d}")) for n in range(40)]
+    gate = threading.Barrier(len(tickets))
+
+    def open_page(t):
+        gate.wait()
+        reading.mark_ticket(store.home, "james", t)
+
+    threads = [threading.Thread(target=open_page, args=(t,)) for t in tickets]
+    for th in threads:
+        th.start()
+    for th in threads:
+        th.join()
+    data = json.loads((store.home / ".desk" / "state" / "last-seen.json").read_text(encoding="utf-8"))
+    assert len(data["james"]["tickets"]) == 40 and len(data["james"]["seq"]) == 40

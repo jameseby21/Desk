@@ -21,6 +21,7 @@ import html
 import json
 import os
 import re
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -91,10 +92,13 @@ def _load(home: Path) -> dict:
         return {}
 
 
+_LOCK = threading.Lock()  # the web server opens pages on many threads; the marker file is read, changed and written under it
+
+
 def _write(home: Path, data: dict) -> None:
     p = _state(home) / SEEN_FILE
     p.parent.mkdir(parents=True, exist_ok=True)
-    tmp = p.with_suffix(f".{os.getpid()}.tmp")
+    tmp = p.with_suffix(f".{os.getpid()}.{threading.get_ident()}.tmp")  # one temporary file per writer
     tmp.write_bytes((json.dumps(data, indent=1, sort_keys=True) + "\n").encode("utf-8"))
     os.replace(tmp, p)
 
@@ -157,12 +161,14 @@ def snapshot(home: Path, viewer: str, ticket_id: str) -> str | None:
 
 def mark_ticket(home: Path, viewer: str, t: Ticket, now: dt.datetime | None = None) -> None:
     """The viewer has just seen `t`: remember when, and what it said then."""
-    data = _load(home)
-    me = data.setdefault(viewer, {})
-    me.setdefault("tickets", {})[t.id.upper()] = (now or _now()).isoformat()
-    me.setdefault("seq", {})[t.id.upper()] = len(activity._lines(activity.path(home, t.id)))
+    seq = len(activity._lines(activity.path(home, t.id)))
     try:
-        _write(home, data)
+        with _LOCK:
+            data = _load(home)
+            me = data.setdefault(viewer, {})
+            me.setdefault("tickets", {})[t.id.upper()] = (now or _now()).isoformat()
+            me.setdefault("seq", {})[t.id.upper()] = seq
+            _write(home, data)
         p = _snap_path(home, viewer, t.id)
         text = t.render()
         if not p.exists() or p.read_text(encoding="utf-8") != text:
@@ -173,13 +179,15 @@ def mark_ticket(home: Path, viewer: str, t: Ticket, now: dt.datetime | None = No
 
 
 def mark_changes(home: Path, viewer: str, now: dt.datetime | None = None) -> None:
-    data = _load(home)
-    me = data.setdefault(viewer, {})
-    me["prev"] = {"changes": me.get("changes"), "offsets": me.get("offsets")}
-    me["changes"] = (now or _now()).isoformat()
-    me["offsets"] = log_sizes(home)
+    offsets = log_sizes(home)
     try:
-        _write(home, data)
+        with _LOCK:
+            data = _load(home)
+            me = data.setdefault(viewer, {})
+            me["prev"] = {"changes": me.get("changes"), "offsets": me.get("offsets")}
+            me["changes"] = (now or _now()).isoformat()
+            me["offsets"] = offsets
+            _write(home, data)
     except OSError:
         pass
 
