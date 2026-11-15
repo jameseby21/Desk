@@ -1,0 +1,31 @@
+/* Capture (DESK-0286): the /capture box, paste-to-split rows, the palette's Create row and the drop overlay. Colours come from desk.css tokens. */
+.cap-wrap{max-width:640px;margin:0 auto}
+.cap-lead{margin:0 0 14px}
+.cap-form{display:flex;flex-direction:column;gap:14px}
+.cap-form input[type=text],.cap-row input[type=text]{font-size:17px;color:var(--ink)}
+.cap-form input[type=file]{font:inherit;color:var(--ink)}
+.cap-more{margin-top:16px;font-size:14px}
+.cap-made{list-style:none;padding:0;margin:0 0 16px;display:flex;flex-direction:column;gap:6px}
+.cap-made a{text-decoration:none;font-weight:600}
+.cap-rows{display:flex;flex-direction:column;gap:12px}
+.cap-row{display:flex;flex-direction:column;gap:10px}
+.cap-pick{flex-direction:row;align-items:center;gap:8px;font-weight:600}
+.cap-pick input{width:20px;height:20px}
+.cap-meta{display:grid;grid-template-columns:1fr 1fr auto;gap:10px;align-items:end}
+.cap-said{margin:0;font-size:13px}
+.cap-go{position:sticky;bottom:0;background:var(--paper);padding:10px 0}
+@media (max-width:480px){.cap-meta{grid-template-columns:1fr 1fr}.cap-meta .chip{justify-self:start}}
+/* The palette's Create row (search.js draws it through window.DeskCapture). */
+.pal-create{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center;padding:8px;border-radius:8px;text-decoration:none;border:1.5px dashed var(--line);margin-top:6px}
+.pal-item.pal-create.sel{border-color:#141414}
+.pal-create:hover{background:var(--ball);color:#141414}
+.pal-mvp{display:flex;gap:8px;align-items:center;padding:6px 4px 0;font-size:13px}
+.pal-mvp input{flex:1;font:inherit;font-size:14px;padding:6px 10px;border:1px solid var(--line);border-radius:8px;background:var(--paper);color:var(--ink)}
+/* A file dragged over a page: the drop target, and the small capture dialog it opens. */
+.cap-drop{position:fixed;inset:0;z-index:60;display:flex;align-items:center;justify-content:center;padding:16px;background:rgba(20,20,20,.45)}
+.cap-drop[hidden]{display:none}
+.cap-drop.hint{pointer-events:none}  /* the hint never takes the drop: the comment box under it still gets screenshots */
+.cap-drop-box{width:min(520px,100%);background:var(--card);color:var(--ink);border:2px solid var(--ink);border-radius:14px;box-shadow:6px 6px 0 var(--ball);padding:16px;display:flex;flex-direction:column;gap:12px}
+.cap-drop-box h2{margin:0;font-size:20px}
+.cap-drop-box input[type=text]{font-size:16px;color:var(--ink)}
+.cap-drop-hint{font:600 18px var(--font-body);text-align:center}

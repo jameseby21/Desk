@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 from . import accept_migrate, check_migrate, commands_migrate, deadlines, nav, ops, profanity, retype, review as rv, style as styles, tests_migrate, tracks as trk, version as ver
+from . import cli_capture
 from .config import HomeNotFound, find_home
 from .rules import RuleError, validate_store
 from .store import Store
@@ -1549,6 +1550,7 @@ def build_parser() -> argparse.ArgumentParser:
     cli_lanes.register(sub)
     from . import cli_undo  # DESK-0284
     cli_undo.register(sub)
+    cli_capture.register(sub)  # DESK-0286: drew capture hotkey
     return p
 
 

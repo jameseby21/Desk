@@ -36,6 +36,7 @@ from markupsafe import Markup
 from . import events as ev
 from . import routes_lanes
 from . import routes_decide  # DESK-0285
+from . import routes_capture
 from .markdown import finish_comments, has_mermaid, prep_comments, render as md_html, summary_html
 
 TEMPLATES = Path(__file__).parent / "templates"
@@ -1390,6 +1391,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
     app.add_middleware(routes_undo.UndoMiddleware)
     app.include_router(routes_undo.router(templates, ctx, store, tokens))
     app.include_router(routes_decide.build(templates=templates, ctx=ctx, store=store, tokens=tokens, acting=acting))  # DESK-0285
+    app.include_router(routes_capture.router(store, templates, ctx, tokens, acting))  # DESK-0286: capture, paste-to-split, file drop
     return app
 
 

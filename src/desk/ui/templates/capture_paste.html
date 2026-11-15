@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Desk · Paste asks{% endblock %}
+{% block body %}
+<link rel="stylesheet" href="{{ asset('capture.css') }}">
+<div class="cap-wrap">
+<h1>Paste asks</h1>
+<p class="muted cap-lead">Paste a chat or an email. Desk finds each ask (please, can you, need, should, must, TODO, a question) and proposes one ticket for it. Only the rows you tick are created.</p>
+{% if msg %}<div class="notice" role="status" id="paste-msg">{{ msg }}</div>{% endif %}
+{% if made %}<ul class="cap-made" id="paste-made">{% for t in made %}<li><a href="/ticket/{{ t.id }}"><span class="chip">{{ t.id }}</span> {{ t.meta.title }}</a></li>{% endfor %}</ul>{% endif %}
+{% if rows is none %}
+<form class="card cap-form" method="post" action="/capture/paste" data-progress="none">
+  <label>Pasted text<textarea name="text" id="paste-text" rows="10" placeholder="Paste here. One ticket per ask." required>{{ text }}</textarea></label>
+  <div class="row"><button class="btn ball" type="submit">Find the asks</button></div>
+</form>
+{% elif not rows %}
+<div class="card" id="paste-none"><p>No ask found. Desk looks for please, can you, need, should, must, TODO or a question mark.</p>
+<form method="post" action="/capture/paste" data-progress="none"><textarea name="text" rows="6" aria-label="Pasted text">{{ text }}</textarea><div class="row"><button class="btn" type="submit">Try again</button></div></form></div>
+{% else %}
+<form id="paste-rows" class="cap-rows post-once" method="post" action="/capture/paste/create" data-progress="Sending,Saving,Done">
+  <input type="hidden" name="token" value="{{ token() }}">
+  <p class="muted" id="paste-count">{{ rows|length }} ask{{ '' if rows|length == 1 else 's' }} found. Untick any you do not want, fix a title if it reads wrong, then create.</p>
+  {% for r in rows %}{% set i = loop.index0 %}
+  <div class="card cap-row">
+    <label class="cap-pick"><input type="checkbox" name="pick" value="{{ i }}" checked> Create</label>
+    <label>Title<input type="text" name="title" value="{{ r.title }}" maxlength="200" autocomplete="off"></label>
+    <div class="cap-meta">
+      <label>Project<select name="project">{% for key, name in projects %}<option value="{{ key }}"{% if key == r.project %} selected{% endif %}>{{ name }}</option>{% endfor %}</select></label>
+      <label>Type<select name="type">{% for ty in types %}<option value="{{ ty }}"{% if ty == r.type %} selected{% endif %}>{{ ty }}</option>{% endfor %}</select></label>
+      <span class="chip{{ ' red' if r.lane == 'now' else '' }}">{{ lane_word[r.lane] }}</span>
+    </div>
+    <input type="hidden" name="said" value="{{ r.said }}">
+    <p class="muted cap-said">{{ r.said }}</p>
+  </div>
+  {% endfor %}
+  <div class="row cap-go"><button class="btn ball" type="submit">Create the ticked tickets</button><a href="/capture/paste">Start over</a><span class="dp-slot"></span></div>
+</form>
+{% endif %}
+</div>
+{% endblock %}
