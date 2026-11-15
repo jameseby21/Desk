@@ -12,13 +12,14 @@ HEAD = """<script>addEventListener('load',function(){
 var out={},sleep=function(ms){return new Promise(function(r){setTimeout(r,ms);});};
 async function until(f,n){for(var i=0;i<(n||100)&&!f();i++){await sleep(100);}return f();}
 function send(){fetch('/m',{method:'POST',body:JSON.stringify(out)});}
+var loaded=new URL((performance.getEntriesByType('navigation')[0]||{}).name||location.href).search;/* the address as loaded: the Undo toast tidies undo= and msg= out of the bar */
 (async function(){
  await sleep(300);
 """
 TAIL = "})();});</script>"
 
 PALETTE = HEAD + """
- if (location.search.indexOf('undo=') >= 0) { out.landed = location.pathname; out.query = location.search; send(); return; }
+ if (loaded.indexOf('undo=') >= 0) { out.landed = location.pathname; out.query = loaded; send(); return; }
  document.dispatchEvent(new KeyboardEvent('keydown',{key:'k',ctrlKey:true,bubbles:true}));
  var inp=document.getElementById('pal-input');
  inp.value='new: try the brief page on the phone';inp.dispatchEvent(new Event('input',{bubbles:true}));
@@ -29,7 +30,7 @@ PALETTE = HEAD + """
 """ + TAIL
 
 DROP = HEAD + """
- if (location.search.indexOf('undo=') >= 0) { out.landed = location.pathname; out.query = location.search; out.att = (document.getElementById('attachments')||document.body).textContent.indexOf('notes') >= 0; send(); return; }
+ if (loaded.indexOf('undo=') >= 0) { out.landed = location.pathname; out.query = loaded; out.att = (document.getElementById('attachments')||document.body).textContent.indexOf('notes') >= 0; send(); return; }
  var dt=new DataTransfer(); dt.items.add(new File(['meeting notes'], 'notes.txt', {type:'text/plain'}));
  ['dragenter','dragover','drop'].forEach(function(t){document.querySelector('main').dispatchEvent(new DragEvent(t,{bubbles:true,cancelable:true,dataTransfer:dt}));});
  await sleep(8000); out.stuck=document.body.textContent.slice(-300); send();
