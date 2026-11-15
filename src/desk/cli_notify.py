@@ -145,7 +145,8 @@ def cmd_schedule(args):
     s = _store(args)
     if not args.print_:
         sys.exit("Desk never installs a scheduled task. Run `drew notify schedule --print` and paste the two lines into a terminal yourself.")
-    print("# Paste these into PowerShell or a command prompt to schedule the brief and the drain (Desk does not run them):")
+    # the quoting below is cmd.exe's; Windows PowerShell 5.1 splits the quoted /TR value apart, so the steps name the Command Prompt
+    print("# Paste these into a Command Prompt (cmd.exe; from PowerShell, type cmd and press Enter first) to schedule the brief and the drain (Desk does not run them):")
     for line in ns.schedule_commands(s.home, ns.settings(s.home)):
         print(line)
     print('# To remove them later: schtasks /Delete /TN "Desk\\Notify brief" /F  and  schtasks /Delete /TN "Desk\\Notify drain" /F')

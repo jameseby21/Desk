@@ -407,3 +407,31 @@ def test_schedule_prints_the_commands_and_installs_nothing(store, capsys, monkey
     with pytest.raises(SystemExit) as e:
         main(["--home", str(store.home), "notify", "schedule"])
     assert "never installs" in str(e.value)
+
+
+def test_schedule_says_command_prompt_because_powershell_splits_the_quoted_task(store, capsys):
+    """The schtasks lines use cmd.exe quoting, which PowerShell 5.1 breaks apart; the printed steps name the Command Prompt, never PowerShell."""
+    main(["--home", str(store.home), "notify", "schedule", "--print"])
+    head = capsys.readouterr().out.splitlines()[0]
+    assert "Command Prompt" in head and "cmd" in head
+    assert "Paste these into PowerShell" not in head and "PowerShell or" not in head
+
+
+@pytest.mark.skipif(not hasattr(__import__("ctypes"), "windll"), reason="parses the line the way Windows does")
+def test_schedule_task_run_value_is_one_argument_in_a_command_prompt(tmp_path):
+    """Parsed by Windows' own rules (what schtasks receives from cmd.exe), /TR is one argument that names pythonw and the home, spaces included."""
+    import ctypes
+    from ctypes import wintypes
+
+    exe = tmp_path / "with space" / "python.exe"
+    home = tmp_path / "home dir"
+    parse = ctypes.windll.shell32.CommandLineToArgvW
+    parse.restype = ctypes.POINTER(wintypes.LPWSTR)
+    for line in ns.schedule_commands(home, dict(ns.DEFAULTS), python=str(exe)):
+        n = ctypes.c_int()
+        argv = parse(line, ctypes.byref(n))
+        args = [argv[i] for i in range(n.value)]
+        ctypes.windll.kernel32.LocalFree(argv)
+        tr = args[args.index("/TR") + 1]
+        assert tr.startswith(f'"{exe}" -m desk.cli --home "{home}" notify ')
+        assert args[-1] == tr

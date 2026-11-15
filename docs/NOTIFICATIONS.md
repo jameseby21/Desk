@@ -99,7 +99,7 @@ Leave out any line to keep its default.
 
 - `drew notify schedule --print` prints two `schtasks` lines: the brief every day at `brief_time`, and a drain every 15 minutes.
 - Both run `pythonw.exe`, so no console window flashes.
-- Desk never installs them; you paste them yourself. `schtasks /Delete /TN "Desk\Notify brief" /F` removes one.
+- Desk never installs them; you paste them yourself into a Command Prompt (cmd.exe). PowerShell splits their quotes apart, so from PowerShell type `cmd` first. `schtasks /Delete /TN "Desk\Notify brief" /F` removes one.
 
 ## How to validate
 
