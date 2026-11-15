@@ -8,6 +8,7 @@
 
   function urlFor(a) {
     var h = a.getAttribute("href") || "", m;
+    if (a.hasAttribute("data-card")) return a.getAttribute("data-card");  /* DESK-0291: attachments and local files */
     if (a.classList.contains("tid") && (m = /^\/ticket\/([A-Za-z0-9-]+)$/.exec(h))) return "/card/ticket/" + m[1];
     if (a.classList.contains("docref") && (m = /^\/doc\/([^#?]+)/.exec(h))) return "/card/doc/" + m[1];
     return "";
@@ -41,7 +42,7 @@
     if (current) { current.removeAttribute("aria-describedby"); current = null; }
     if (card) card.hidden = true;
   }
-  function target(e) { return e.target && e.target.closest ? e.target.closest("a.tid, a.docref") : null; }
+  function target(e) { return e.target && e.target.closest ? e.target.closest("a.tid, a.docref, a[data-card]") : null; }
   function arm(e) {
     var a = target(e); if (!a || !urlFor(a)) return;
     clearTimeout(timer); timer = setTimeout(function () { show(a); }, DELAY_MS);

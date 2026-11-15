@@ -1,0 +1,28 @@
+{# DESK-0291: the inside of the file preview panel. preview.js puts it in the side panel; it is a fragment, not a page. #}
+<div class="pv-head">
+  <div class="pv-name"><b id="pv-title">{{ name }}</b><span class="pv-where" title="{{ where }}">{{ where }}</span></div>
+  <div class="pv-acts">
+    {% if raw_url %}<a class="btn small" href="{{ raw_url }}" target="_blank" rel="noopener noreferrer">Open in new tab</a>{% endif %}
+    {% if reveal %}<button type="button" class="btn small" data-pv-reveal="{{ reveal }}">Open in Explorer</button>{% endif %}
+    <button type="button" class="btn small pv-close" data-pv-close aria-label="Close the preview">Close</button>
+  </div>
+</div>
+<p class="pv-facts">{{ facts }}</p>
+<div class="pv-msg" role="status" aria-live="polite"></div>
+<div class="pv-body pv-{{ kind }}">
+{% if error %}<p class="pv-error">{{ error }}</p>
+{% elif kind == "folder" %}<p class="muted">This is a folder. Open in Explorer shows what is in it.</p>
+{% elif kind == "pdf" %}<iframe class="pv-pdf" src="{{ raw_url }}" title="{{ name }}"></iframe>
+{% elif kind == "image" %}<img class="pv-img" src="{{ raw_url }}" alt="{{ name }}">
+{% elif kind == "video" %}<video class="pv-video" src="{{ raw_url }}" controls preload="metadata"></video>
+{% elif kind == "audio" %}<audio src="{{ raw_url }}" controls preload="metadata"></audio>
+{% elif kind == "markdown" %}<div class="md">{{ html|safe }}</div>
+{% elif kind == "text" %}<pre class="pv-text">{{ text }}</pre>
+{% elif kind == "csv" %}{% if rows %}<div class="pv-scroll"><table class="pv-table"><thead><tr>{% for c in rows[0] %}<th>{{ c }}</th>{% endfor %}</tr></thead>
+<tbody>{% for r in rows[1:] %}<tr>{% for c in r %}<td>{{ c }}</td>{% endfor %}</tr>{% endfor %}</tbody></table></div>{% else %}<p class="muted">This file is empty.</p>{% endif %}
+{% elif kind == "office" %}{% if office.kind == "paragraphs" %}<div class="pv-doc">{% for p in office.paragraphs %}<p>{{ p }}</p>{% endfor %}</div>
+{% elif office.kind == "slides" %}{% for s in office.slides %}<section class="pv-slide"><span class="label">Slide {{ s.n }}</span>{% for ln in s.lines %}<p>{{ ln }}</p>{% endfor %}</section>{% endfor %}
+{% else %}{% for sh in office.sheets %}<span class="label">{{ sh.name }}</span><div class="pv-scroll"><table class="pv-table"><tbody>{% for r in sh.rows %}<tr>{% for c in r %}<td>{{ c }}</td>{% endfor %}</tr>{% endfor %}</tbody></table></div>{% if sh.more %}<p class="muted">Showing the first 500 rows.</p>{% endif %}{% endfor %}{% endif %}
+{% else %}<p class="muted">Desk cannot show this kind of file here. Use Open in new tab to download it{% if reveal %}, or Open in Explorer{% endif %}.</p>{% endif %}
+{% if cut %}<p class="muted">Showing the start of the file only.</p>{% endif %}
+</div>
