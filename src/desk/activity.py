@@ -31,6 +31,7 @@ CHANGES = ("created", "field", "section", "comment", "git")
 SKIP_FIELDS = {"updated"}  # moves on every save; the save itself is the event
 MAX_VALUE = 120
 _BATCH: contextvars.ContextVar[str] = contextvars.ContextVar("desk_batch", default="")
+_WHY: contextvars.ContextVar[str] = contextvars.ContextVar("desk_why", default="")  # DESK-0292: the rule behind an automation's change
 _AI_COAUTHOR = re.compile(r"\bclaude\b|anthropic\.com", re.I)  # a Co-Authored-By trailer that names an AI session
 _ID = re.compile(r"^([A-Za-z][A-Za-z0-9]*-\d+)")
 _ANY_COMMENT = re.compile(r"^- (\d{4}-\d{2}-\d{2})(?:[ T](\d{2}:\d{2}))? · (.+?) · (.*)$")
@@ -153,6 +154,8 @@ def verify(home: Path, ticket_id: str) -> list[str]:
 def kind_for(name: str, ident_kind: str, owner: str, pe) -> str:
     """The timeline's kind for an actor: owner, main (Patch), coworker, code (a code session), subagent, or person."""
     n = (name or "").strip().lower()
+    if ident_kind == "rule":  # DESK-0292: only the automation runner's own Actor carries kind rule; no name or --as gives it
+        return "rule"
     if ident_kind == "subagent" or n.startswith("subagent:"):
         return "subagent"
     p = pe.get(name) if pe is not None else None
@@ -262,6 +265,16 @@ def batch(batch_id: str):
         _BATCH.reset(token)
 
 
+@contextlib.contextmanager
+def because(why: str):
+    """Every save inside this block ends its what-line with `(why)`, so an automation's change names its rule (DESK-0292)."""
+    token = _WHY.set(why)
+    try:
+        yield why
+    finally:
+        _WHY.reset(token)
+
+
 def record_save(store, old, new, now: dt.datetime | None = None) -> list[Event]:
     """Append one event per change made by this save, named for the actor of the current command or request."""
     from . import people as peoplemod
@@ -274,7 +287,7 @@ def record_save(store, old, new, now: dt.datetime | None = None) -> list[Event]:
     actor = pe.resolve(a.as_ or a.name) if a.name != "not recorded" else a.name
     kind = kind_for(actor, a.kind, store.owner, pe)
     ts = (now or dt.datetime.now()).replace(microsecond=0).isoformat()
-    evs = [Event(new.id, ts, actor, kind, a.source if a.source in SOURCES else "cli", c["change"], c["field"], c["old"], c["new"], c["what"],
+    evs = [Event(new.id, ts, actor, kind, a.source if a.source in SOURCES else "cli", c["change"], c["field"], c["old"], c["new"], c["what"] + (f" ({_WHY.get()})" if _WHY.get() else ""),
                  a.instance, bool(a.confirmed), batch=_BATCH.get()) for c in changes]
     return append(store.home, evs)
 

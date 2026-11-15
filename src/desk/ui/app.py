@@ -1381,6 +1381,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
             return JSONResponse({"ok": True, "message": f"Moved to {s.get(ticket_id).status}.", "stamp": str(ev.ticket_stamp(s, t.id))})
         return _back(ticket_id, ok="move", anchor="decision")
 
+    from . import routes_automations; app.include_router(routes_automations.router(templates, ctx, store, tokens))  # DESK-0292
     return app
 
 

@@ -76,6 +76,19 @@ Every command a person or an agent runs day to day, with what it does and when. 
 | `drew stats` (includes a per-assignee table: open, done this week; and `By score`, DESK-0136: per assignee the open count, the highest score, the load (sum) and the mean, plus the whole store's line; `--json` adds a `score` object), `drew board`, `drew show <ID> [--raw]` | look at the store; `show` censors profanity (f*****g) unless `--raw` or `[style] profanity_filter = false` |
 | `drew brand-check [--create]` | projects missing a brand mark |
 
+## Automations
+Rules in `automations.yaml` at the store root; every rule, its source and what it does: [AUTOMATIONS.md](AUTOMATIONS.md) (DESK-0292).
+
+| Command or page | What it does | When |
+| --- | --- | --- |
+| `drew auto init` | writes the default `automations.yaml` (thirteen rules found in the record, each with its `source:`); refuses when the file exists | once per store |
+| `drew auto list` | every rule: on or off, what it does, where it comes from | to see what is set up |
+| `drew auto explain <rule>` | one rule in full: source, when, then, whether it overrides hand-set values, and the tickets it matches today | before turning a rule on or off |
+| `drew auto dry-run [--rule NAME] [--today YYYY-MM-DD]` | what each rule would change today and why, ticket by ticket; changes nothing | before every run |
+| `drew auto run [--rule NAME] [--today YYYY-MM-DD]` | the sweep: a progress bar per rule on stderr, then each change and one summary line with the batch id and the undo command; every change is by `automation` (kind rule); pull request rules use `gh` and are skipped with a plain line when it is missing or offline | when you want the rules applied |
+| `drew auto undo <batch>` | puts back every ticket that run changed; a ticket the run created is closed as rejected with the reason; a ticket changed after the run is named and left alone | right after a run you did not want |
+| `/automations` (footer link) | the rules as tiles with what each would change today, and **Run now**, which redirects with `undo=<batch>` and `msg=` for the Undo toast | the same as dry-run and run, in the browser |
+
 ## In the UI
 | Where | What |
 | --- | --- |

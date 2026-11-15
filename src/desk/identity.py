@@ -32,6 +32,7 @@ SOURCES = ("ui", "cli", "mcp")
 CURRENT: contextvars.ContextVar["Actor | None"] = contextvars.ContextVar("desk_actor", default=None)
 _KIND_OF = {"person": "person", "external": "person", "coworker": "thread", "agent": "session", "code": "session"}
 PROTECTED = {"patch", "main", "james"}  # a subagent is never recorded as one of these
+RESERVED = {"automation"}  # DESK-0292: Desk's rule runner; no person or session may claim the name, so its events are only ever rules'
 _TAG = re.compile(r"\s*<!-- by ([^>]*?) -->")
 LOG = "writes.jsonl"
 
@@ -137,6 +138,8 @@ def resolve_cli(store, claimed: str | None = None, env=None, user: str | None = 
     if sub or kind_env == "subagent":
         ident = sub or _safe(inst) or _safe(named) or "unknown"
         return Actor(f"subagent:{ident}", "subagent", ident, "cli", "agent-id", False, parent=env.get("DESK_PARENT_SESSION", "") or inst)
+    if named.lower() in RESERVED:
+        raise SystemExit(f"`{named}` is Desk's automation runner; nobody acts as it (decision 110). Run the command as yourself.")
     if named:
         p = pe.get(named)
         kind = kind_env if kind_env in KINDS else _kind_of(p, "session" if named.lower() in PROTECTED - {"james"} else "person")

@@ -1,0 +1,39 @@
+{% extends "base.html" %}
+{% block title %}Automations · Desk{% endblock %}
+{% block body %}
+<link rel="stylesheet" href="{{ asset('automations.css') }}">
+<section class="auto">
+  <h1>Automations</h1>
+  {% if problem %}
+  <p class="auto-lead">{{ problem }}</p>
+  {% else %}
+  {% set on = rules|selectattr('enabled')|list %}
+  <p class="auto-lead">{{ on|length }} of {{ rules|length }} rules are on. Today they would change <b>{{ res.changed|length }}</b> ticket{{ '' if res.changed|length == 1 else 's' }}.</p>
+  {% if msg %}<p class="auto-msg" role="status">{{ msg }}</p>{% endif %}
+  {% for n in res.notes %}<p class="auto-note">{{ n }}</p>{% endfor %}
+  <form method="post" action="/automations/run" class="auto-run" data-progress="Checking,Running rules,Done">
+    <input type="hidden" name="token" value="{{ token() }}">
+    <button class="btn ball" type="submit" {% if not res.changed %}disabled{% endif %}>Run now</button>
+    <span class="auto-hint">Changes are made by automation, never as you. One Undo takes back the whole run.</span>
+  </form>
+  <ul class="auto-tiles">
+    {% for r in rules %}
+    {% set items = today.get(r.name, []) %}
+    <li class="auto-tile{% if not r.enabled %} off{% endif %}">
+      <div class="auto-head"><b>{{ r.name }}</b><span class="auto-state">{{ 'on' if r.enabled else 'off' }}</span></div>
+      <p>{{ r.does }}</p>
+      {% if items %}
+      <ul class="auto-hits">
+        {% for i in items[:5] %}
+        <li>{% if i.ticket and i.ticket != '(new)' %}<a href="/ticket/{{ i.ticket }}">{{ i.ticket }}</a>{% else %}New{% endif %} {{ i.title }}{% if i.skipped %} <span class="auto-held">held back: {{ i.skipped }}</span>{% endif %}</li>
+        {% endfor %}
+        {% if items|length > 5 %}<li>and {{ items|length - 5 }} more</li>{% endif %}
+      </ul>
+      {% elif r.enabled %}<p class="auto-none">Nothing to change today.</p>{% endif %}
+      <p class="auto-src">From: {{ r.source }}</p>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</section>
+{% endblock %}
