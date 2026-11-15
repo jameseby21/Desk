@@ -25,11 +25,11 @@ def _ask(store, title="Choose: is the lime mark final?", context=CHOOSE, report=
     return store.get(t.id)
 
 
-def _review(store, title):
+def _review(store, title, report="Built and tested."):
     """A feature handed over for review: only the owner approves it, so it is an ask on Needs me."""
     t = ops.new(store, title, "jre", "feature")
     t.meta["size"] = "m"
-    t.set_section("Report", "Built and tested.")
+    t.set_section("Report", report)
     t.meta["status"] = "review"
     store.save(t)
     return store.get(t.id)
@@ -108,6 +108,36 @@ def test_agree_meets_the_minimum_reason_rule_for_an_approve_ask(store, monkeypat
     assert store.get(t.id).status == "approved" and "Agree with the recommendation: approve." in store.get(t.id).section("Decision")
 
 
+def test_y_on_a_send_back_recommendation_sends_it_back_and_never_approves(store, monkeypatch):
+    """Protects: agreeing with a 'send back' recommendation sends the ticket back; Y never approves what the worker said to send back."""
+    t = _review(store, "Build the export")
+    t.set_section("Report", "Built.\n\nChaz recommends: send back; the export drops the header row.")
+    store.save(t)
+    c = _owner(store, monkeypatch)
+    page = c.get("/decide").text
+    assert 'name="action" value="changes" data-dm-key="y"' in page and "Agree: send back" in page
+    r = c.post("/decide/answer", data={"token": _tok(c), "id": t.id, "action": "approve", "words": ""}, follow_redirects=False)
+    assert "send it back" in _q(r)["error"] and store.get(t.id).status == "review" and not store.get(t.id).section("Decision").strip()
+    c.post("/decide/answer", data={"token": _tok(c), "id": t.id, "action": "changes", "words": ""}, follow_redirects=False)
+    after = store.get(t.id)
+    assert after.status == "changes_requested"
+    assert "Agree with the recommendation: send back; the export drops the header row." in after.section("Decision")
+
+
+def test_approve_with_no_recommendation_needs_the_owners_words(store, monkeypatch):
+    """Protects: no canned approval is written in the owner's name; with nothing recommended, Y and batch approve need his own words."""
+    t = _review(store, "Build the export")
+    d = _ask(store, "Approve: the logo rule", "Plain.")
+    c = _owner(store, monkeypatch)
+    for x in (t, d):
+        r = c.post("/decide/answer", data={"token": _tok(c), "id": x.id, "action": "approve", "words": ""}, follow_redirects=False)
+        assert "say why you approve" in _q(r)["error"] and store.get(x.id).status == x.status and not store.get(x.id).section("Decision").strip()
+    plan = decidemode.plan_batch(store, [t.id, d.id])
+    assert [p.skip for p in plan] == ["No recommendation is recorded; open it and approve in your words."] * 2
+    c.post("/decide/answer", data={"token": _tok(c), "id": t.id, "action": "approve", "words": "Checked the export myself."}, follow_redirects=False)
+    assert store.get(t.id).status == "approved" and "Checked the export myself." in store.get(t.id).section("Decision")
+
+
 def test_send_back_needs_a_reason_and_snooze_takes_it_off_for_a_week(store, monkeypatch):
     """Protects: N never sends back without words; S hides the ask for seven days and writes snooze_until (lanes contract field)."""
     t = _ask(store, "Approve: the logo rule", "Plain.")
@@ -146,7 +176,7 @@ def test_the_reply_box_and_decide_mode_share_one_decision_path(store, monkeypatc
     calls = []
     real = decidemode.record
     monkeypatch.setattr(decidemode, "record", lambda *a, **k: calls.append(a[1].id) or real(*a, **k))
-    a, b = _ask(store), _ask(store, "Approve: the rule", "Plain.")
+    a, b = _ask(store), _ask(store, "Approve: the rule", "Plain.", report="Chaz recommends: approve; it is ready.")
     c = _owner(store, monkeypatch)
     c.post(f"/ticket/{a.id}/decide", data={"token": _tok(c), "reply": "1", "who": "james", "option": "1"}, follow_redirects=False)
     c.post("/decide/answer", data={"token": _tok(c), "id": b.id, "action": "approve"}, follow_redirects=False)
@@ -178,7 +208,8 @@ def test_the_guard_links_an_earlier_answer_that_looks_like_this_ask(store, monke
 
 def test_batch_approve_dry_run_then_one_batch_for_all(store, monkeypatch):
     """Protects: ticking two Needs me rows and Approve all approves both in one batch id (one Undo), after a dry run that writes nothing."""
-    a, b = _review(store, "Build the export"), _review(store, "Build the import")
+    ok = "Built and tested.\n\nChaz recommends: approve; the checks pass."
+    a, b = _review(store, "Build the export", ok), _review(store, "Build the import", ok)
     loner = _ask(store)  # a choose with no recommendation: left for the owner
     c = _owner(store, monkeypatch)
     dry = c.get(f"/decide/batch?ids={a.id}&ids={b.id}&ids={loner.id}&back=/").text

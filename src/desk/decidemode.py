@@ -177,7 +177,10 @@ def words(kind: str, ask: dict, rec: Recommendation | None, option: str, note: s
     """The decision as it is written. Agreeing with a recommendation needs no typed words: the line says `Agree with the
     recommendation` and what it was. Anything else uses the person's own words; a refusal says what to type."""
     note = " ".join((note or "").split())
+    sends_back = kind == "approve" and rec is not None and rec.action == "changes"
     if action == "changes":
+        if not note and sends_back:  # agreeing with "send back" needs no typing either; the worker gets the recommendation's reason
+            return f"{AGREE}: {rec.text}" + (f"; {rec.why}." if rec.why else ".")
         if len(note) < 4:
             raise ValueError("Say why you are sending it back (at least four characters), then press Enter.")
         return note
@@ -191,7 +194,11 @@ def words(kind: str, ask: dict, rec: Recommendation | None, option: str, note: s
     if note:
         return note
     if kind == "approve":
-        return f"{AGREE}: {rec.text}." if rec else "Approved as written."
+        if sends_back:  # Y never approves what the worker said to send back (the Y button sends it back instead)
+            raise ValueError(f"The recommendation is to send it back ({rec.text}). Press Y to agree and send it back, or type why you approve anyway.")
+        if rec is None:  # no canned approval in the owner's name: with nothing recommended, his own words are the reason
+            raise ValueError("No recommendation is recorded, so say why you approve (at least four characters), then press Y.")
+        return f"{AGREE}: {rec.text}."
     if kind == "answer" and rec:
         return f"{AGREE}: {rec.text}."
     if kind == "provide":
@@ -266,7 +273,9 @@ def plan_batch(store: Store, ids: list[str], now: dt.datetime | None = None) -> 
             else:
                 if rec is not None and rec.action == "changes":
                     raise ValueError(f"The recommendation is to send it back ({rec.text}); open it to decide.")
-                w = words("approve", ask, rec, "", "", "approve") if rec else "Approved in one batch from Needs me."
+                if rec is None:
+                    raise ValueError("No recommendation is recorded; open it and approve in your words.")
+                w = words("approve", ask, rec, "", "", "approve")
             check_transition(t, "approved", store, actor=store.owner, reason=w)
         except (RuleError, ValueError) as e:
             out.append(Planned(t, skip=str(e)))
