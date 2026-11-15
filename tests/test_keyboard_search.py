@@ -248,6 +248,47 @@ def test_theme_and_type_size_persist_per_device_and_render_before_paint(store):
     assert ':root[data-theme="dark"]' in css and ':root[data-theme="light"]' in css
 
 
+def _scheme_rules(css: str) -> list[tuple[str, str]]:
+    """(selector, declarations) of every rule inside a prefers-color-scheme:dark block of `css`."""
+    out = []
+    css = re.sub(r"/\*.*?\*/", "", css, flags=re.S)
+    for m in re.finditer(r"@media\s*\(prefers-color-scheme:\s*dark\)\s*\{", css):
+        depth, i = 1, m.end()
+        while depth:
+            depth += {"{": 1, "}": -1}.get(css[i], 0)
+            i += 1
+        out += [(sel.strip(), decl) for sel, decl in re.findall(r"([^{}]+)\{([^{}]*)\}", css[m.end():i - 1])]
+    return out
+
+
+def _light_rule(css: str, sel: str, prop: str) -> str:
+    """The value desk.css gives `prop` on `sel` outside any media block (the light look)."""
+    flat = re.sub(r"@media[^{]*\{(?:[^{}]*\{[^{}]*\})*[^{}]*\}", "", re.sub(r"/\*.*?\*/", "", css, flags=re.S))
+    for s, decl in re.findall(r"([^{}]+)\{([^{}]*)\}", flat):
+        if sel in [x.strip() for x in s.split(",")]:
+            m = re.search(rf"(?:^|;)\s*{re.escape(prop)}\s*:\s*([^;]+)", decl)
+            if m:
+                return m.group(1).strip()
+    return ""
+
+
+def test_a_chosen_theme_overrides_every_dark_mode_rule_in_desk_css():
+    """Dark or Light chosen against the computer's setting also sets the colours desk.css only changes in its dark-mode blocks (.ferr, .mask)."""
+    desk = (STATIC / "desk.css").read_text(encoding="utf-8")
+    keys = re.sub(r"\s+", "", (STATIC / "keys.css").read_text(encoding="utf-8"))
+    rules = _scheme_rules(desk)
+    assert {s for s, _ in rules} >= {":root", ".ferr", ".mask"}, rules
+    for sel, decl in rules:
+        for prop, val in re.findall(r"([\w-]+)\s*:\s*([^;]+)", decl):
+            if sel == ":root":
+                continue  # the colour tokens: keys.css sets them under each data-theme (the test above)
+            light = _light_rule(desk, sel, prop)
+            assert light, (sel, prop)  # desk.css has a light value to put back
+            for theme, want in (("dark", f"{prop}:{val.strip()}"), ("light", f"{prop}:{light}")):
+                pat = rf':root\[data-theme="{theme}"\]{re.escape(sel.replace(" ", ""))}(?::not\([^)]*\))?(?:,[^{{}}]*)?\{{[^}}]*{re.escape(want.replace(" ", ""))}'
+                assert re.search(pat, keys), (theme, sel, want)
+
+
 # -- saved views -----------------------------------------------------------------------------------------------------------
 
 def test_saved_views_are_pinned_in_the_header_and_removable(store):
@@ -372,6 +413,25 @@ def test_palette_lists_recent_tickets_and_approves_the_open_ticket(store):
     assert got["wordsMode"] and got["sent"], got
     t = store.get(a.id)
     assert t.status == "approved" and "Ship it as written" in t.section("Decision")
+
+
+THEME = _HEAD + """
+if(step===0){document.cookie='desk_theme=dark;path=/';st.setItem('step','1');save();location.reload();return;}
+var mk=function(cls){var e=document.createElement('span');e.className=cls;e.textContent='word';document.querySelector('main').appendChild(e);return getComputedStyle(e);};
+out.attr=document.documentElement.getAttribute('data-theme');out.os=matchMedia('(prefers-color-scheme: dark)').matches;
+out.ferr=mk('ferr').color;out.mask=mk('mask').backgroundColor;out.shown=mk('mask shown').backgroundColor;
+out.shownReady=(function(){var e=document.createElement('span');e.className='mask shown';e.setAttribute('data-ready','');document.querySelector('main').appendChild(e);return getComputedStyle(e).backgroundColor;})();
+st.clear();done();
+""" + _TAIL
+
+
+@pytest.mark.skipif(browser() is None, reason="no Edge or Chrome installed")
+def test_dark_chosen_on_a_light_computer_paints_errors_and_masks_dark_in_a_browser(store):
+    """With Dark chosen and the computer set to light, a form error is the pale red and a mask the dark red; a revealed mask stays clear."""
+    got = drive(store, THEME, "/settings", timeout=60)
+    assert got["attr"] == "dark" and not got["os"], got
+    assert got["ferr"] == "rgb(255, 140, 146)" and got["mask"] == "rgb(90, 42, 45)", got
+    assert got["shownReady"] == "rgba(0, 0, 0, 0)", got
 
 
 DRAFT = _HEAD + """

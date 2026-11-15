@@ -5,6 +5,12 @@
 :root[data-theme="dark"]{--paper:#141414;--ink:#F5F3EC;--muted:#A8A69D;--line:#33322E;--card:#1D1D1B;--on-ink:#141414;--focus:#C8F03C;color-scheme:dark}
 :root[data-theme="light"]{--paper:#F5F3EC;--ink:#141414;--muted:#6A6963;--line:#E2DFD5;--card:#FFFFFF;--on-ink:#F5F3EC;--focus:#141414;color-scheme:light}
 :root[data-theme="dark"] textarea,:root[data-theme="dark"] input,:root[data-theme="dark"] select{color:var(--ink)}
+/* desk.css changes two colours in its own dark-mode blocks, outside the tokens: a chosen theme sets both ways, or a form error and a
+   masked word keep the computer's colours on the other theme's page. .mask skips .shown, which desk.css makes transparent. */
+:root[data-theme="dark"] .ferr{color:#FF8C92}
+:root[data-theme="light"] .ferr{color:#8E1218}
+:root[data-theme="dark"] .mask:not(.shown){background:#5A2A2D}
+:root[data-theme="light"] .mask:not(.shown){background:#F3C9CC}
 /* Type size: the whole page scales, so every px size in desk.css follows. */
 :root[data-size="small"] body{zoom:.9}
 :root[data-size="large"] body{zoom:1.15}
