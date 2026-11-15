@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Desk · What changed{% endblock %}
+{% block body %}
+<link rel="stylesheet" href="{{ asset('reading.css') }}">
+{# DESK-0287: what changed since the viewer last looked, per company and project; the viewer's own changes are left out unless asked #}
+<div class="rd-chead">
+  <h1>What changed</h1>
+  <p class="rd-csub" id="changes-since" role="status"><b>{{ n }} ticket{{ 's' if n != 1 }}</b> changed {{ since_words }}{% if not mine %}, not counting your own changes{% endif %}.</p>
+</div>
+{% if error %}<div class="error">{{ error }}</div>{% endif %}
+<form class="rd-cform" method="get" action="/changes" data-progress="none">
+  {% if at %}<input type="hidden" name="at" value="{{ at }}">{% endif %}
+  <label>Since <input type="date" name="since" value="{{ since }}" max="{{ today }}" aria-label="Show changes since this day"></label>
+  {% if comps|length > 1 %}<label>Company <select name="company" aria-label="Company"><option value="">All</option>{% for slug, title, k in comps %}<option value="{{ slug }}"{% if slug == company %} selected{% endif %}>{{ title }} ({{ k }})</option>{% endfor %}</select></label>{% endif %}
+  {% if projs|length > 1 %}<label>Project <select name="project" aria-label="Project"><option value="">All</option>{% for key, title, k in projs %}<option value="{{ key }}"{% if key == project %} selected{% endif %}>{{ title }} ({{ k }})</option>{% endfor %}</select></label>{% endif %}
+  <label class="rd-cmine"><input type="checkbox" name="mine" value="1"{% if mine %} checked{% endif %}> Include my own changes</label>
+  <button class="btn small" type="submit">Show</button>
+  <a class="rd-clink" href="/changes?since={{ week_ago }}">Last 7 days</a>
+</form>
+{% if groups %}
+{% for g in groups %}
+<section class="rd-cgroup" aria-label="{{ g.company }}">
+  <h2>{{ g.company }} <small>{{ g.count }} ticket{{ 's' if g.count != 1 }}</small></h2>
+  {% for key, title, rows in g.projects %}
+  <div class="card rd-cproj">
+    <div class="rd-cphead"><a href="/changes?project={{ key }}{% if since %}&amp;since={{ since }}{% elif at %}&amp;at={{ at|urlencode }}{% endif %}{% if mine %}&amp;mine=1{% endif %}"><b>{{ title }}</b></a> <span class="muted">{{ rows|length }} changed</span></div>
+    <ul class="rd-clist">{% for r in rows %}
+      <li><a class="tid" href="/ticket/{{ r.ticket.id }}" data-status="{{ r.ticket.status }}">{{ r.ticket.id }}</a> <a class="rd-ctitle" href="/ticket/{{ r.ticket.id }}">{{ r.ticket.meta.get('title') }}</a> <span class="chip">{{ screen(r.ticket.status) }}</span>
+        <ul class="rd-cwhat">{% for line in r.lines %}<li>{{ line }}</li>{% endfor %}{% if r.more %}<li class="muted">and {{ r.more }} more on the ticket</li>{% endif %}</ul>
+      </li>{% endfor %}
+    </ul>
+  </div>
+  {% endfor %}
+</section>
+{% endfor %}
+{% else %}
+<div class="card rd-cempty"><b>Nothing changed {{ since_words }}.</b> <span class="muted">Pick an earlier day above, or come back later.</span></div>
+{% endif %}
+<p class="muted rd-cfoot">Opening this page moves "your last visit" to now. A page with a day picked (Since) leaves it where it was.</p>
+{% endblock %}

@@ -1,0 +1,48 @@
+/* DESK-0287 reading mode: Next action, the diff since the last visit, the Report summary, folded agent comments, /changes.
+   Colours come from the tokens in desk.css, so light and dark both work. */
+.rd-cap{font:600 12px/1 var(--font-mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);flex:none}
+.rd-next{display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;margin:0 0 16px;padding:10px 14px;background:var(--card);border:1px solid var(--line);border-left:6px solid var(--line);border-radius:10px;font-size:15px;min-width:0}
+.rd-next.mine{border:2px solid var(--ink);border-left:6px solid var(--ball);box-shadow:4px 4px 0 var(--ball)}
+.rd-next .rd-for{font-weight:700}
+.rd-next .rd-text{flex:1 1 260px;min-width:0;overflow-wrap:anywhere}
+.rd-next .rd-step{flex:1 1 100%;color:var(--muted);font-size:13.5px;overflow-wrap:anywhere}
+.rd-next .rd-go{margin-left:auto}
+.rd-diff{margin:0 0 14px;padding:8px 14px;background:var(--card);border:1px dashed var(--line);border-radius:10px;font-size:14px}
+.rd-diff>summary{cursor:pointer;list-style-position:inside}
+.rd-diff>summary b{margin-left:6px}
+.rd-dsec{margin:10px 0 0}
+.rd-dlines{list-style:none;margin:4px 0 0;padding:0;font:13px/1.5 var(--font-mono)}
+.rd-dlines li{padding:1px 6px;border-radius:4px;overflow-wrap:anywhere}
+.rd-dlines ins{text-decoration:none}
+.rd-add{background:color-mix(in srgb,var(--ball) 38%,transparent)}
+.rd-del{color:var(--muted)}
+.rd-del del{text-decoration:line-through;text-decoration-color:var(--red)}
+.rd-sign{display:inline-block;width:1.2em;font-weight:700}
+.rd-ctx>summary .rd-goal{color:var(--ink);margin:0 6px}
+.rd-ctx>summary .label{display:inline}
+.rd-report .rd-findings ul{margin:6px 0 0;padding-left:20px}
+.rd-report .rd-findings,.rd-report .rd-ask{margin:4px 0 10px}
+.rd-report .rd-ask{padding:8px 12px;border:2px solid var(--ink);border-radius:10px;background:color-mix(in srgb,var(--ball) 22%,var(--card))}
+.rd-report .rd-ask .md>p:first-child{margin-top:4px}
+.rd-nosum{margin:4px 0 8px;font-size:13.5px}
+.rd-chat{margin:2px 0;font-size:14px}
+.rd-chat>summary{cursor:pointer;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:3px 0}
+.rd-chat>summary b{color:var(--ink);font-weight:600}
+.rd-chat-when{font:12px var(--font-mono)}
+.rd-chat[open]>summary{white-space:normal}
+.rd-chead h1{margin:0}
+.rd-csub{margin:4px 0 14px;color:var(--muted)}
+.rd-csub b{color:var(--ink)}
+.rd-cform{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;margin:0 0 18px;font-size:14px}
+.rd-cform select,.rd-cform input[type=date]{font:inherit;max-width:100%}
+.rd-cgroup h2 small{margin-left:8px}
+.rd-cproj{margin:0 0 12px}
+.rd-cphead{margin:0 0 6px}
+.rd-clist{list-style:none;margin:0;padding:0}
+.rd-clist>li{padding:8px 0;border-top:1px solid var(--line);overflow-wrap:anywhere}
+.rd-clist>li:first-child{border-top:0}
+.rd-ctitle{font-weight:600;text-decoration:none}
+.rd-cwhat{margin:4px 0 0;padding-left:18px;color:var(--muted);font-size:13.5px}
+.rd-cempty{margin:8px 0}
+.rd-cfoot{font-size:12.5px;margin-top:18px}
+@media (max-width:600px){.rd-next{padding:9px 10px}.rd-next .rd-go{margin-left:0}.rd-cform{gap:8px}}

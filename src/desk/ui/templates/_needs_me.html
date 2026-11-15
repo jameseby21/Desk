@@ -1,5 +1,5 @@
 {% macro part(i) -%}{% if family is defined and family %}{% set po = family.label(i.ticket) %}{% if po %}<span class="nm-part">{{ po }}</span>{% endif %}{% endif %}{%- endmacro %}
-{% macro why(i) -%}{% if i.overdue and i.why.endswith(' overdue') %}{{ i.why[:-8] }} <span class="overdue">overdue</span>{% else %}{{ i.why }}{% endif %}{%- endmacro %}
+{% macro why(i) -%}{% if i.overdue and i.why.endswith(' overdue') %}{{ i.why[:-8] }} <span class="overdue">overdue</span>{% else %}{{ i.why }}{% endif %}{% if why_of is defined %}{% set w = why_of(i.ticket, 'extra') %}{% if w %} · {{ w }}{% endif %}{% endif %}{%- endmacro %}
 {% macro block(nm, style, all_open_href, n_open, back, shown=5, more_href='/board?needs=1') -%}
 {% set asks = nm|selectattr('group', 'equalto', 'ask')|list %}{% set changes = nm|selectattr('group', 'equalto', 'change')|list %}
 {# DESK-0149 (2026-11-10): each group draws `shown` rows, then one line to the board's Needs me view, so a store with hundreds of asks keeps Today short #}

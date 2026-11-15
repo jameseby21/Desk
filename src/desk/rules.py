@@ -6,7 +6,7 @@ import datetime as dt
 import re
 from typing import TYPE_CHECKING
 
-from . import commands, deadlines, gps, ladder, lanes, people, plainwords, readability, subtickets
+from . import commands, deadlines, gps, ladder, lanes, people, plainwords, readability, reading, subtickets
 from .store import id_parts
 from .ticket import CLOSED, ID_LISTS_LOOSE, ID_LISTS_STRICT, PRIORITIES, REQUIRED, LEGACY_TYPES, SIZES, STATUSES, TYPES, Ticket, canon_type, parse_checks, validate_steps
 
@@ -213,6 +213,7 @@ def validate_store(store: "Store") -> tuple[list[str], list[str]]:
         warnings += readability.warnings(t)  # DESK-0209: no plain blocks; a paragraph over 300 characters or a bullet over 400 is a wall
         warnings += plainwords.warnings(t)  # DESK-0253: grade above 10, or listed jargon with no plain gloss, in Context, Outcome or How to validate
         warnings += lanes.warnings(t)  # DESK-0283: a Later or Parked ticket with a branch or a worker; an unknown lane or snooze date
+        warnings += reading.warnings(t, store.owner)  # DESK-0287: a Report over 1,200 characters opens with a summary and the one ask
         g = gps.warning(t, store)  # DESK-0215: Goal in one sentence, Proof someone can observe, Steps without handwaving (the project's gps: block applies)
         if g:
             warnings.append(g)
