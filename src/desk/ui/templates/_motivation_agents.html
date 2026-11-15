@@ -1,4 +1,4 @@
 {# DESK-0293: the empty-state reward. When nothing needs you, say what the agents are doing meanwhile. #}
-{% set aw = agents_at_work(v.hand if v is defined and v else none) %}<div class="mot-agents" id="agents-at-work">{% if aw.rows %}<span class="label">Meanwhile, at work</span>
+{% set lv = lane_view(request) if lane_view is defined and request is defined else none %}{% set aw = agents_at_work((v.hand + (lv.held if lv else [])) if v is defined and v else none) %}{# DESK-0282: agent-only work is off Today's rows (DESK-0283) but is what this list names #}<div class="mot-agents" id="agents-at-work">{% if aw.rows %}<span class="label">Meanwhile, at work</span>
 <ul>{% for r in aw.rows %}<li><a class="tid" href="/ticket/{{ r.id }}">{{ r.id }}</a> <span class="mot-title">{{ r.title }}</span> <span class="muted">{{ who(r.who) }} · {{ screen(r.status) }} {{ r.age }}</span></li>{% endfor %}</ul>
 {% if aw.more %}<a class="nm-more" href="/search?q=status%3Ain_progress">{{ aw.more }} more at work &rarr;</a>{% endif %}{% else %}<span class="nm-note">No agent is working on anything right now either. You can stop.</span>{% endif %}</div>

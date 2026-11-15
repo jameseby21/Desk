@@ -36,6 +36,7 @@ def _events(store, tid):
 
 
 def _rows(page):
+    page = re.sub(r'<div class="mot-agents" id="agents-at-work">.*?</div>', "", page, flags=re.S)  # DESK-0293's empty-state list names agent work on purpose; it is not a Today row
     return set(re.findall(r'href="/ticket/([A-Z]+-\d+)"', page))
 
 

@@ -41,6 +41,7 @@ class LaneView:
     show_all: bool = False
     snoozed: list = field(default_factory=list)
     hidden: int = 0  # subtickets and agent-only tickets left off Today
+    held: list = field(default_factory=list)  # those tickets, for DESK-0293's "Meanwhile, at work" list when nothing needs you
     other_lanes: int = 0
     here: str = "/"
 
@@ -82,6 +83,7 @@ def narrow(request: Request, s, tickets: list, page: str) -> list:
         ask = nmod.ask_of(s, t, owner, now) if on_today and (hide or off_lane) else None  # only asked when it decides something
         if hide and ask is None:
             view.hidden += 1
+            view.held.append(t)
             continue
         if off_lane and not (ask is not None and ask.overdue):  # an overdue ask is Now whatever its lane
             view.other_lanes += 1
