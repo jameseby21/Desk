@@ -318,3 +318,18 @@ def test_a_snooze_never_hides_a_hard_deadline_and_validate_warns_on_quieted_emer
     assert any(later.id in w and "emergency" in w for w in warnings)
     assert not any(calm.id in w for w in warnings)
 
+
+def test_lane_routes_refuse_another_host_or_origin(store):
+    """Protects: a DNS-rebinding page (another Host) or another site (another Origin) gets no lane key and changes no lane."""
+    t = _mk(store, "Keep me", status="ready", owner="james")
+    app = create_app(store.home)  # one app, so a key minted for this computer is a real key on the other host too
+    local, evil = TestClient(app, base_url="http://127.0.0.1:8799"), TestClient(app, base_url="http://evil.example")
+    assert evil.get(f"/ticket/{t.id}/lane").status_code == 403
+    tok = local.get(f"/ticket/{t.id}/lane").json()["token"]
+    r = evil.post(f"/ticket/{t.id}/lane", data={"token": tok, "lane": "parked", "reason": "x"})
+    assert r.status_code == 403 and "lane" not in store.get(t.id).meta
+    r = local.post(f"/ticket/{t.id}/lane", data={"token": tok, "lane": "later"}, headers={"Origin": "http://evil.example"}, follow_redirects=False)
+    assert r.status_code == 403 and "lane" not in store.get(t.id).meta
+    r = local.post(f"/ticket/{t.id}/lane", data={"token": tok, "lane": "later"}, headers={"Origin": "http://127.0.0.1:8799"}, follow_redirects=False)
+    assert r.status_code == 303 and store.get(t.id).meta["lane"] == "later"  # the refused tries did not spend the key
+    assert evil.post("/lanes/view", data={"lane": "now"}).status_code == 403

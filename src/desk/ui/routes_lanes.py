@@ -13,9 +13,9 @@ import html
 import re
 import secrets
 from dataclasses import dataclass, field
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
-from fastapi import APIRouter, Form, Request
+from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from markupsafe import Markup
 
@@ -26,6 +26,8 @@ LANE_COOKIE = "desk_lane"
 SHOW_COOKIE = "desk_show"
 YEAR = 31536000
 _LOCAL = re.compile(r"^/(?!/)[^\s\\]*$")  # a path on this Desk, never another site
+LOCAL_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})  # Desk serves on 127.0.0.1 only (standards rule 80, item 10)
+NOT_LOCAL = "Desk changes lanes from this computer only. Open Desk at http://127.0.0.1 and try again."
 SNOOZE_CHOICES = (("1d", "1 day"), ("1w", "1 week"), ("2w", "2 weeks"), ("next-monday", "Next Monday"))
 
 
@@ -90,6 +92,22 @@ def narrow(request: Request, s, tickets: list, page: str) -> list:
     return kept
 
 
+def _host_of(value: str) -> str | None:
+    try:
+        return urlsplit(value if "//" in value else "//" + value).hostname
+    except ValueError:
+        return None
+
+
+def local_only(request: Request) -> None:
+    """Refuse a request whose Host or Origin is not this computer. A DNS-rebinding page reaches 127.0.0.1 under its own name, so its
+    Host gives it away; a page on another site sends its own Origin. Either way no key is handed out and nothing is written."""
+    host = _host_of(request.headers.get("host", ""))
+    origin = request.headers.get("origin")
+    if host not in LOCAL_HOSTS or (origin is not None and _host_of(origin) not in LOCAL_HOSTS):
+        raise HTTPException(status_code=403, detail=NOT_LOCAL)
+
+
 def _here(request: Request) -> str:
     """This page's address without the one-off undo and message params, so a view switch does not show an old message again."""
     q = "&".join(f"{quote(k, safe='')}={quote(v, safe='')}" for k, v in request.query_params.multi_items() if k not in ("undo", "msg", "error"))
@@ -152,7 +170,7 @@ def install(app, templates, store, tokens) -> None:
 
 
 def router(store, tokens) -> APIRouter:
-    r = APIRouter()
+    r = APIRouter(dependencies=[Depends(local_only)])  # every lane route: the view switch, the menu's key and the change
 
     def js(request: Request) -> bool:
         return "application/json" in request.headers.get("accept", "")
