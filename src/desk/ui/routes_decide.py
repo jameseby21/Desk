@@ -1,7 +1,7 @@
 """Routes of Decide mode, batch approve, inbox triage and delegations (DESK-0285). Registered by create_app with one line.
 
-Only the store owner, as the request's own identity, decides here (decision 110): an owner confirmed by the OS user, or assumed because
-nobody is named on this machine yet. Anyone else sees the same screens read-only, with a sentence saying why. Every write runs inside
+Only the store owner, as the request's own identity, decides here (decision 110): an owner confirmed by the OS user, or named by this
+browser or assumed because nobody is linked on this machine yet (decidemode.may_decide, checked again by decidemode.record). Anyone else sees the same screens read-only, with a sentence saying why. Every write runs inside
 `activity.batch(<id>)` and redirects with `undo=<id>&msg=<sentence>` (the DESK-0284 toast contract). Docs: docs/COMMANDS.md."""
 
 from __future__ import annotations
@@ -18,7 +18,6 @@ from .. import activity, decidemode as dm, delegations as dg, lanes, people as p
 from ..rules import RuleError
 
 _ID = re.compile(r"^[A-Za-z][A-Za-z0-9]*-\d+$")
-_TRUSTED = ("os-user", "git-user", "assumed-owner")  # how an owner identity may be established for a decision; a cookie is only a claim
 
 
 def plain(text: str, limit: int = 280) -> str:
@@ -42,11 +41,7 @@ def build(*, templates, ctx, store, tokens, acting) -> APIRouter:
     templates.env.globals["delegations"] = lambda: dg.load(store().home)
 
     def may_decide(request, s) -> tuple[bool, str]:
-        me = acting(request)
-        if me.name.strip().lower() == s.owner.lower() and me.kind == "person" and me.how in _TRUSTED:
-            return True, ""
-        return False, (f"You are signed in as {me.display()}, and only {s.owner} decides here. You can look, but the buttons are off. "
-                       "Nobody can answer for someone else.")
+        return dm.may_decide(acting(request), s.owner)  # the same rule decidemode.record checks again on every write
 
     def spent() -> HTMLResponse:
         return HTMLResponse("<!doctype html><meta charset=utf-8><title>Already sent</title><body style=\"font:16px system-ui;max-width:40em;margin:3em auto;padding:0 1em\">"
@@ -111,7 +106,7 @@ def build(*, templates, ctx, store, tokens, acting) -> APIRouter:
             ask = dm.ask_for(t, item.kind)
             text = dm.words(item.kind, ask, dm.recommendation(t, ask), option, words, action)
             with activity.batch(bid):
-                dm.record(s, t, action == "approve", text, actor=s.owner)
+                dm.record(s, t, action == "approve", text, viewer=acting(request))
             done = "sent back" if action == "changes" else "decided"
             return go("/decide", at=nxt, undo=bid, msg=f"{t.id} {done}: “{text}”")
         except (KeyError, RuleError, ValueError) as e:
@@ -155,7 +150,7 @@ def build(*, templates, ctx, store, tokens, acting) -> APIRouter:
         safe_back = back if re.fullmatch(r"/[A-Za-z0-9_?=&%.\-/]*", back or "") and "?" not in back else "/"
         plan = dm.plan_batch(s, ids)
         bid = dm.new_batch_id()
-        done, refused = dm.run_batch(s, plan, bid)
+        done, refused = dm.run_batch(s, plan, bid, viewer=acting(request))
         if not done:
             return go(safe_back, msg="Nothing was approved: none of those can be approved in a batch. Open them one by one.")
         msg = f"Approved {len(done)} ticket{'s' if len(done) != 1 else ''}: {', '.join(done)}."

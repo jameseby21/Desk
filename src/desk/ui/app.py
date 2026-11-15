@@ -1044,7 +1044,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
             action = action or ("approve" if reply else "")
             if action not in ("approve", "changes"):
                 raise ValueError("Pick Approve or Send back.")
-            decidemode.record(s, t, action == "approve", words)  # DESK-0285: the one decision path (reply box, Decide mode, batch)
+            decidemode.record(s, t, action == "approve", words, viewer=acting(request))  # DESK-0285: the one decision path, with the viewer's identity
         except (KeyError, RuleError, ValueError) as e:
             return refused(e) if js else _back(ticket_id, str(e), next, anchor="decision")
         if js:

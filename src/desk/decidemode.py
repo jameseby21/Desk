@@ -208,11 +208,33 @@ def words(kind: str, ask: dict, rec: Recommendation | None, option: str, note: s
 
 # ---- the one write path -----------------------------------------------------------------------------------------------------
 
-def record(store: Store, t: Ticket, approve: bool, reason: str, actor: str | None = None, sync: bool = True) -> Ticket:
-    """Every web decision is written here (the reply box, Decide mode and batch approve): the same rules, the same Decision line."""
+# How a browser's viewer may be known to be the owner (decision 110). The OS user or git user linked to him confirms it; with nobody
+# linked on this machine, the owner the browser's cookie names counts the same as the owner assumed when nothing names anyone.
+TRUSTED = ("os-user", "git-user", "device-cookie", "assumed-owner")
+
+
+class NotYours(ValueError):
+    """The viewer is not the owner, so nothing is recorded (a ValueError, so every route's refusal path shows the sentence)."""
+
+
+def may_decide(viewer, owner: str) -> tuple[bool, str]:
+    """(True, "") when the request's own identity is the store owner; otherwise False and the plain sentence the page shows."""
+    if viewer is not None and viewer.name.strip().lower() == owner.lower() and viewer.kind == "person" and viewer.how in TRUSTED and not viewer.as_:
+        return True, ""
+    shown = viewer.display() if viewer is not None else "nobody"
+    return False, (f"You are signed in as {shown}, and only {owner} decides here. You can look, but the buttons are off. "
+                   "Nobody can answer for someone else.")
+
+
+def record(store: Store, t: Ticket, approve: bool, reason: str, *, viewer, sync: bool = True) -> Ticket:
+    """Every web decision is written here (the reply box, Decide mode and batch approve): the same identity check (`viewer` is the
+    request's own actor), the same rules, the same Decision line in the owner's name."""
+    ok, why = may_decide(viewer, store.owner)
+    if not ok:
+        raise NotYours(why + " Nothing was recorded.")
     if sync:
         store.sync_before()
-    t = ops.decide(store, t, approve=approve, reason=reason, actor=actor or store.owner)
+    t = ops.decide(store, t, approve=approve, reason=reason, actor=store.owner)
     if sync:
         store.sync_after(f"desk: decide {t.id}")
     return t
@@ -284,18 +306,21 @@ def plan_batch(store: Store, ids: list[str], now: dt.datetime | None = None) -> 
     return out
 
 
-def run_batch(store: Store, planned: list[Planned], batch_id: str) -> tuple[list[str], list[tuple[str, str]]]:
+def run_batch(store: Store, planned: list[Planned], batch_id: str, *, viewer) -> tuple[list[str], list[tuple[str, str]]]:
     """Approve every planned ticket inside one activity batch, so one Undo reverses them all. Returns (approved ids, [(id, why refused)])."""
     from . import activity
 
     done, refused = [], []
+    ok, why = may_decide(viewer, store.owner)
+    if not ok:
+        raise NotYours(why + " Nothing was recorded.")
     store.sync_before()
     with activity.batch(batch_id):
         for p in planned:
             if p.skip:
                 continue
             try:
-                record(store, store.get(p.ticket.id), True, p.words, sync=False)
+                record(store, store.get(p.ticket.id), True, p.words, viewer=viewer, sync=False)
                 done.append(p.ticket.id)
             except (KeyError, RuleError, ValueError) as e:
                 refused.append((p.ticket.id, str(e)))

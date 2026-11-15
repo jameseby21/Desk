@@ -171,6 +171,33 @@ def test_someone_who_is_not_the_owner_sees_it_read_only_and_cannot_post(store, m
     assert r.status_code == 403 and store.get(t.id).status == "ready" and not store.get(t.id).section("Decision").strip()
 
 
+def test_the_reply_box_refuses_a_confirmed_non_owner_on_the_shared_path(store, monkeypatch):
+    """Protects: decision 110 on the one decision path, a confirmed non-owner can not write a Decision as the owner from the reply box."""
+    t = _ask(store, "Approve: the logo rule", "Plain.")
+    c = _someone_else(store, monkeypatch)
+    for data in ({"action": "approve", "words": "Approved by someone else"}, {"reply": "1", "words": "Approved by someone else"}):
+        c.post(f"/ticket/{t.id}/decide", data={"token": _tok(c), **data}, follow_redirects=False)
+        assert store.get(t.id).status == "ready" and not store.get(t.id).section("Decision").strip()
+    r = c.post(f"/ticket/{t.id}/decide", data={"token": _tok(c), "action": "approve", "words": "Approved by someone else"}, headers={"accept": "application/json"})
+    assert "only james decides here" in r.json()["error"]
+    with pytest.raises(decidemode.NotYours):  # the shared path itself refuses, whoever calls it
+        decidemode.record(store, store.get(t.id), True, "Approved by someone else", viewer=identity.Actor("chaz", "thread", "", "ui", "os-user", True))
+    assert store.get(t.id).status == "ready"
+
+
+def test_the_owner_named_by_this_browser_decides_like_the_assumed_owner(store, monkeypatch):
+    """Protects: one identity rule, the owner named by the browser's cookie decides as the assumed owner does; anyone else it names can not."""
+    t = _ask(store, "Approve: the logo rule", "Plain.", report="Chaz recommends: approve; it is ready.")
+    monkeypatch.setattr(identity, "os_user", lambda: "nobody-listed")
+    c = TestClient(create_app(store.home), cookies={"desk_who": "chaz"})
+    r = c.post("/decide/answer", data={"token": _tok(c), "id": t.id, "action": "approve"}, follow_redirects=False)
+    assert r.status_code == 403 and store.get(t.id).status == "ready"
+    c = TestClient(create_app(store.home), cookies={"desk_who": "james"})
+    assert "disabled" not in c.get("/decide").text.split('id="dm-form"', 1)[1].split("</form>", 1)[0]
+    r = c.post("/decide/answer", data={"token": _tok(c), "id": t.id, "action": "approve"}, follow_redirects=False)
+    assert r.status_code == 303 and store.get(t.id).status == "approved"
+
+
 def test_the_reply_box_and_decide_mode_share_one_decision_path(store, monkeypatch):
     """Protects: one path, not a copy; the ticket page's reply box and Decide mode both write through decidemode.record."""
     calls = []
