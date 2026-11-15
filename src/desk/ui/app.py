@@ -33,6 +33,7 @@ from urllib.parse import quote
 from markupsafe import Markup
 
 from . import events as ev
+from . import routes_preview
 from .markdown import finish_comments, has_mermaid, prep_comments, render as md_html, summary_html
 
 TEMPLATES = Path(__file__).parent / "templates"
@@ -259,6 +260,8 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
 
     def store() -> Store:
         return Store(home or find_home())
+
+    app.include_router(routes_preview.make_router(store))  # DESK-0291: file preview panel and read-only local file links
 
     def censor_for(st: Store):
         """The display filter for this person and store, or None when [style] profanity_filter is false."""

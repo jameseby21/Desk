@@ -272,6 +272,7 @@ MIT, copyright JA Insights LLC.
 
 - Ticket ids that exist in the store (`ABC-0001`) render as links with the ticket's title on hover; files are never changed.
 - Acceptance, How to validate, Prompt and Evidence checkboxes are clickable in the UI (`POST /ticket/<ID>/check`, `ops.toggle_check`). On a review-week ticket each line also gets Open, Approve and Send back.
+- Attachments and local files open in a side panel (DESK-0291): PDF, Markdown, text, CSV, pictures, video, and Word, Excel and PowerPoint as text. A ticket may name a file on this computer by its full path; Desk serves it read-only only inside the folders `desk.toml` `[files] allowed_roots` allows (the store, Documents and Downloads by default), never a key or private folder, and only to its own pages on this computer. Details in docs/COMMANDS.md, In the UI.
 - A project profile may carry `brand: {mark: "assets/brand/<key>/mark.svg", accent: "#B3121A", family: "JA Insights"}`. `assets/brand/` is served at `/brand/<path>`. `drew brand-check [--create] [--assignee chaz]` lists projects with no usable brand and can open one ticket each in project `brand`; `drew validate` warns for projects without a brand block.
 
 ## Doc links, glossary and backlinks

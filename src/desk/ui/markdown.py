@@ -14,9 +14,12 @@ from markdown_it.token import Token
 from ..docs import DOC_FULL, DOC_RE, slug, vscode_url
 from mdit_py_plugins.tasklists import tasklists_plugin
 
+from . import md_local
+
 _md = MarkdownIt("commonmark", {"html": False, "linkify": False, "typographer": False})
 _md.enable(["table", "strikethrough"])
 _md.use(tasklists_plugin, enabled=False)  # checkboxes render disabled; the file is the source of truth
+_md.validateLink = md_local.validate_link(_md.validateLink)  # DESK-0291: file:///C:/ links reach /local, which checks them
 
 
 ID_RE = re.compile(r"(?<![A-Za-z0-9-])[A-Z]{2,10}-\d{4}(?!\d)")
@@ -171,6 +174,7 @@ def _render_link_open(self, tokens, idx, options, env):
         return self.renderToken(tokens, idx, options, env)
     if href.startswith("assets/"):
         tok.attrSet("href", "/" + href)
+    md_local.decorate(tok)  # DESK-0291: attachments and local files open in the preview panel
     tok.attrSet("target", "_blank")
     tok.attrSet("rel", "noopener noreferrer")
     return self.renderToken(tokens, idx, options, env)
@@ -256,6 +260,7 @@ def _thumb_links(state):
         block.children = out
 
 
+_md.core.ruler.push("local_paths", md_local.local_paths)  # DESK-0291
 _md.core.ruler.push("ticket_autolink", _autolink)
 _md.core.ruler.push("thumb_links", _thumb_links)
 _md.core.ruler.push("censor_text", _censor_text)
