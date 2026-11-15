@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Approve together{% endblock %}
+{% block body %}
+{# DESK-0285: the dry run of a batch approve. Nothing is written until Approve is pressed; one Undo reverses the whole batch. #}
+<div class="dm">
+  <div class="dm-top"><h1>Approve {{ ok|length }} together?</h1></div>
+  {% if not can %}<div class="dm-ro" role="note">{{ why_not }}</div>{% endif %}
+  {% if ok %}
+  <section class="card dm-ask">
+    <span class="label">Will be approved ({{ ok|length }})</span>
+    <ul class="dm-list">{% for p in ok %}<li><a class="tid" href="/ticket/{{ p.ticket.id }}">{{ p.ticket.id }}</a> {{ p.ticket.meta.get('title') }}<small>Your line: “{{ p.words }}”</small></li>{% endfor %}</ul>
+    <form class="post-once" method="post" action="/decide/batch" data-progress="Sending,Saving,Done">
+      <input type="hidden" name="token" value="{{ token() }}"><input type="hidden" name="back" value="{{ back }}">
+      {% for p in ok %}<input type="hidden" name="ids" value="{{ p.ticket.id }}">{% endfor %}
+      <div class="dm-actions"><button class="btn ball" type="submit" id="dm-batch-go"{% if not can %} disabled{% endif %}>Approve {{ ok|length }}</button><a class="btn" href="{{ back }}">Cancel</a><span class="dp-slot"></span></div>
+      <small class="muted">One Undo puts all {{ ok|length }} back the way they were.</small>
+    </form>
+  </section>
+  {% else %}
+  <section class="card dm-empty"><h2>None of these can be approved together</h2><p class="muted">Each one needs your own answer. Open them one by one, or use Decide.</p><p><a class="rowb" href="{{ back }}">Back</a> <a class="rowb" href="/decide">Decide</a></p></section>
+  {% endif %}
+  {% if left %}
+  <section class="card dm-ask">
+    <span class="label">Left for you ({{ left|length }})</span>
+    <ul class="dm-list">{% for p in left %}<li><a class="tid" href="/ticket/{{ p.ticket.id }}">{{ p.ticket.id }}</a> {{ p.ticket.meta.get('title') }}<small>{{ p.skip }}</small></li>{% endfor %}</ul>
+  </section>
+  {% endif %}
+</div>
+{% endblock %}

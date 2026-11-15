@@ -1,0 +1,11 @@
+{# DESK-0285: the owner's "approve things like this for me" lines, from delegations.yaml in the store, each with Remove. #}
+{% set rows = delegations() %}
+<section class="card dm-delegs" id="delegations" style="max-width:70ch;margin:18px 0">
+  <span class="label">Things others may approve for you</span>
+  {% if request.query_params.get('msg') %}<p class="dm-msg" role="status">{{ request.query_params.get('msg') }}</p>{% endif %}
+  {% if rows %}
+  <ul class="dm-list">{% for r in rows %}<li><span><b>{{ person(r.who) }}</b> may approve “{{ r.pattern }}”{% if r.project %} in {{ r.project }}{% endif %}<small>Said by {{ person(r.by) }} on {{ r.date }}{% if r['from'] %}, from {{ r['from'] }}{% endif %}</small></span>
+    <form class="post-once" method="post" action="/settings/delegations/remove" data-progress="Sending,Saving,Done"><input type="hidden" name="token" value="{{ token() }}"><input type="hidden" name="index" value="{{ loop.index0 }}"><input type="hidden" name="pattern" value="{{ r.pattern }}"><button class="ghostb" type="submit">Remove</button><span class="dp-slot"></span></form></li>{% endfor %}</ul>
+  {% else %}<p class="muted">None yet. In Decide, open "Approve things like this for me" under a question to add one.</p>{% endif %}
+  <p class="muted">Kept in delegations.yaml in the store. Nothing is approved on its own yet; each line is your word on record.</p>
+</section>

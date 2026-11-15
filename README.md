@@ -248,6 +248,9 @@ Plain HTML forms over FastAPI and Jinja2; no build step. The only JavaScript is 
 - **Board**: one column per status, filter by project.
 - **Ticket**: every section rendered as Markdown (see Rich bodies), acceptance checkboxes with a count, the Report beside them with a red **Not run** tag when it is empty, Attachments with inline images, Approve and Send back forms (both require words, acting as the configured owner), a guarded Move form, comments.
 - **Projects**: one row per `projects/*.md` with its prefix and aliases, counts by status and last activity.
+- **Decide** (`/decide`, key `D` from any page; DESK-0285): one question at a time from Needs me, with the worker's recommendation and why (or "No recommendation recorded"), the options as buttons with what each one does next, the recommended one picked. `Y` agrees (the Decision line says "Agree with the recommendation", so no typing), `N` sends back with a reason, `S` snoozes a week, `E` opens the ticket, `Space`/`J` and `K` move. An earlier answer of yours that looks like the question is linked above it. Only the store owner decides; anyone else sees it read-only.
+- **Approve together** (Today's Needs me): tick ask rows, then **Approve N together** shows a dry run (what will be approved, what is left for you and why) before one batch that one Undo reverses.
+- **Sort the inbox** (`/triage`): inbox tickets one at a time; `1` Now, `2` Planned, `3` Later, `4` Park, `M` merges into another id.
 
 The UI calls the same operations as the CLI, so the same rules apply.
 
