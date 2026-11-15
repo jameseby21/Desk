@@ -81,7 +81,7 @@ fetch('/m',{method:'POST',body:JSON.stringify({boxes:o,heads:hs,split:split,scro
 
 
 @pytest.mark.skipif(browser() is None, reason="no Edge or Chrome installed")
-@pytest.mark.parametrize("width", [1280, 390])
+@pytest.mark.parametrize("width", [1280, 390, 320])  # 320: the smallest phone still sold (DESK-0302 edge case)
 def test_check_column_alignment(store, width):
     """Protects: at 1280 px and 390 px both boxes of every line share one x position (+-1 px), a 200 character line wraps without
     moving them, the hit areas are 44 px, and the headers sit over the column. Measured in headless Edge or Chrome."""
@@ -101,4 +101,6 @@ def test_check_column_alignment(store, width):
     centre = lambda b: b[0] + b[1] / 2
     assert abs(data["heads"][1] - centre(boxes[0][0])) <= 2 and abs(data["heads"][2] - centre(boxes[0][1])) <= 2  # each header is centred over its box
     assert data["split"] == 0, "a header word is broken across two lines (DESK-0302)"
+    if width == 320 and data["scroll"] > data["inner"] + 1:
+        pytest.xfail("DESK-0303: the page is 334 px wide at 320 px, before and after DESK-0302 (measured 2026-11-15)")
     assert data["scroll"] <= data["inner"] + 1, "the page scrolls sideways"
