@@ -91,6 +91,20 @@ def test_nobody_can_claim_the_automation_name_on_the_command_line(home):
         identity.resolve_cli(home, "automation", env={})
 
 
+def test_a_people_entry_named_automation_gives_nobody_the_name(home):
+    """Decision 110: a people.yaml entry keyed automation (its OS user, its alias, a cookie) never makes a person act as the runner."""
+    (home.home / "people.yaml").write_bytes(
+        b"people:\n  - key: james\n    name: Owner\n  - key: automation\n    name: Robo\n    os_users: [bot]\n")
+    assert identity.resolve_cli(home, None, env={}, user="bot", git="").name != "automation"
+    with pytest.raises(SystemExit, match="automation runner"):
+        identity.resolve_cli(home, "Robo", env={})
+    with pytest.raises(SystemExit, match="automation runner"):
+        identity.resolve_cli(home, None, env={}, user="automation", git="")
+    assert identity.resolve_ui(home, {}, user="bot").name != "automation"
+    assert identity.resolve_ui(home, {"desk_who": "automation"}, user="nobody").name != "automation"
+    assert identity.resolve_ui(home, {"desk_who": "Robo"}, user="nobody").name != "automation"
+
+
 # ---- dry run -----------------------------------------------------------------------------------
 
 def test_dry_run_changes_nothing_and_says_what_and_why(home, no_gh):

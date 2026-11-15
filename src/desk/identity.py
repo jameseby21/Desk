@@ -113,6 +113,8 @@ def _person_for(pe: peoplemod.People, name: str) -> peoplemod.Person | None:
     if not n:
         return None
     for p in pe.list:
+        if p.key.lower() in RESERVED:  # DESK-0292: a people.yaml row keyed automation is nobody's identity
+            continue
         if n in {u.lower() for u in p.os_users} or n == p.key.lower() or n == p.name.lower() or n in {a.lower() for a in p.aliases}:
             return p
     return None
@@ -138,7 +140,7 @@ def resolve_cli(store, claimed: str | None = None, env=None, user: str | None = 
     if sub or kind_env == "subagent":
         ident = sub or _safe(inst) or _safe(named) or "unknown"
         return Actor(f"subagent:{ident}", "subagent", ident, "cli", "agent-id", False, parent=env.get("DESK_PARENT_SESSION", "") or inst)
-    if named.lower() in RESERVED:
+    if named.lower() in RESERVED or (pe.get(named) and pe.get(named).key.lower() in RESERVED):
         raise SystemExit(f"`{named}` is Desk's automation runner; nobody acts as it (decision 110). Run the command as yourself.")
     if named:
         p = pe.get(named)
@@ -154,6 +156,8 @@ def resolve_cli(store, claimed: str | None = None, env=None, user: str | None = 
     p = _person_for(pe, g)
     if p:
         return Actor(p.key, _kind_of(p, "person"), instance_here(), "cli", "git-user", True)
+    if (u or "").lower() in RESERVED:
+        raise SystemExit(f"`{u}` is Desk's automation runner; nobody acts as it (decision 110). Run the command as a listed person.")
     return Actor(u or store.owner, "person", instance_here(), "cli", "os-user-unlisted", False)
 
 
@@ -167,7 +171,7 @@ def resolve_ui(store, cookies: dict, user: str | None = None) -> Actor:
         base = Actor(p.key, _kind_of(p, "person"), device, "ui", "os-user", True)
     else:
         q = pe.get(cookies.get("desk_who", ""))
-        if q:
+        if q and q.key.lower() not in RESERVED:
             base = Actor(q.key, _kind_of(q, "person"), device, "ui", "device-cookie", False)
         else:
             base = Actor(store.owner, "person", device, "ui", "assumed-owner", False)

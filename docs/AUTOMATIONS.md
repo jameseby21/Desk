@@ -4,7 +4,7 @@
 
 ## How it works
 
-- **Who writes.** Every change is written by the actor `automation`, and the timeline shows it with the kind `rule`. A rule cannot name who writes: a rule with `as:`, `actor:` or `by:` makes the file unusable. Nobody can type `--as automation` either, so a person's change never looks like a rule's (decision 110).
+- **Who writes.** Every change is written by the actor `automation`, and the timeline shows it with the kind `rule`. A rule cannot name who writes: a rule with `as:`, `actor:` or `by:` makes the file unusable. Nobody can type `--as automation` either, and a people.yaml entry keyed `automation` is never anyone's identity (not by OS user, alias or browser cookie), so a person's change never looks like a rule's (decision 110).
 - **Every change names its rule.** Each line in the event log ends with `(rule <name>)`, and comments end the same way.
 - **Undo.** One run is one batch (`b-` and 12 letters or digits), so the Undo button covers the whole run (DESK-0284). `drew auto undo <batch>` does the same from the terminal. It puts back every ticket the run changed. A ticket the run created is closed as rejected, with the reason, so its record stays. A ticket someone changed after the run is left alone and named, so no later work is lost. A notification already queued stays queued. A value the undo puts back still counts as the rule's, so later runs keep it up to date instead of treating it as set by hand.
 - **What you set by hand stays.** A rule's `set`, `lane` and `priority` never change a value a person set, unless the rule says `override: true`. A tag a person added is never removed. The run says so when it holds back, for example `kept lane later (set by hand)`.
