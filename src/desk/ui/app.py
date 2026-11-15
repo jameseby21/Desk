@@ -1381,6 +1381,9 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
             return JSONResponse({"ok": True, "message": f"Moved to {s.get(ticket_id).status}.", "stamp": str(ev.ticket_stamp(s, t.id))})
         return _back(ticket_id, ok="move", anchor="decision")
 
+    from . import routes_undo  # DESK-0284: every POST gets a batch and an Undo; /undo and the revert routes
+    app.add_middleware(routes_undo.UndoMiddleware)
+    app.include_router(routes_undo.router(templates, ctx, store, tokens))
     return app
 
 

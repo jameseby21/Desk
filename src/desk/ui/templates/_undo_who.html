@@ -1,0 +1,8 @@
+{# DESK-0284: "who did this" on every changed field: the newest change of each field, with who made it and their kind (person, agent or rule). Needs `tl`. #}
+{% set ns = namespace(seen=[], chips=[]) %}
+{% for r in tl.rows if r.event.change == 'field' and r.event.field not in ns.seen %}{% set ns.seen = ns.seen + [r.event.field] %}{% set ns.chips = ns.chips + [r] %}{% endfor %}
+{% if ns.chips %}<div class="who-chips" aria-label="Who changed each field">
+  <span class="tl-cap">Changed by</span>
+  {% for r in ns.chips[:12] %}<span class="chip who-chip" data-kind="{{ r.dims.kind }}" title="{{ r.what }} · {{ r.actor_name }} ({{ r.kind_label }}) · {{ r.source_label }} · {{ r.when }}"><b>{{ r.event.field }}</b> {{ r.event.new or 'empty' }} <i class="tl-dot" style="background:{{ r.colours.kind }}"></i>{{ r.actor_name }} · {{ r.kind_label }}</span>{% endfor %}
+  <a class="who-log" href="/undo?ticket={{ tl.ticket_id }}">Undo log</a>
+</div>{% endif %}
