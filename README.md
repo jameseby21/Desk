@@ -248,6 +248,7 @@ Plain HTML forms over FastAPI and Jinja2; no build step. The only JavaScript is 
 - **Board**: one column per status, filter by project.
 - **Ticket**: every section rendered as Markdown (see Rich bodies), acceptance checkboxes with a count, the Report beside them with a red **Not run** tag when it is empty, Attachments with inline images, Approve and Send back forms (both require words, acting as the configured owner), a guarded Move form, comments.
 - **Projects**: one row per `projects/*.md` with its prefix and aliases, counts by status and last activity.
+- **Undo** (DESK-0284): every save shows a ten-second toast with Undo (`Z`); `/undo` lists the week's changes by anyone with Undo per change and per action; the ticket page shows who changed each field. `drew undo` is the same from the command line. An undo is new events, never an edit of the log.
 
 The UI calls the same operations as the CLI, so the same rules apply.
 

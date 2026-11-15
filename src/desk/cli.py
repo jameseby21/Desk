@@ -1547,6 +1547,8 @@ def build_parser() -> argparse.ArgumentParser:
     from . import cli_lanes  # DESK-0283: lane, snooze, park
 
     cli_lanes.register(sub)
+    from . import cli_undo  # DESK-0284
+    cli_undo.register(sub)
     return p
 
 

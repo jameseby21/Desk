@@ -49,6 +49,7 @@
     <span class="tl-cap">Latest change</span>
     {% if L %}<i class="tl-dot" style="background:{{ L.colours.kind }}"></i><b class="tl-who">{{ L.actor_name }}</b><span class="tl-kind">{{ L.kind_label }}</span><span class="tl-what">{{ L.what }}</span><span class="tl-when">{{ L.when }}</span>{% else %}<span class="tl-what muted">No changes recorded yet.</span>{% endif %}
   </p>
+  {% include "_undo_who.html" %}
   {% if tl.rows %}
   <details class="tl-all" id="tl-all">
     <summary>Expand all events ({{ tl.rows|length }})</summary>

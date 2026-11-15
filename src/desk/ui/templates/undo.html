@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Desk · Undo log{% endblock %}
+{% block body %}{# DESK-0284: this week's changes by anyone, grouped by batch, each with Undo #}
+{% set here = '/undo' ~ ('?actor=' ~ actor|urlencode if actor else '') %}
+<div class="ul-head">
+  <h1>Undo log</h1>
+  <p class="muted">Every change of the last seven days, newest first. Undo puts the old value back. Both changes stay in the record.</p>
+</div>
+{% if error %}<div class="error ul-error" role="alert">{{ error }}
+  {% if retry %}<form method="post" action="{{ retry }}" data-progress="Sending,Undoing,Done" class="undo-form ul-inline"><input type="hidden" name="token" value="{{ token() }}"><input type="hidden" name="force" value="1"><input type="hidden" name="next" value="{{ here }}"><button type="submit" class="btn small">Undo anyway</button></form>{% endif %}
+</div>{% endif %}
+<form class="ul-filter" method="get" action="/undo" data-progress="none">
+  <label>Who <select name="actor" aria-label="Show the changes of one person" data-autosubmit>
+    <option value="">Everyone ({{ actors.values()|sum }})</option>
+    {% for key, n in actors.items() %}<option value="{{ key }}"{% if key|lower == actor|lower %} selected{% endif %}>{{ name(key) }} ({{ n }})</option>{% endfor %}
+  </select></label>
+  {% if ticket %}<input type="hidden" name="ticket" value="{{ ticket }}"><span class="chip">{{ ticket }} <a href="/undo{{ '?actor=' ~ actor|urlencode if actor }}" aria-label="Show every ticket">✕</a></span>{% endif %}
+  <noscript><button type="submit" class="btn small">Show</button></noscript>
+</form>
+{% if not groups %}<p class="empty">No changes in the last seven days{% if actor %} by {{ name(actor) }}{% endif %}.</p>{% endif %}
+<ol class="ul-list">
+{% for g in groups %}
+  <li class="card ul-group{% if g.all_undone %} ul-done{% endif %}">
+    <div class="ul-ghead">
+      <span class="ul-who"><i class="tl-dot" style="background:{{ kind_colour(g.kind) }}"></i><b>{{ name(g.actor) }}</b> <span class="tl-kind">{{ kind_label(g.kind) }}</span></span>
+      <span class="muted">{{ when(g.ts) }} · {{ g.events|length }} change{{ 's' if g.events|length != 1 }}{% if g.tickets|length > 1 %} on {{ g.tickets|length }} tickets{% endif %}</span>
+      {% if g.batch and g.events|length > 1 and not g.all_undone %}<form method="post" action="/undo/batch/{{ g.batch }}" data-progress="Sending,Undoing,Done" class="undo-form ul-all"><input type="hidden" name="token" value="{{ token() }}"><input type="hidden" name="next" value="{{ here }}"><button type="submit" class="btn small">Undo all {{ g.events|length }}</button></form>{% endif %}
+    </div>
+    <ul class="ul-rows">
+      {% for e in g.events|reverse %}<li class="ul-row">
+        <a class="ul-id" href="/ticket/{{ e.ticket }}#timeline">{{ e.ticket }}</a>
+        <span class="ul-what">{{ e.what }}</span>
+        {% if (e.ticket, e.seq) in g.undone %}<span class="chip">Undone</span>
+        {% elif e.change != 'git' %}<form method="post" action="/undo/event/{{ e.ticket }}/{{ e.seq }}" data-progress="Sending,Undoing,Done" class="undo-form"><input type="hidden" name="token" value="{{ token() }}"><input type="hidden" name="next" value="{{ here }}"><button type="submit" class="btn small" aria-label="Undo {{ e.ticket }} change {{ e.seq }}">Undo</button></form>{% endif %}
+      </li>{% endfor %}
+    </ul>
+  </li>
+{% endfor %}
+</ol>
+{% endblock %}

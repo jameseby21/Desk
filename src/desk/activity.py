@@ -262,6 +262,19 @@ def batch(batch_id: str):
         _BATCH.reset(token)
 
 
+_NOTE: contextvars.ContextVar[str] = contextvars.ContextVar("desk_note", default="")
+
+
+@contextlib.contextmanager
+def note(text: str):
+    """Every event saved inside this block ends its what-line with ` · <text>` (DESK-0284: a revert says `· undoes #N`)."""
+    token = _NOTE.set(text)
+    try:
+        yield text
+    finally:
+        _NOTE.reset(token)
+
+
 def record_save(store, old, new, now: dt.datetime | None = None) -> list[Event]:
     """Append one event per change made by this save, named for the actor of the current command or request."""
     from . import people as peoplemod
@@ -274,9 +287,17 @@ def record_save(store, old, new, now: dt.datetime | None = None) -> list[Event]:
     actor = pe.resolve(a.as_ or a.name) if a.name != "not recorded" else a.name
     kind = kind_for(actor, a.kind, store.owner, pe)
     ts = (now or dt.datetime.now()).replace(microsecond=0).isoformat()
-    evs = [Event(new.id, ts, actor, kind, a.source if a.source in SOURCES else "cli", c["change"], c["field"], c["old"], c["new"], c["what"],
+    tail = f" · {_NOTE.get()}" if _NOTE.get() else ""
+    evs = [Event(new.id, ts, actor, kind, a.source if a.source in SOURCES else "cli", c["change"], c["field"], c["old"], c["new"], c["what"] + tail,
                  a.instance, bool(a.confirmed), batch=_BATCH.get()) for c in changes]
-    return append(store.home, evs)
+    written = append(store.home, evs)
+    try:  # DESK-0284: the full old and new values, so undo can put a section back; a convenience beside the log, never a reason to fail
+        from . import undo
+
+        undo.remember(store, old, new, written)
+    except Exception:
+        pass
+    return written
 
 
 # -- migration (DESK-0045 history into the log) -----------------------------------------

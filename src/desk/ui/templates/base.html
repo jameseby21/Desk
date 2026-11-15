@@ -32,6 +32,7 @@
 <script src="{{ asset('notify.js') }}" defer></script>
 <script src="{{ asset('flags.js') }}" defer></script>
 <script src="{{ asset('lanes.js') }}" defer></script>
+<script src="{{ asset('undo.js') }}" defer></script>
 <script>
 /* A page that saves in place (check boxes, comments) tells the auto-refresh the file stamp of its own write, so it does not reload itself. */
 window.DeskLive = { own: "0", mine: function (stamp) { if (stamp && BigInt(stamp) > BigInt(this.own)) this.own = String(stamp); } };
