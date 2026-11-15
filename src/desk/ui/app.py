@@ -33,6 +33,7 @@ from urllib.parse import quote
 from markupsafe import Markup
 
 from . import events as ev
+from . import routes_capture
 from .markdown import finish_comments, has_mermaid, prep_comments, render as md_html, summary_html
 
 TEMPLATES = Path(__file__).parent / "templates"
@@ -1381,6 +1382,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
             return JSONResponse({"ok": True, "message": f"Moved to {s.get(ticket_id).status}.", "stamp": str(ev.ticket_stamp(s, t.id))})
         return _back(ticket_id, ok="move", anchor="decision")
 
+    app.include_router(routes_capture.router(store, templates, ctx, tokens, acting))  # DESK-0286: capture, paste-to-split, file drop
     return app
 
 

@@ -11,7 +11,7 @@
     if (dlg) return;
     dlg = document.createElement("div");
     dlg.id = "palette"; dlg.className = "palette"; dlg.setAttribute("role", "dialog"); dlg.setAttribute("aria-label", "Search tickets"); dlg.hidden = true;
-    dlg.innerHTML = '<div class="pal-box"><input type="search" id="pal-input" autocomplete="off" aria-label="Search tickets" placeholder="Part of an id or title, then filters like status:review assignee:chaz">' +
+    dlg.innerHTML = '<div class="pal-box"><input type="search" id="pal-input" autocomplete="off" aria-label="Search tickets" placeholder="Part of an id or title, filters like status:review, or new: a sentence to capture">' +
       '<div id="pal-status" class="muted pal-status" role="status" aria-live="polite">Type to search. Esc closes.</div><div id="pal-list" class="pal-list" role="listbox"></div></div>';
     document.body.appendChild(dlg);
     input = dlg.querySelector("#pal-input"); list = dlg.querySelector("#pal-list"); status = dlg.querySelector("#pal-status");
@@ -46,12 +46,14 @@
     items[at].scrollIntoView({ block: "nearest" });
   }
   function go(e) {
+    if (at >= 0 && items[at] && items[at].hasAttribute("data-capture") && window.DeskCapture && !e.ctrlKey && !e.metaKey) { DeskCapture.create(input.value); return; }  // DESK-0286
     if (at >= 0 && items[at]) { if (e.ctrlKey || e.metaKey) window.open(items[at].href); else window.location.href = items[at].href; return; }
     window.location.href = "/search?q=" + encodeURIComponent(input.value);
   }
   function run() {
     var q = input.value.trim(), me = ++seq;
     if (!q) { list.innerHTML = ""; items = []; at = -1; status.textContent = "Type to search. Esc closes."; return; }
+    if (window.DeskCapture && DeskCapture.only(q)) { list.innerHTML = DeskCapture.row(q, 0); items = Array.prototype.slice.call(list.querySelectorAll("a.pal-item")); at = -1; pick(0); status.textContent = "Enter creates the ticket. Esc closes."; return; }  // DESK-0286: new: captures
     fetch("/search.json?q=" + encodeURIComponent(q), { headers: { Accept: "application/json" } }).then(function (r) { return r.json(); }).then(function (d) {
       if (me !== seq) return;
       var html = "";
@@ -62,9 +64,9 @@
             '<span class="pal-title">' + esc(h.title) + (h.fuzzy ? ' <span class="muted">close match</span>' : '') + '</span>' + (h.part_of ? '<span class="pal-part muted">' + esc(h.part_of) + '</span>' : "") + (h.snippet ? '<span class="pal-snip muted">' + mark(h.snippet) + '</span>' : "") + '</a>';
         });
       });
-      list.innerHTML = html || '<div class="muted pal-none">No ticket matches. Check the spelling or drop a filter.</div>';
+      list.innerHTML = (html || '<div class="muted pal-none">No ticket matches. Check the spelling or drop a filter.</div>') + (window.DeskCapture ? DeskCapture.row(q, d.total) : "");  // DESK-0286: the Create row
       items = Array.prototype.slice.call(list.querySelectorAll("a.pal-item")); at = items.length ? 0 : -1; pick(at);
-      status.textContent = d.total ? d.total + (d.capped ? "+" : "") + " match" + (d.total === 1 ? "" : "es") + (d.fuzzy ? " (some are the closest spelling)" : "") + ". Enter opens, Ctrl Enter opens in a new tab." : "No match.";
+      status.textContent = d.total ? d.total + (d.capped ? "+" : "") + " match" + (d.total === 1 ? "" : "es") + (d.fuzzy ? " (some are the closest spelling)" : "") + ". Enter opens, Ctrl Enter opens in a new tab." : (window.DeskCapture ? "No match. Create makes it a new ticket." : "No match.");
     }).catch(function () { status.textContent = "Search could not reach Desk. Is the UI still running?"; });
   }
   document.addEventListener("keydown", function (e) {

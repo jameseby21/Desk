@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 from . import accept_migrate, check_migrate, commands_migrate, deadlines, nav, ops, profanity, retype, review as rv, style as styles, tests_migrate, tracks as trk, version as ver
+from . import cli_capture
 from .config import HomeNotFound, find_home
 from .rules import RuleError, validate_store
 from .store import Store
@@ -1544,6 +1545,7 @@ def build_parser() -> argparse.ArgumentParser:
     rp = rsub.add_parser("sync", help="regenerate the checkbox list and KPI block in place")
     rp.add_argument("id", nargs="?", help="default: this week's review ticket")
     rp.set_defaults(fn=cmd_review_sync)
+    cli_capture.register(sub)  # DESK-0286: drew capture hotkey
     return p
 
 
