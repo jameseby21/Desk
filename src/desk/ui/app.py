@@ -26,6 +26,7 @@ from ..rules import RuleError
 from ..store import Store, id_parts, split_profile
 from ..ticket import SECTIONS, STATUSES, check_states, parse_checks
 from .. import words
+from .. import decidemode
 from .. import timeline as tlmod
 from ..words import flag_empty
 from urllib.parse import quote
@@ -34,6 +35,7 @@ from markupsafe import Markup
 
 from . import events as ev
 from . import routes_lanes
+from . import routes_decide  # DESK-0285
 from .markdown import finish_comments, has_mermaid, prep_comments, render as md_html, summary_html
 
 TEMPLATES = Path(__file__).parent / "templates"
@@ -1046,9 +1048,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
             action = action or ("approve" if reply else "")
             if action not in ("approve", "changes"):
                 raise ValueError("Pick Approve or Send back.")
-            s.sync_before()
-            ops.decide(s, t, approve=(action == "approve"), reason=words, actor=s.owner)
-            s.sync_after(f"desk: decide {t.id}")
+            decidemode.record(s, t, action == "approve", words, viewer=acting(request))  # DESK-0285: the one decision path, with the viewer's identity
         except (KeyError, RuleError, ValueError) as e:
             return refused(e) if js else _back(ticket_id, str(e), next, anchor="decision")
         if js:
@@ -1389,6 +1389,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
     from . import routes_undo  # DESK-0284: every POST gets a batch and an Undo; /undo and the revert routes
     app.add_middleware(routes_undo.UndoMiddleware)
     app.include_router(routes_undo.router(templates, ctx, store, tokens))
+    app.include_router(routes_decide.build(templates=templates, ctx=ctx, store=store, tokens=tokens, acting=acting))  # DESK-0285
     return app
 
 
