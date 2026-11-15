@@ -410,8 +410,9 @@ KEYS = """<script>addEventListener('load',function(){
 var key=function(k){document.dispatchEvent(new KeyboardEvent('keydown',{key:k,bubbles:true}));};
 var step=sessionStorage.getItem('dm-step')||'today';
 if(location.pathname==='/'&&step==='today'){sessionStorage.setItem('dm-ticks',String(document.querySelectorAll('#needs-me .dm-tick').length));sessionStorage.setItem('dm-step','decide');key('d');return;}
-if(location.pathname==='/decide'&&!location.search){sessionStorage.setItem('dm-step','sent');key('y');return;}
-fetch('/m',{method:'POST',body:JSON.stringify({path:location.pathname,query:location.search,ticks:sessionStorage.getItem('dm-ticks'),step:step})});});</script>"""
+var url=new URL((performance.getEntriesByType('navigation')[0]||{}).name||location.href);/* the address as loaded: the Undo toast may tidy undo= and msg= out of the bar */
+if(location.pathname==='/decide'&&step==='decide'){sessionStorage.setItem('dm-step','sent');key('y');return;}
+fetch('/m',{method:'POST',body:JSON.stringify({path:location.pathname,query:url.search,ticks:sessionStorage.getItem('dm-ticks'),step:step})});});</script>"""
 
 
 @pytest.mark.skipif(browser() is None, reason="no Edge or Chrome installed")
