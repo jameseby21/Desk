@@ -25,7 +25,8 @@ from .ticket import STATUSES
 DIMENSIONS = ("actor", "kind", "source", "project", "company", "track", "sprint", "field")
 LABELS = {"actor": "Who", "kind": "Kind", "source": "Where from", "project": "Project", "company": "Company", "track": "Track",
           "sprint": "Sprint", "field": "What changed"}
-SOURCE_LABELS = {"ui": "on the page", "cli": "command line", "mcp": "MCP", "migration": "from old comments", "git": "from git history"}
+SOURCE_LABELS = {"ui": "on the page", "cli": "command line", "mcp": "MCP", "migration": "from old comments", "git": "from git history",
+                 "file": "from the ticket file"}
 KIND_LABELS = {"owner": "Owner", "main": "Main session", "coworker": "Coworker", "code": "Code session", "subagent": "Subagent", "person": "Person",
                "rule": "Rule"}
 FIELD_LABELS = {"comment": "Comment", "created": "Created", "git": "Saved in git"}
@@ -123,6 +124,13 @@ class Period:
     current: bool = False
     share: float = 0.0  # percent of the strip's width, by time
     today: dt.date | None = None  # the strip's own "now", so its words name the year by that date, never by the machine clock
+    since_unknown: bool = False  # the status is on record at `start`, but nothing says when it began (it may be earlier)
+    note: str = ""  # for a span with no record: what the next record says about it
+
+    @property
+    def unknown(self) -> bool:
+        """No record covers this span: drawn hatched, named Not recorded, never given a status."""
+        return not self.status
 
     @property
     def seconds(self) -> float:
@@ -134,7 +142,7 @@ class Period:
 
     @property
     def css(self) -> str:
-        return self.status if self.known else "other"
+        return "unknown" if self.unknown else (self.status if self.known else "other")
 
     @property
     def label(self) -> str:
@@ -142,8 +150,18 @@ class Period:
 
     @property
     def text(self) -> str:
-        """What a person reads for this period: status, from when, for how long."""
-        return f"{self.label}, from {day_text(self.start, self.today, with_time=True)}, for {duration_text(self.seconds)}" + (" (now)" if self.current else "")
+        """What a person reads for this period: status, from when, for how long. A status whose start is not on record says
+        `or earlier` and `at least`; a span no record covers says so."""
+        start = day_text(self.start, self.today, with_time=True)
+        if self.since_unknown and self.seconds < 60:
+            return f"{self.label} (now); when it started is not recorded"
+        if self.since_unknown:
+            out = f"{self.label}, from {start} or earlier, for at least {duration_text(self.seconds)}"
+        else:
+            out = f"{self.label}, from {start}, for {duration_text(self.seconds)}"
+        if self.unknown:
+            out += ": no status record covers this time" + (f"; {self.note}" if self.note else "")
+        return out + (" (now)" if self.current else "")
 
 
 @dataclass
@@ -222,40 +240,124 @@ def duration_text(seconds: float) -> str:
     return "under a minute"
 
 
-def periods(created, events, status: str, now: dt.datetime | None = None) -> list[Period]:
-    """The ticket's life as status periods, oldest first, from its created date to now. Built from the status field events
-    (old -> new) in time order (the sequence number breaks a tie); a move to the status it is already in is not a period; a log that
-    starts after the ticket was created opens with the status before the first move. No status events: one period, created to now,
-    in the current status. When the ticket's file says a status the log never reached (an edit outside Desk), that status closes
-    the strip as the current one. Widths (`share`) are percent of the whole time."""
+@dataclass
+class _Anchor:
+    """One record of the ticket's status at a moment: `before` and `after` are what it says the status was just before and just
+    after (None when it does not say); `creation` marks where the ticket's life starts (its created event, or the first commit)."""
+    at: dt.datetime
+    order: tuple
+    before: str | None
+    after: str | None
+    creation: bool = False
+
+
+SAME_SAVE = 5  # seconds: a file written this close to a record was written by that record's save
+
+
+def periods(created, events, status: str, now: dt.datetime | None = None, snapshots=(), done_at=None, saved_at=None) -> list[Period]:
+    """The ticket's life as status periods, oldest first, from its created date to now. Widths (`share`) are percent of the time.
+
+    Built only from records, never assumed (DESK-0305 review: a strip that put the current status across the whole life of a ticket
+    whose status changes were made in git). The records: the log's status changes (old -> new), its created event, the status the
+    ticket file said at each commit (`snapshots`: (time, status, first commit?)), `done_at` for a done ticket, and the file as it
+    is now (written at `saved_at`). Between two records the earlier one holds; when the later one says the status was something
+    else just before it, the change happened at a time nobody recorded, and that span is Not recorded. Before the first record
+    is Not recorded too, unless that record is the ticket's creation on its created day. A status the file has that no record
+    reached starts when the file was last written (`saved_at`), or now."""
     now = (now or dt.datetime.now()).replace(microsecond=0)
-    moves = sorted(((d, e.seq, e) for e in events if e.change == "field" and e.field == "status" and (d := _ts(e.ts)) is not None),
-                   key=lambda x: (x[0], x[1]))
+    anchors: list[_Anchor] = []
+    for e in events:
+        d = _ts(e.ts)
+        if d is None:
+            continue
+        if e.change == "field" and e.field == "status" and e.new:
+            anchors.append(_Anchor(d, (0, e.seq), e.old or None, e.new))
+        elif e.change == "created" and e.source != "file":
+            anchors.append(_Anchor(d, (0, e.seq), None, None, creation=True))
+    for at, st, first in snapshots:
+        d = _ts(at)
+        if d is not None and (st or first):
+            anchors.append(_Anchor(d, (1, 0), None, st or None, creation=bool(first)))
+    done = _ts(done_at) if done_at else None
+    if status == "done" and done is not None and not any(a.after == "done" for a in anchors):
+        anchors.append(_Anchor(done, (2, 0), None, "done"))
+    anchors.sort(key=lambda a: (a.at, a.order))
+    for a in anchors:
+        a.at = min(a.at, now)
     start = _ts(created)
-    stamps = [d for e in events if (d := _ts(e.ts)) is not None]
+    stamps = [d for e in events if (d := _ts(e.ts)) is not None] + [a.at for a in anchors]
     if start is None:
         start = min(stamps) if stamps else now
-    if stamps and min(stamps) < start:  # the log is older than the created date it says: the log wins
+    if stamps and min(stamps) < start:  # the records are older than the created date the file says: the records win
         start = min(stamps)
     start = min(start, now)
-    cur = (moves[0][2].old or moves[0][2].new) if moves else (status or "")
+    saved = min(max(_ts(saved_at), start), now) if saved_at is not None and _ts(saved_at) is not None else None
     out: list[Period] = []
-    for d, _seq, e in moves:
-        new = e.new or ""
-        if not new or new == cur:
+
+    def add(st, a, b, **kw):
+        out.append(Period(st or "", a, max(a, b), **kw))
+
+    if not anchors:
+        cut = saved if saved is not None and saved > start else now
+        add("", start, cut)
+        add(status, cut, now, current=True, since_unknown=True)
+        return _finish(out, now)
+    first = anchors[0]
+    if first.creation and first.at.date() == start.date():
+        start = first.at  # created that day: the strip starts when it was made
+    elif first.at > start:
+        add("", start, first.at, note=f"it was {words.screen(first.before)} just before {day_text(first.at, now.date(), with_time=True)}" if first.before else "")
+    carry: str | None = None
+    for i, a in enumerate(anchors):
+        nxt = anchors[i + 1] if i + 1 < len(anchors) else None
+        st = a.after if a.after is not None else carry
+        if nxt is not None:
+            if st is None:
+                st = nxt.before
+            elif nxt.before is not None and nxt.before != st:
+                add("", a.at, nxt.at, note=f"it was {words.screen(st)} at {day_text(a.at, now.date(), with_time=True)} and "
+                                           f"{words.screen(nxt.before)} just before {day_text(nxt.at, now.date(), with_time=True)}")
+                carry = nxt.before
+                continue
+            add(st, a.at, nxt.at)
+            carry = st
             continue
-        at = min(max(d, start), now)
-        out.append(Period(cur, start, at))
-        cur, start = new, at
-    if status and cur != status:
-        out.append(Period(cur, start, now))
-        cur, start = status, now
-    out.append(Period(cur, start, max(now, start), current=True))
-    total = sum(p.seconds for p in out)
+        # the last record, then the file as it is now
+        cur = status or st or ""
+        quiet = saved is None or saved <= a.at + dt.timedelta(seconds=SAME_SAVE)  # the file not written since this record
+        if st is None:
+            if quiet and saved is not None:
+                add(cur, a.at, now, current=True)
+            else:
+                cut = saved if saved is not None else now
+                add("", a.at, cut)
+                add(cur, cut, now, current=True, since_unknown=True)
+        elif st == cur:
+            add(cur, a.at, now, current=True)
+        else:
+            cut = saved if saved is not None and saved > a.at else now
+            add(st, a.at, cut)
+            add(cur, cut, now, current=True, since_unknown=True)
+    return _finish(out, now)
+
+
+def _finish(out: list[Period], now: dt.datetime) -> list[Period]:
+    """Join neighbours in the same status (a record that says nothing new is not a period), then widths by time."""
+    joined: list[Period] = []
     for p in out:
+        if joined and joined[-1].status == p.status:
+            last = joined[-1]
+            last.end, last.current = max(last.end, p.end), p.current
+            last.note = last.note or p.note
+            continue
+        joined.append(p)
+    if joined and joined[0].unknown and joined[0].seconds == 0 and len(joined) > 1:
+        joined.pop(0)  # an empty span before a record at the very start says nothing
+    total = sum(p.seconds for p in joined)
+    for p in joined:
         p.today = now.date()
-        p.share = round(100 * p.seconds / total, 3) if total else round(100 / len(out), 3)
-    return out
+        p.share = round(100 * p.seconds / total, 3) if total else round(100 / len(joined), 3)
+    return joined
 
 
 def rail_days(rs: list, today: dt.date, first: int = FIRST) -> list[Day]:
@@ -294,12 +396,12 @@ def _field_label(name: str) -> str:
     return FIELD_LABELS.get(name, name)
 
 
-def rows(store, t, pe=None) -> list[Row]:
-    """Every event of the ticket, newest first, with its dimensions as they were when it happened."""
+def rows(store, t, pe=None, events=None) -> list[Row]:
+    """Every event of the ticket (its log, or `events` when given), newest first, with its dimensions as they were when it happened."""
     from . import companies
 
     pe = pe or peoplemod.load(store.home)
-    evs = sorted(activity.read(store.home, t.id), key=lambda e: (e.ts, e.seq), reverse=True)
+    evs = sorted(activity.read(store.home, t.id) if events is None else events, key=lambda e: (e.ts, e.seq), reverse=True)
     state = {"project": str(t.meta.get("project") or ""), "track": str(t.meta.get("track") or ""), "sprint": str(t.meta.get("sprint") or "")}
     company_of: dict[str, str] = {}
     out = []
@@ -345,11 +447,33 @@ def matches(r: Row, filters: dict[str, set[str]]) -> bool:
     return True
 
 
+def events_of(store, t, pe) -> tuple[list, list, dt.datetime | None]:
+    """(every event, the ticket file's git snapshots, when the file was last written). The events are the activity log plus what
+    the ticket's git history proves and the log lacks (commits and status changes made outside Desk, DESK-0305 review), plus a
+    Created event from the file's created date when nothing recorded the creation: so a ticket changed only in git, or never through
+    Desk, still has its history on the page and in `drew history`, without anything being written."""
+    logged = activity.read(store.home, t.id)
+    path = getattr(t, "path", None)
+    snaps = activity.snapshots(store.home, t.id, path, pe, store.owner)
+    extra = activity.events_from_git(t.id, snaps, logged)
+    created = _ts(t.meta.get("created"))
+    if created is not None and not any(e.change == "created" for e in logged):
+        extra.append(activity.Event(t.id.upper(), created.isoformat(), "not recorded", "person", "file", "created", "created", "",
+                                    str(t.meta.get("title") or ""), "Created (the date in the ticket file)"))
+    saved = None
+    try:
+        saved = dt.datetime.fromtimestamp(path.stat().st_mtime).replace(microsecond=0) if path else None
+    except OSError:
+        saved = None
+    return logged + extra, snaps, saved
+
+
 def view(store, t, filters: dict[str, set[str]] | None = None, now: dt.datetime | None = None) -> View:
     # to the minute: the strip says minutes at the finest, and two renders a moment apart draw the same page (test_flags compares three)
     now = now or dt.datetime.now().replace(second=0, microsecond=0)
     pe = peoplemod.load(store.home)
-    rs = rows(store, t, pe)
+    evs, snaps, saved = events_of(store, t, pe)
+    rs = rows(store, t, pe, evs)
     order: dict = {}
     for d in DIMENSIONS:
         for i, v in enumerate(sorted({r.dims[d] for r in rs})):
@@ -369,7 +493,8 @@ def view(store, t, filters: dict[str, set[str]] | None = None, now: dt.datetime 
     counts = {k: (len(rs) if k == "all" else sum(1 for r in rs if r.group == k)) for k, _lab in CHIPS}
     created = _ts(t.meta.get("created"))
     return View(t.id, str(t.meta.get("title") or ""), rs, shown, rs[0] if rs else None, facets, filters,
-                periods=periods(t.meta.get("created"), [r.event for r in rs], str(t.meta.get("status") or ""), now),
+                periods=periods(t.meta.get("created"), evs, str(t.meta.get("status") or ""), now,
+                                snapshots=[(x.ts, x.status, x.first) for x in snaps], done_at=t.meta.get("done_at"), saved_at=saved),
                 days=rail_days(rs, now.date()), counts=counts, created_text=day_text(created, now.date()) if created else "not recorded")
 
 

@@ -114,11 +114,14 @@ def test_a_comment_posted_on_the_page_becomes_the_latest_change_with_source_ui(s
     assert "Why is this like that?" in latest and "on the page" not in latest  # the latest line is who, what, when
 
 
-def test_ticket_with_no_events_says_so_plainly(store):
+def test_ticket_with_no_events_shows_its_created_date_from_the_file(store):
+    """Protects a ticket whose log is missing (DESK-0305 review, finding 2): the rail and the latest line show the creation the file
+    records, named as coming from the ticket file, never an empty "No changes recorded yet."."""
     t = ops.new(store, "Quiet", "desk")
     activity.path(store.home, t.id).unlink()
     page = TestClient(create_app(store.home)).get(f"/ticket/{t.id}").text
-    assert "No changes recorded yet." in page and "Expand all events" not in page
+    assert "No changes recorded yet." not in page and "Expand all events" not in page
+    assert 'id="tl-rail"' in page and "Created (the date in the ticket file)" in page
 
 
 def test_drew_history_prints_the_same_with_by_and_filter(store, capsys):
@@ -156,12 +159,14 @@ def test_old_tickets_have_a_timeline_after_the_migration(store):
     t = ops.new(store, "Old", "desk")
     x = store.get(t.id)
     x.set_section("Comments", "- 2026-11-01 · james · First words\n- 2026-11-02 · patch · Answer\n")
+    x.meta["created"] = "2026-10-31"
     x.write()
     activity.path(store.home, t.id).unlink()
-    assert timeline.view(store, t).rows == []
+    t = store.get(t.id)
+    assert [r.what for r in timeline.view(store, t).rows] == ["Created (the date in the ticket file)"]
     activity.migrate(store, apply=True)
     v = timeline.view(store, t)
-    assert [r.what for r in v.rows] == ["Answer", "First words"] and v.latest.source_label == "from old comments"
+    assert [r.what for r in v.rows] == ["Answer", "First words", "Created (the date in the ticket file)"] and v.latest.source_label == "from old comments"
 
 
 STATIC = Path(__file__).resolve().parents[1] / "src" / "desk" / "ui" / "static"

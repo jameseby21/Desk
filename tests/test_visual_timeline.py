@@ -33,16 +33,26 @@ def spans(ps):
 
 # -- unit: the period builder --------------------------------------------------------------
 
-def test_no_status_events_is_one_period_from_created_to_now_in_the_current_status():
-    """Protects the empty log: one segment, created to now, in the ticket's status, the whole width."""
+def created_at(ts):
+    return ev(ts, "created", "created", seq=1)
+
+
+def test_no_status_record_is_not_recorded_then_the_current_status_now():
+    """Protects the empty log (DESK-0305 review, finding 4): with no record of any status, the strip never claims the current status
+    since the created date; the span is Not recorded and the current status starts when the file was last written, or now."""
     ps = timeline.periods("2026-11-10", [], "ready", NOW)
-    assert spans(ps) == [("ready", "2026-11-10T00:00:00", "2026-11-15T12:00:00", True)]
-    assert ps[0].share == 100.0
+    assert spans(ps) == [("", "2026-11-10T00:00:00", "2026-11-15T12:00:00", False), ("ready", "2026-11-15T12:00:00", "2026-11-15T12:00:00", True)]
+    assert ps[0].unknown and ps[0].label == "Not recorded" and ps[0].css == "unknown" and ps[0].share == 100.0
+    assert ps[1].text == "Ready (now); when it started is not recorded"
+    ps = timeline.periods("2026-11-10", [], "ready", NOW, saved_at=dt.datetime(2026, 11, 13, 10, 0))
+    assert spans(ps) == [("", "2026-11-10T00:00:00", "2026-11-13T10:00:00", False), ("ready", "2026-11-13T10:00:00", "2026-11-15T12:00:00", True)]
+    assert ps[1].text == "Ready, from Fri 13 Nov 10:00 or earlier, for at least 2 days (now)"
+    assert not ps[0].text.startswith("Ready") and "no status record covers this time" in ps[0].text
 
 
 def test_one_move_is_two_periods_with_widths_by_time():
     """Protects one status change: the old status from created to the move, the new one from the move to now, widths by time."""
-    ps = timeline.periods("2026-11-14", [move("2026-11-15T00:00:00", "inbox", "ready", 2)], "ready", NOW)
+    ps = timeline.periods("2026-11-14", [created_at("2026-11-14T00:00:00"), move("2026-11-15T00:00:00", "inbox", "ready", 2)], "ready", NOW)
     assert spans(ps) == [("inbox", "2026-11-14T00:00:00", "2026-11-15T00:00:00", False), ("ready", "2026-11-15T00:00:00", "2026-11-15T12:00:00", True)]
     assert [p.share for p in ps] == [66.667, 33.333]
     assert ps[0].text == "Inbox, from Sat 14 Nov, for 1 day" and ps[1].text == "Ready, from Sun 15 Nov, for 12 hours (now)"
@@ -50,7 +60,7 @@ def test_one_move_is_two_periods_with_widths_by_time():
 
 def test_a_ticket_that_loops_back_shows_the_earlier_status_twice():
     """Protects review -> changes requested -> review: each visit is its own segment, in order."""
-    evs = [move("2026-11-11T09:00:00", "inbox", "review", 2), move("2026-11-12T09:00:00", "review", "changes_requested", 3),
+    evs = [created_at("2026-11-10T08:00:00"), move("2026-11-11T09:00:00", "inbox", "review", 2), move("2026-11-12T09:00:00", "review", "changes_requested", 3),
            move("2026-11-13T09:00:00", "changes_requested", "review", 4), move("2026-11-14T09:00:00", "review", "done", 5)]
     ps = timeline.periods("2026-11-10", evs, "done", NOW)
     assert [p.status for p in ps] == ["inbox", "review", "changes_requested", "review", "done"]
@@ -60,7 +70,7 @@ def test_a_ticket_that_loops_back_shows_the_earlier_status_twice():
 
 def test_out_of_order_timestamps_are_put_in_time_order():
     """Protects a log whose lines are not in time order (a migration appended later): periods follow the timestamps."""
-    evs = [move("2026-11-13T00:00:00", "ready", "in_progress", 2), move("2026-11-11T00:00:00", "inbox", "ready", 3)]
+    evs = [move("2026-11-13T00:00:00", "ready", "in_progress", 2), move("2026-11-11T00:00:00", "inbox", "ready", 3), created_at("2026-11-10T00:00:00")]
     ps = timeline.periods("2026-11-10", evs, "in_progress", NOW)
     assert spans(ps) == [("inbox", "2026-11-10T00:00:00", "2026-11-11T00:00:00", False), ("ready", "2026-11-11T00:00:00", "2026-11-13T00:00:00", False),
                          ("in_progress", "2026-11-13T00:00:00", "2026-11-15T12:00:00", True)]
@@ -68,7 +78,7 @@ def test_out_of_order_timestamps_are_put_in_time_order():
 
 def test_same_second_moves_keep_their_order_and_a_zero_length_period():
     """Protects claim-and-start in one second: the sequence number orders them and the short status still has a segment."""
-    evs = [move("2026-11-12T10:00:00", "claimed", "in_progress", 4), move("2026-11-12T10:00:00", "ready", "claimed", 3)]
+    evs = [move("2026-11-12T10:00:00", "claimed", "in_progress", 4), move("2026-11-12T10:00:00", "ready", "claimed", 3), created_at("2026-11-10T09:00:00")]
     ps = timeline.periods("2026-11-10", evs, "in_progress", NOW)
     assert [p.status for p in ps] == ["ready", "claimed", "in_progress"]
     assert ps[1].seconds == 0 and ps[1].share == 0 and ps[1].text.endswith("for under a minute")
@@ -76,21 +86,22 @@ def test_same_second_moves_keep_their_order_and_a_zero_length_period():
 
 def test_an_unknown_status_is_kept_as_written_and_marked_other():
     """Protects a status Desk does not know (an old or hand-typed one): shown as written, coloured as other, never dropped."""
-    ps = timeline.periods("2026-11-10", [move("2026-11-12T00:00:00", "inbox", "parked", 2)], "parked", NOW)
+    ps = timeline.periods("2026-11-10", [created_at("2026-11-10T09:00:00"), move("2026-11-12T00:00:00", "inbox", "parked", 2)], "parked", NOW)
     assert [(p.status, p.known, p.css, p.label) for p in ps] == [("inbox", True, "inbox", "Inbox"), ("parked", False, "other", "parked")]
 
 
-def test_a_ticket_created_before_the_log_existed_opens_with_the_status_before_the_first_move():
-    """Protects old tickets: the first segment runs from the created date to the first logged move, in that move's old status."""
+def test_a_ticket_created_before_the_log_existed_is_not_recorded_until_its_first_record():
+    """Protects old tickets (DESK-0305 review, findings 1 and 4): from the created date to the first logged move nothing says what the
+    status was, so that span is Not recorded, with what the move says about the moment before it; it is never given a status."""
     ps = timeline.periods("2026-01-05", [move("2026-11-01T00:00:00", "ready", "done", 1)], "done", NOW)
-    assert spans(ps)[0] == ("ready", "2026-01-05T00:00:00", "2026-11-01T00:00:00", False)
-    assert ps[0].share > 90
+    assert spans(ps)[0] == ("", "2026-01-05T00:00:00", "2026-11-01T00:00:00", False)
+    assert ps[0].share > 90 and ps[0].text.endswith("no status record covers this time; it was Ready just before Sun 1 Nov")
 
 
 def test_a_very_old_ticket_reads_in_years_and_names_the_year():
     """Protects a ticket years old: the duration says years and the dates carry the year."""
-    ps = timeline.periods("2019-03-01", [], "blocked", NOW)
-    assert ps[0].text == "Blocked, from Fri 1 Mar 2019, for 7 years (now)"
+    ps = timeline.periods("2019-03-01", [created_at("2019-03-01T09:00:00")], "blocked", NOW, saved_at=dt.datetime(2019, 3, 1, 9, 0, 2))
+    assert ps[0].text == "Blocked, from Fri 1 Mar 2019 09:00, for 7 years (now)"
 
 
 def test_a_log_older_than_the_created_date_and_a_status_the_log_never_reached():

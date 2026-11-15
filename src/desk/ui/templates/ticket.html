@@ -55,6 +55,7 @@
     </ol>
     <div class="tl-ends"><span class="tl-end">Created {{ tl.created_text }}</span><span class="tl-end">Now</span></div>
     {% set C = tl.periods[-1] %}<p class="tl-st-info" id="tl-st-info" data-now="{{ C.text }}">{{ C.text }}</p>
+    {% if tl.periods|selectattr('unknown')|list %}<p class="tl-gap" id="tl-gap"><i class="tl-sw st-unknown" aria-hidden="true"></i>Hatched: Not recorded. No status record (Desk's log, a git commit of the ticket file, or its done date) says what the status was then.</p>{% endif %}
   </div>
   {% if tl.rows %}
   <div class="tl-rail-wrap" id="tl-rail">
