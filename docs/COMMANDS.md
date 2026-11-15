@@ -40,7 +40,7 @@ Phone push and email for the morning brief and alerts; the full guide, costs and
 | `drew notify test [--channel NAME]` | sends one line, "Desk test: notifications work", to every channel that is on, and says which worked | after pairing or changing a key |
 | `drew notify brief [--dry-run]` | sends the morning brief (ids, titles that pass the private-term scan, counts) with held items folded in; `--dry-run` prints exactly the text and sends nothing | each morning (scheduled), or to preview |
 | `drew notify drain [--dry-run]` | sends what other parts of Desk queued (`.desk/notify-queue.jsonl`) through the privacy filter, the daily budget and quiet hours, showing `[i/n]` per item and a closing count; held items wait for the next brief | every 15 minutes (scheduled) |
-| `drew notify status [--json]` | which channels are on, which keys are set (masked), quiet hours, budget used today, queued and held counts, whether the private-term scan is ready | when something did not arrive |
+| `drew notify status [--json]` | which channels are on, which keys are set (masked), quiet hours, budget used today, queued, held and unreadable counts, whether the private-term scan is ready | when something did not arrive |
 | `drew notify schedule --print` | prints the two `schtasks` lines (brief at `brief_time`, drain every 15 minutes, both through `pythonw.exe` so no window opens); Desk never installs them | once, after `drew notify test` worked |
 
 ## Data and environment

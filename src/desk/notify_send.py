@@ -291,6 +291,7 @@ class DrainReport:
     sent: int = 0
     held: int = 0
     failed: int = 0
+    skipped: int = 0  # queue lines that could not be read; stepped over so they never block the rest
     reason: str = ""
     lines: list | None = None
 
@@ -300,10 +301,12 @@ def drain(store, now: dt.datetime | None = None, dry_run=False, post=nc.http_pos
     now = now or dt.datetime.now()
     home = store.home
     st, sec, state = settings(home), nc.read_secrets(), load_state(home)
-    items, end = notify_queue.read_from_cursor(home)
-    rep = DrainReport(lines=[])
+    items, end, bad = notify_queue.read_counted(home)
+    rep = DrainReport(lines=[], skipped=bad)
     if not items:
-        rep.reason = "The queue is empty."
+        rep.reason = "The queue is empty." + (f" {bad} unreadable line(s) skipped." if bad else "")
+        if bad and not dry_run:
+            notify_queue.advance(home, end)
         return rep
     chans = active_channels(st, sec)
     if not chans and not dry_run:
@@ -365,10 +368,11 @@ def status(store) -> dict:
         chans.append({"name": c.name, "category": c.category, "service": c.service, "free": c.free, "listed": c.name in on,
                       "ready": c.ready(sec), "missing": c.missing(sec), "keys": {k: nc.mask(sec.get(k, "")) for k in c.needs}})
     scan = load_scanner()
+    queued, _, unreadable = notify_queue.read_counted(home)
     return {"channels": chans, "secrets_file": str(nc.env_path()), "secrets_file_exists": nc.env_path().exists(),
             "quiet": f"{st.get('quiet_start') or '-'} to {st.get('quiet_end') or '-'}", "urgent_bypasses_quiet": bool(st.get("urgent_bypasses_quiet")),
             "budget": int(st.get("daily_budget") or 0), "used_today": used_today(state, dt.date.today()),
-            "queued": len(notify_queue.pending(home)), "held": len(state.get("held") or []), "scan_ready": scan.ready, "scan_why": scan.why,
+            "queued": len(queued), "unreadable": unreadable, "held": len(state.get("held") or []), "scan_ready": scan.ready, "scan_why": scan.why,
             "brief_time": st.get("brief_time"), "last_brief": state.get("last_brief", "")}
 
 

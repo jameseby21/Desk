@@ -86,6 +86,7 @@ Leave out any line to keep its default.
 - **No scan, no titles.** If the private-term scan cannot be loaded, or its list is empty, only ids are sent, and the message says so.
 - **Brief fields are allow-listed.** Only `id`, `title`, `ask`, `date`, `status`, `due`, `count` and `kind` survive, plus plain count tables. Any other field the brief grows is dropped.
 - **One sender.** Other parts of Desk never send anything. They call `notify_queue.enqueue(...)`, and only `drew notify drain` sends. The filter, the budget and quiet hours therefore live in one place.
+- **A broken queue line is skipped.** A line that is not readable JSON is counted, shown by `drew notify status` and `drew notify drain`, and stepped over. The lines after it still go.
 
 ## Budget and quiet hours
 

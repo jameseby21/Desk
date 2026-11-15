@@ -33,17 +33,36 @@ def _cursor(home: Path) -> int:
         return 0
 
 
-def read_from_cursor(home: Path) -> tuple[list[dict], int]:
-    """The items nobody has handled yet and the byte offset just past them (pass it to `advance` once they are handled)."""
+def read_counted(home: Path) -> tuple[list[dict], int, int]:
+    """The items nobody has handled yet, the byte offset just past them (pass it to `advance` once they are handled), and how many
+    complete lines could not be read. A corrupt line is skipped, never raised: one bad line must not hold every later one back."""
     p = Path(home) / FILE
     if not p.exists():
-        return [], 0
+        return [], 0, 0
     data = p.read_bytes()
     start = min(_cursor(home), len(data))
     end = data.rfind(b"\n", start) + 1  # a line still being written is left for the next pass
     if end <= start:
-        return [], start
-    return [json.loads(x) for x in data[start:end].decode("utf-8").splitlines() if x.strip()], end
+        return [], start, 0
+    items, bad = [], 0
+    for raw in data[start:end].split(b"\n"):
+        if not raw.strip():
+            continue
+        try:
+            item = json.loads(raw.decode("utf-8"))
+        except ValueError:  # JSONDecodeError and UnicodeDecodeError are both ValueErrors
+            item = None
+        if isinstance(item, dict):
+            items.append(item)
+        else:
+            bad += 1
+    return items, end, bad
+
+
+def read_from_cursor(home: Path) -> tuple[list[dict], int]:
+    """The readable items nobody has handled yet and the byte offset just past them; unreadable lines are skipped (see read_counted)."""
+    items, end, _ = read_counted(home)
+    return items, end
 
 
 def advance(home: Path, offset: int) -> None:

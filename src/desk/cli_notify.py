@@ -113,7 +113,8 @@ def cmd_drain(args):
         print(rep.reason)
         return
     verb = "would be sent" if args.dry_run else "sent"
-    print(f"Done: {rep.sent} {verb}, {rep.held} held for the next brief, {rep.failed} failed." + (" Nothing changed (dry run)." if args.dry_run else ""))
+    skipped = f", {rep.skipped} unreadable line(s) skipped" if rep.skipped else ""
+    print(f"Done: {rep.sent} {verb}, {rep.held} held for the next brief, {rep.failed} failed{skipped}." + (" Nothing changed (dry run)." if args.dry_run else ""))
     if rep.failed:
         sys.exit(1)
 
@@ -134,7 +135,8 @@ def cmd_status(args):
                 print(f"            {k} = {v}")
     print(f"Secrets file: {st['secrets_file']}" + ("" if st["secrets_file_exists"] else " (not made yet)"))
     print(f"Quiet hours: {st['quiet']}{' (urgent alerts still go)' if st['urgent_bypasses_quiet'] else ''}")
-    print(f"Budget: {st['used_today']} of {st['budget']} used today; {st['queued']} queued, {st['held']} held for the next brief")
+    print(f"Budget: {st['used_today']} of {st['budget']} used today; {st['queued']} queued, {st['held']} held for the next brief"
+          + (f"; {st['unreadable']} unreadable queue line(s) will be skipped by the next drain" if st["unreadable"] else ""))
     print(f"Brief time: {st['brief_time']}" + (f"; last sent {st['last_brief']}" if st["last_brief"] else ""))
     print("Private-term scan: ready" if st["scan_ready"] else f"Private-term scan: not ready ({st['scan_why']}); only ids are sent")
 

@@ -228,6 +228,29 @@ def test_quiet_hours_wrap_past_midnight():
     assert not ns.in_quiet_hours(at(23), {"quiet_start": "", "quiet_end": "07:00"})
 
 
+def test_a_malformed_queue_line_is_skipped_and_never_blocks_the_rest(store, capsys):
+    """One corrupt line in the queue is counted and stepped over; the good lines around it still send and status still works."""
+    _pair_secrets()
+    q = store.home / notify_queue.FILE
+    notify_queue.enqueue(store.home, "alert", "first good line", [])
+    with q.open("ab") as f:
+        f.write(b'{"kind": "alert", "text": broken\n["not", "a", "dict"]\n')
+    notify_queue.enqueue(store.home, "alert", "second good line", [])
+    assert [i["text"] for i in notify_queue.pending(store.home)] == ["first good line", "second good line"]
+    assert ns.status(store)["queued"] == 2 and ns.status(store)["unreadable"] == 2
+    main(["--home", str(store.home), "notify", "status"])
+    assert "2 unreadable" in capsys.readouterr().out
+    post = FakePost()
+    rep = ns.drain(store, now=dt.datetime(2026, 11, 15, 12, 0), post=post)
+    assert (rep.sent, rep.skipped, len(post.calls)) == (2, 2, 2)
+    assert notify_queue.pending(store.home) == [] and ns.status(store)["unreadable"] == 0
+    with q.open("ab") as f:
+        f.write(b"not json at all\n")
+    rep = ns.drain(store, now=dt.datetime(2026, 11, 15, 12, 5), post=post)
+    assert rep.skipped == 1 and "1 unreadable" in rep.reason
+    assert ns.status(store)["unreadable"] == 0
+
+
 def test_drain_with_no_channel_keeps_the_queue(store):
     """With nothing paired, drain sends nothing and leaves every item queued for later."""
     notify_queue.enqueue(store.home, "alert", "waiting", [])
