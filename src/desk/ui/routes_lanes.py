@@ -2,7 +2,8 @@
 
 The view choices (a lane filter, 'only my lane', 'show all') are kept per device in two cookies, so the phone and the desk can differ.
 `narrow()` is the one hook the Today and board routes call: it leaves out snoozed tickets, tickets outside the chosen lane, and (on
-Today only) subtickets and agent-only tickets that carry no ask for the owner. Rough week on Today means lane Now only.
+Today only) subtickets and agent-only tickets that carry no ask for the owner and are not his to hold. Rough week on Today means lane
+Now only. On Today nothing narrows Immediate Action Required (a hard deadline in the window or missed) or an overdue ask.
 A lane or snooze change is a store write: it runs inside one activity batch and answers with the undo contract (DESK-0284)."""
 
 from __future__ import annotations
@@ -18,7 +19,7 @@ from fastapi import APIRouter, Form, Request
 from fastapi.responses import JSONResponse, RedirectResponse
 from markupsafe import Markup
 
-from .. import activity, lanes, needs_me as nmod, people as peoplemod
+from .. import activity, deadlines, lanes, needs_me as nmod, people as peoplemod
 from ..rules import RuleError
 
 LANE_COOKIE = "desk_lane"
@@ -47,8 +48,9 @@ def prefs(request: Request) -> tuple[str, bool]:
     return (lane if lane in lanes.LANES else ""), request.cookies.get(SHOW_COOKIE) == "all"
 
 
-def _for_owner(s, t, owner: str, now: dt.datetime) -> bool:
-    return nmod.ask_of(s, t, owner, now) is not None
+def _holds(t, owner: str) -> bool:
+    """The owner is the ticket's owner or its assignee: it is his own work in hand, wherever it sits in the family."""
+    return any(" ".join(str(t.meta.get(k) or "").split()).lower() == owner for k in ("owner", "assignee"))
 
 
 def narrow(request: Request, s, tickets: list, page: str) -> list:
@@ -63,15 +65,23 @@ def narrow(request: Request, s, tickets: list, page: str) -> list:
     pe = peoplemod.load(s.home)
     owner = s.owner.lower()
     view = LaneView(page, lane, forced, show_all, here=_here(request))
+    on_today = page == "today"
+    pinned = {t.id for t in deadlines.immediate(tickets, today)} if on_today else set()  # Immediate Action Required is never narrowed
     kept = []
     for t in tickets:
         if lanes.is_snoozed(t, today):
             view.snoozed.append(t)
             continue
-        if page == "today" and not show_all and (lanes.is_sub(t) or lanes.is_agent_only(t, pe)) and not _for_owner(s, t, owner, now):
+        if t.id in pinned:
+            kept.append(t)
+            continue
+        hide = on_today and not show_all and (lanes.is_sub(t) or lanes.is_agent_only(t, pe)) and not _holds(t, owner)
+        off_lane = bool(lane) and lanes.lane_of(t) != lane
+        ask = nmod.ask_of(s, t, owner, now) if on_today and (hide or off_lane) else None  # only asked when it decides something
+        if hide and ask is None:
             view.hidden += 1
             continue
-        if lane and lanes.lane_of(t) != lane:
+        if off_lane and not (ask is not None and ask.overdue):  # an overdue ask is Now whatever its lane
             view.other_lanes += 1
             continue
         kept.append(t)

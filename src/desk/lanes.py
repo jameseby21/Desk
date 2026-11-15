@@ -3,8 +3,8 @@
 The management skill's four lanes: now (emergencies, overdue asks, live failures), planned (this sprint's slices), later (ideas,
 recorded but not built) and parked (decided not now; the record stays). A ticket's lane is its `lane:` field when set; otherwise a
 `lane:<name>` tag; otherwise derived: p0 or an `emergency` tag is now, inbox and triage are later, everything else planned.
-`snooze_until: YYYY-MM-DD` keeps a ticket off Today and Needs me until that date; for three days after it the ticket carries a
-'Back from snooze' marker. Parking writes `lane: parked` and a one-line `park_reason`; nothing is deleted.
+`snooze_until: YYYY-MM-DD` keeps a ticket off Today and Needs me until that date, or until its hard deadline if that comes first (a
+snooze never hides a hard deadline); for three days after it the ticket carries a 'Back from snooze' marker. Parking writes `lane: parked` and a one-line `park_reason`; nothing is deleted.
 
 Writes go through `Store.save`, so each change is an event in the ticket's activity log (and undoable by its batch id)."""
 
@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import datetime as dt
 import re
+
+from . import deadlines
 
 LANES = ("now", "planned", "later", "parked")
 LABELS = {"now": "Now", "planned": "Planned", "later": "Later", "parked": "Parked"}
@@ -38,7 +40,7 @@ def lane_of(t) -> str:
     v = explicit_lane(t)
     if v:
         return v
-    if str(t.meta.get("priority", "")) == "p0" or "emergency" in [x.lower() for x in t.tags]:
+    if is_emergency(t):
         return "now"
     if t.status in ("inbox", "triage"):
         return "later"
@@ -55,9 +57,22 @@ def snooze_until(t) -> dt.date | None:
         return None
 
 
+def _hard_deadline(t) -> dt.date | None:
+    d, kind = deadlines.of(t)
+    return d if kind == "hard" and t.status not in deadlines.DONE_WITH else None
+
+
 def is_snoozed(t, today: dt.date | None = None) -> bool:
+    """True while the snooze date is ahead; an open ticket's hard deadline ends the snooze early, on the deadline day."""
     d = snooze_until(t)
-    return d is not None and d > (today or dt.date.today())
+    if d is None:
+        return False
+    hard = _hard_deadline(t)
+    return min(d, hard) > (today or dt.date.today()) if hard else d > (today or dt.date.today())
+
+
+def is_emergency(t) -> bool:
+    return str(t.meta.get("priority", "")) == "p0" or "emergency" in [x.lower() for x in t.tags]
 
 
 def back_from_snooze(t, today: dt.date | None = None) -> bool:
@@ -151,8 +166,9 @@ def is_sub(t) -> bool:
 
 # -- validate ----------------------------------------------------------------------------
 
-def warnings(t) -> list[str]:
-    """`drew validate` warnings: an unknown lane or snooze date, and a Later or Parked ticket that has a branch or a worker."""
+def warnings(t, today: dt.date | None = None) -> list[str]:
+    """`drew validate` warnings: an unknown lane or snooze date, a Later or Parked ticket that has a branch or a worker, an emergency
+    (p0 or tagged) put in Later or Parked or snoozed, and a snooze that runs past a hard deadline."""
     out = []
     raw = str(t.meta.get("lane") or "").strip()
     if raw and raw.lower() not in LANES:
@@ -166,4 +182,19 @@ def warnings(t) -> list[str]:
         if bits:
             out.append(f"{t.id}: in the {LABELS[lane]} lane but has {' and '.join(bits)}; "
                        f"move it with `drew lane {t.id} planned`, or take the work off it")
+    if not t.is_open:
+        return out
+    today = today or dt.date.today()
+    until = snooze_until(t)
+    ahead = until is not None and until > today
+    if is_emergency(t) and lane in QUIET:
+        out.append(f"{t.id}: an emergency (p0 or tagged emergency) is in the {LABELS[lane]} lane, so it is off the Now lane; "
+                   f"move it with `drew lane {t.id} now`")
+    if is_emergency(t) and ahead:
+        out.append(f"{t.id}: an emergency (p0 or tagged emergency) is snoozed until {until.isoformat()}; "
+                   f"end the snooze with `drew snooze {t.id} --clear`")
+    hard = _hard_deadline(t)
+    if ahead and hard and until >= hard:
+        out.append(f"{t.id}: the snooze ({until.isoformat()}) runs past its hard deadline ({hard.isoformat()}), "
+                   f"so it comes back on Today on the deadline day")
     return out

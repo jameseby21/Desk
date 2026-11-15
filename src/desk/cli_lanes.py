@@ -39,6 +39,12 @@ def _where(t) -> str:
     return "; ".join(bits)
 
 
+def _warn(s, tid: str) -> None:
+    """Say at once what `drew validate` would warn about this ticket (an emergency put aside, a snooze past a hard deadline)."""
+    for w in lanes.warnings(s.get(tid)):
+        print(f"warning: {w}", file=sys.stderr)
+
+
 def cmd_lane(args):
     s, t = _open(args)
     if not args.lane and not args.clear:
@@ -51,6 +57,7 @@ def cmd_lane(args):
         _die(str(e))
     s.sync_after(f"desk: lane {t.id}")
     print(_where(s.get(t.id)))
+    _warn(s, t.id)
 
 
 def cmd_snooze(args):
@@ -68,6 +75,7 @@ def cmd_snooze(args):
         _die(str(e))
     s.sync_after(f"desk: snooze {t.id}")
     print(f"{t.id}: back on Today now" if until is None else f"{t.id}: snoozed until {until.isoformat()} (off Today and Needs me until then)")
+    _warn(s, t.id)
 
 
 def cmd_park(args):
@@ -79,6 +87,7 @@ def cmd_park(args):
         _die(str(e))
     s.sync_after(f"desk: park {t.id}")
     print(f"{t.id}: parked ({' '.join(args.reason.split())}). Nothing was deleted; `drew lane {t.id} planned` brings it back.")
+    _warn(s, t.id)
 
 
 def register(sub) -> None:

@@ -40,7 +40,7 @@ def _rows(page):
 
 
 def _client(store, **cookies):
-    c = TestClient(create_app(store.home))
+    c = TestClient(create_app(store.home), base_url="http://127.0.0.1:8799")  # the lane routes answer this computer only
     for k, v in cookies.items():
         c.cookies.set(k, v)
     return c
@@ -244,3 +244,77 @@ def test_the_chip_menu_opens_by_keyboard_at_phone_width(store):
     assert got["wide"] <= got["inner"], got
     assert got["items"] >= 7 and got["right"] <= got["inner"], got  # three lanes, Park, four snooze choices
     assert "lm-item" in got["focus"], got
+
+
+# -- fixes after review (DESK-0283) -------------------------------------------------------
+
+def _imm(page):
+    m = re.search(r'<section id="immediate".*?</section>', page, re.S)
+    return m.group(0) if m else ""
+
+
+def _nm(page):
+    m = re.search(r'<section class="card nm" id="needs-me".*?</section>', page, re.S)
+    return m.group(0) if m else ""
+
+
+def test_a_subticket_the_owner_is_assigned_stays_on_his_today(store):
+    """Protects: a subticket assigned to the owner (owned by someone else) is his own work in hand, so Today never hides it by default."""
+    main_t = _mk(store, "Main piece", status="in_progress", owner="main", assignee="code:jre")
+    held = ops.new(store, "Piece the owner holds", "desk", "task", parent=main_t.id)
+    held.meta.update(status="in_progress", owner="main", assignee="james")
+    store.save(held)
+    other = ops.new(store, "Piece a coworker holds", "desk", "task", parent=main_t.id)
+    other.meta.update(status="in_progress", owner="main", assignee="chaz")
+    store.save(other)
+    rows = _rows(_client(store).get("/").text)
+    assert held.id in rows
+    assert other.id not in rows  # a coworker's subticket still stays off by default
+
+
+def test_rough_week_and_only_my_lane_keep_a_missed_hard_deadline_and_an_overdue_ask(store):
+    """Protects: the lane filter never takes a missed hard deadline off Immediate Action Required, nor an overdue ask off Needs me."""
+    late = _mk(store, "Filing due", status="ready", owner="james", assignee="james",
+               deadline=(TODAY - dt.timedelta(days=2)).isoformat(), deadline_kind="hard")
+    asked = _mk(store, "Pick the colour", status="ready", owner="james", review_by=(TODAY - dt.timedelta(days=1)).isoformat())
+    calm = _mk(store, "Slice", status="in_progress", owner="main", assignee="james")
+    for c, url in ((_client(store), "/?cap=rough"), (_client(store, desk_lane="now"), "/")):
+        page = c.get(url).text
+        assert late.id in _imm(page), url
+        assert asked.id in _nm(page), url
+        assert calm.id not in _rows(page), url  # the filter still narrows everything else
+
+
+def test_hidden_subtickets_and_agent_work_with_a_missed_hard_deadline_stay_in_immediate(store):
+    """Protects: the hide-by-default rule never takes a missed hard deadline off Immediate Action Required."""
+    missed = (TODAY - dt.timedelta(days=1)).isoformat()
+    bot = _mk(store, "Agent chore due", status="in_progress", owner="main", assignee="code:jre", deadline=missed, deadline_kind="hard")
+    main_t = _mk(store, "Main piece", status="in_progress", owner="main", assignee="code:jre")
+    sub = ops.new(store, "Coworker check due", "desk", "task", parent=main_t.id)
+    sub.meta.update(status="in_progress", owner="chaz", assignee="chaz", deadline=missed, deadline_kind="hard")
+    store.save(sub)
+    imm = _imm(_client(store).get("/").text)
+    assert bot.id in imm and sub.id in imm
+
+
+def test_a_snooze_never_hides_a_hard_deadline_and_validate_warns_on_quieted_emergencies(store, capsys):
+    """Protects: a snooze ends no later than the hard deadline, and validate (and the command) warns when an emergency or p0 is
+    snoozed or put in Later or Parked, or a snooze runs past a hard deadline."""
+    due = _mk(store, "Due today", status="ready", owner="james", priority="p0", tags=["emergency"],
+              deadline=TODAY.isoformat(), deadline_kind="hard")
+    _drew(store, "snooze", due.id, "2w")
+    assert "hard deadline" in capsys.readouterr().err  # said at the moment it is written
+    got = store.get(due.id)
+    assert not lanes.is_snoozed(got, TODAY)
+    page = _client(store).get("/").text
+    assert due.id in _imm(page) and due.id in _nm(page)
+    assert due.id in {i.id for i in nmod.build(store)}
+    later = _mk(store, "Emergency put aside", status="ready", priority="p0", lane="later")
+    calm = _mk(store, "Plain later", status="ready", lane="later", snooze_until=(TODAY + dt.timedelta(days=3)).isoformat())
+    _, warnings = validate_store(store)
+    warnings = [w for w in warnings if any(k in w for k in ("emergency", "hard deadline", "snooze", " lane"))]  # this package's warnings
+    assert any(due.id in w and "hard deadline" in w for w in warnings)
+    assert any(due.id in w and "emergency" in w for w in warnings)
+    assert any(later.id in w and "emergency" in w for w in warnings)
+    assert not any(calm.id in w for w in warnings)
+
