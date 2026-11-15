@@ -315,6 +315,27 @@ def test_undo_restores_every_ticket_the_run_changed(home, no_gh):
         au.undo(home, res.batch)
 
 
+def test_a_field_restored_by_undo_still_counts_as_set_by_the_rule(home, monkeypatch):
+    """Undoing a run puts back the rule's earlier value; later runs keep updating it instead of treating it as set by hand."""
+    t = make(home, status="review")
+
+    def pr(*conclusions):
+        return {"number": 4, "title": f"{t.id}: thing", "url": "https://example.invalid/4",
+                "statusCheckRollup": [{"conclusion": c} for c in conclusions]}
+
+    monkeypatch.setattr(au, "gh_run", gh_with(open_=[pr("")]))
+    run(home, "ci-state-on-review")
+    assert home.get(t.id).meta["ci"] == "pending"
+    monkeypatch.setattr(au, "gh_run", gh_with(open_=[pr("FAILURE")]))
+    second = run(home, "ci-state-on-review")
+    assert home.get(t.id).meta["ci"] == "red"
+    au.undo(home, second.batch)
+    assert home.get(t.id).meta["ci"] == "pending"
+    monkeypatch.setattr(au, "gh_run", gh_with(open_=[pr("SUCCESS")]))
+    res = run(home, "ci-state-on-review")
+    assert home.get(t.id).meta["ci"] == "green", res.items
+
+
 def test_undo_leaves_a_ticket_someone_changed_after_the_run(home, no_gh):
     """Undo never loses later work: a ticket edited after the run is named and left alone."""
     parent = _family(home)

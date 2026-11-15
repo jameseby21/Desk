@@ -189,19 +189,36 @@ def actor(rule: str = "") -> identity.Actor:
     return identity.Actor(ACTOR, "rule", rule or "sweep", "cli", "automation", True)
 
 
+UNDO_WHY = "undo of automation run {batch}"  # the what-line suffix of every save `undo` makes
+_UNDONE = re.compile(r"\(undo of automation run b-[0-9a-f]{12}\)$")
+
+
+def _restore(e) -> bool:
+    """An event written by `undo`: it puts back what a run changed, so it says nothing about who chose the value."""
+    return e.kind != "rule" and bool(_UNDONE.search(e.what or ""))
+
+
 def hand_set(store: Store, t: Ticket, name: str) -> bool:
     """True when a person (not a rule) set this field: the last logged change of it was not by a rule, or it has a value and no
-    change on record (set when the ticket was written)."""
+    change on record (set when the ticket was written). An undo's restore cancels the rule change it took back, so the change
+    before that one decides (a value a rule set and an undo put back is still the rule's)."""
     v = t.meta.get(name)
     if v in (None, "", []):
         return False
-    last = [e for e in activity.read(store.home, t.id) if e.change == "field" and e.field == name]
-    return not last or last[-1].kind != "rule"
+    cancel = 0
+    for e in reversed([e for e in activity.read(store.home, t.id) if e.change == "field" and e.field == name]):
+        if _restore(e):
+            cancel += 1
+        elif cancel and e.kind == "rule":
+            cancel -= 1
+        else:
+            return e.kind != "rule"
+    return True
 
 
 def tag_by_hand(store: Store, t: Ticket, tag: str) -> bool:
     for e in reversed(activity.read(store.home, t.id)):
-        if e.change == "field" and e.field == "tags" and f"+{tag}" in e.what.split():
+        if e.change == "field" and e.field == "tags" and f"+{tag}" in e.what.split() and not _restore(e):
             return e.kind != "rule"
     return tag in t.tags
 
@@ -664,21 +681,22 @@ def undo(store: Store, batch: str) -> tuple[list[str], list[str]]:
     me = identity.CURRENT.get()
     who = me.name if me is not None else None
     done, kept = [], []
-    for tid, row in data["tickets"].items():
-        f = store.home / row["path"]
-        now = f.read_bytes().decode("utf-8") if f.is_file() else None
-        if now != row.get("after"):
-            kept.append(f"{tid}: changed after the run, so it was left as it is; undo it by hand")
-            continue
-        if row["before"] is None:
-            t = store.get(tid)
-            if t.status not in CLOSED:
-                ops.reject(store, t, f"Undone: created by automation run {batch}", actor=who)
+    with activity.because(UNDO_WHY.format(batch=batch)):  # marks the restores, so hand_set does not take them for a person's choice
+        for tid, row in data["tickets"].items():
+            f = store.home / row["path"]
+            now = f.read_bytes().decode("utf-8") if f.is_file() else None
+            if now != row.get("after"):
+                kept.append(f"{tid}: changed after the run, so it was left as it is; undo it by hand")
+                continue
+            if row["before"] is None:
+                t = store.get(tid)
+                if t.status not in CLOSED:
+                    ops.reject(store, t, f"Undone: created by automation run {batch}", actor=who)
+                done.append(tid)
+                continue
+            old = Ticket.parse(row["before"], f)
+            store.save(old, touch=False)
             done.append(tid)
-            continue
-        old = Ticket.parse(row["before"], f)
-        store.save(old, touch=False)
-        done.append(tid)
     p.rename(p.with_name(f"{batch}.undone.json"))  # undone once; a second undo finds nothing to do
     return done, kept
 
