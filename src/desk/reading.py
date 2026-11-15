@@ -80,6 +80,19 @@ class Names:
 
 # ---- the last-seen marker ----------------------------------------------------------------------------------------------------
 
+def is_visit(request) -> bool:
+    """True when a person's browser opened the page: it carries the device cookie Desk gave it on an earlier visit, and it is a
+    navigation, not a script's fetch or a prefetch. A curl, an agent's link check or a headless check has no cookie and resolves to the
+    owner, so without this test it would spend the owner's marker and the diff since the last visit would be lost."""
+    try:
+        if not request.cookies.get("desk_device"):
+            return False
+        h = request.headers
+        return h.get("sec-fetch-mode", "navigate") == "navigate" and "prefetch" not in (h.get("sec-purpose", "") + h.get("purpose", "")).lower()
+    except AttributeError:
+        return False
+
+
 def _state(home: Path) -> Path:
     return Path(home) / STATE_DIR
 

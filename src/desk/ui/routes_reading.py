@@ -55,8 +55,8 @@ def install(app, templates, ctx, store, acting) -> None:
         offsets = None if dated else reading.changes_offsets(s.home, viewer, held)  # exact places in each log at the last visit
         groups = reading.changes(s, viewer, start, project=project, company=company, mine=bool(mine), offsets=offsets)
         everything = groups if not (project or company) else reading.changes(s, viewer, start, mine=bool(mine), offsets=offsets)
-        if not dated and not held:
-            reading.mark_changes(s.home, viewer)  # the next visit starts from now; a dated look or a filter leaves the marker alone
+        if not dated and not held and reading.is_visit(request):
+            reading.mark_changes(s.home, viewer)  # the next visit starts from now; a dated look, a filter or a fetch leaves the marker alone
         comps = [(g.company_slug, g.company, g.count) for g in everything]
         projs = [(k, title, len(rows)) for g in everything for k, title, rows in g.projects]
         n = sum(g.count for g in groups)

@@ -322,3 +322,24 @@ def test_last_seen_markers_survive_tickets_opened_at_the_same_time(store):
         th.join()
     data = json.loads((store.home / ".desk" / "state" / "last-seen.json").read_text(encoding="utf-8"))
     assert len(data["james"]["tickets"]) == 40 and len(data["james"]["seq"]) == 40
+
+
+def test_a_fetch_without_the_browser_cookie_leaves_the_last_seen_marker_alone(store):
+    """Protects: a cookieless fetch (curl, an agent's link check) or a script fetch of a ticket or /changes does not spend the person's
+    marker; the person's browser still sees the diff and the change afterwards."""
+    t = _decision(store)
+    person = _browser(store)
+    person.get(f"/ticket/{t.id}")
+    person.get("/changes")
+    with acting("chaz", "thread"):
+        x = store.get(t.id)
+        x.sections["Context"] = x.sections["Context"].replace("Two looks", "Three looks")
+        store.save(x)
+    marker = store.home / ".desk" / "state" / "last-seen.json"
+    before = marker.read_bytes()
+    for path in (f"/ticket/{t.id}", "/changes"):
+        assert TestClient(create_app(store.home)).get(path).status_code == 200  # no cookie: a curl or a link check
+        assert person.get(path, headers={"sec-fetch-mode": "cors"}).status_code == 200  # a script's fetch, not a visit
+    assert marker.read_bytes() == before
+    assert 'id="since-last-visit"' in person.get(f"/ticket/{t.id}").text
+    assert t.id in person.get("/changes").text
