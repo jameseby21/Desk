@@ -41,7 +41,9 @@ def _fx(store):
     _mk(store, "Desk work", "desk", type="bug", assignee="main", status="in_progress", tags=["filters"])
     _mk(store, "Errand", "jre", type="feature", assignee="jre", status="in_progress", tags=["motion"])
     _mk(store, "Client thing", "jeby-us", type="feature", assignee="chaz", status="ready")
-    return TestClient(create_app(store.home))
+    c = TestClient(create_app(store.home))
+    c.cookies.set("desk_show", "all")  # DESK-0283: these tickets are agent-only (owner and assignee both agents), hidden from Today unless Show all is on
+    return c
 
 
 def _rows(page):

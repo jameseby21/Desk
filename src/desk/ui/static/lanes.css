@@ -1,0 +1,53 @@
+/* DESK-0283: lane chip, lane bar, lane menu. Colours come from desk.css tokens, so light and dark both work. */
+.lane-chip{display:inline-flex;align-items:center;margin-right:8px;padding:2px 8px;border-radius:999px;border:1px solid var(--line);background:var(--card);color:var(--muted);font:600 12px/1.4 var(--font-body);vertical-align:1px;white-space:nowrap;cursor:pointer}
+.lane-chip.derived{border-style:dashed}
+.lane-chip.lane-now{background:var(--ball);border-color:var(--ink);color:#141414}
+.lane-chip.lane-planned{color:var(--ink)}
+.lane-chip.lane-parked{text-decoration:line-through}
+.lane-chip:focus-visible,.lane-switch:focus-visible,.lm-item:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.lane-back{display:inline-flex;align-items:center;margin-right:8px;padding:2px 8px;border-radius:6px;background:var(--ink);color:var(--on-ink);font:700 12px/1.4 var(--font-body);vertical-align:1px;white-space:nowrap}
+.lane-back.zz{background:var(--card);color:var(--muted);border:1px solid var(--line);font-weight:600}
+.cc-foot .lane-chip,.cc-foot .lane-back{margin:0 0 0 6px}
+
+.lane-bar{display:flex;flex-wrap:wrap;align-items:center;gap:8px 14px;margin:12px 0 0;font:500 13px var(--font-body);color:var(--muted)}
+.lane-inline{display:inline-flex;align-items:center;gap:8px;margin:0}
+.lane-switch{display:inline-flex;align-items:center;gap:8px;min-height:36px;padding:0 12px;border-radius:999px;border:1px solid var(--ink);background:var(--card);color:var(--ink);font:600 13px/1 var(--font-body);cursor:pointer}
+.lane-switch i{width:28px;height:16px;border-radius:999px;background:var(--line);position:relative;flex:none}
+.lane-switch i::after{content:"";position:absolute;top:2px;left:2px;width:12px;height:12px;border-radius:50%;background:var(--card);border:1px solid var(--ink);transition:left .15s}
+.lane-switch[aria-checked="true"] i{background:var(--ball)}
+.lane-switch[aria-checked="true"] i::after{left:13px}
+.lane-pickl{display:inline-flex;align-items:center;gap:6px;font:500 13px var(--font-mono)}
+.lane-pickl select{font:inherit;padding:5px 8px;border:1px solid var(--line);border-radius:999px;background:var(--card);color:var(--ink)}
+.lane-note{color:var(--ink)}
+.linkb{background:none;border:0;padding:0;color:var(--ink);font:600 13px var(--font-body);text-decoration:underline;cursor:pointer}
+.lane-snoozed summary{cursor:pointer}
+.lane-snoozed ul{margin:6px 0 0;padding-left:18px}
+.lane-snoozed li{margin:3px 0}
+
+.lane-pop{position:absolute;z-index:60;width:244px;max-width:calc(100vw - 16px);padding:8px;border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--ink);box-shadow:0 8px 24px rgba(0,0,0,.18);display:flex;flex-direction:column;gap:4px;font:500 14px var(--font-body)}
+.lm-head{font:600 11px var(--font-mono);text-transform:uppercase;letter-spacing:.04em;color:var(--muted);margin:6px 4px 2px}
+.lm-item{display:flex;align-items:center;min-height:36px;padding:0 10px;border-radius:8px;border:1px solid transparent;background:none;color:var(--ink);font:inherit;text-align:left;cursor:pointer}
+.lm-item:hover,.lm-item:focus{background:var(--paper)}
+.lm-item[aria-checked="true"]{border-color:var(--ink);font-weight:700}
+.lm-park{display:flex;gap:6px;align-items:center}
+.lm-park input{flex:1;min-width:0;min-height:34px;padding:0 8px;border:1px solid var(--line);border-radius:8px;background:var(--paper);color:var(--ink);font:inherit}
+.lm-bar{display:block;height:4px;border-radius:2px;background:var(--line);overflow:hidden}
+.lm-bar i{display:block;height:100%;width:40%;background:var(--ball);animation:lm-go 1s linear infinite}
+@keyframes lm-go{from{margin-left:-40%}to{margin-left:100%}}
+.lm-msg{font-size:13px;color:var(--muted);min-height:1em}
+.lm-msg.bad{color:var(--red)}
+
+.lane-pick{display:block;position:relative;line-height:0}
+.lane-pick>summary{list-style:none;cursor:pointer;display:flex;align-items:center;line-height:normal}
+.lane-pick>summary .lane-chip,.lane-pick>summary .lane-back{margin-right:0;margin-left:0}
+.lane-pick>summary .lane-back{margin-left:6px}
+.lane-pick>summary::-webkit-details-marker{display:none}
+.lane-pick .lane-menu{position:absolute;z-index:40;top:calc(100% + 6px);left:0;width:280px;max-width:calc(100vw - 32px);padding:10px;border:1px solid var(--line);border-radius:12px;background:var(--card);box-shadow:0 8px 24px rgba(0,0,0,.18);display:flex;flex-direction:column;gap:8px;line-height:1.4}
+.lane-pick form{margin:0;display:flex;flex-direction:column;gap:6px}
+.lane-opts{display:flex;flex-wrap:wrap;gap:6px}
+.lane-opt{min-height:36px;padding:0 12px;border-radius:9px;border:1px solid var(--ink);background:var(--card);color:var(--ink);font:600 13px/1 var(--font-body);cursor:pointer}
+.lane-opt[aria-pressed="true"],.lane-opt.lane-now:hover{background:var(--ball);color:#141414}
+.lane-reason{display:flex;flex-direction:column;gap:4px;font:500 13px var(--font-body)}
+.lane-reason input{min-height:36px;padding:0 8px;border:1px solid var(--line);border-radius:8px;background:var(--paper);color:var(--ink);font:inherit}
+.lane-parkf{flex-direction:column}
+@media (max-width:480px){.lane-pick .lane-menu{position:fixed;left:16px;right:16px;top:auto;bottom:16px;width:auto}}

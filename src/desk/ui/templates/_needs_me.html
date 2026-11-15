@@ -15,13 +15,13 @@
   {% if asks %}<span class="label">Needs your answer</span>
   {% for i in asks[:shown] %}<div class="nm-row" data-ticket="{{ i.id }}">
     <span><span class="nm-ask">{{ i.chip }}</span>{% if i.emergency %}<span class="nm-emerg">Emergency</span>{% endif %}</span>
-    <span class="nm-title"><a href="/ticket/{{ i.id }}" class="tid" data-status="{{ i.ticket.status }}">{{ i.id }} &middot; {{ i.ticket.meta.get('title') }}</a>{{ part(i) }}<span class="nm-why">{{ why(i) }}</span></span>
+    <span class="nm-title"><a href="/ticket/{{ i.id }}" class="tid" data-status="{{ i.ticket.status }}">{{ i.id }} &middot; {{ i.ticket.meta.get('title') }}</a>{{ part(i) }}{{ lane_marks(i.ticket, cap if cap is defined else '') }}<span class="nm-why">{{ why(i) }}</span></span>
     <a class="rowb" href="/ticket/{{ i.id }}#decision">{{ i.act }}</a>
   </div>{% endfor %}{% if asks|length > shown %}<a class="nm-more" href="{{ more_href }}">{{ asks|length - shown }} more need your answer · see them all on the board &rarr;</a>{% endif %}{% endif %}
   {% if changes %}<span class="label">Changed since you last acted</span>
   {% for i in changes[:shown] %}<div class="nm-row" data-ticket="{{ i.id }}">
     <span><span class="nm-chg">Changed</span>{% if i.emergency %}<span class="nm-emerg">Emergency</span>{% endif %}</span>
-    <span class="nm-title"><a href="/ticket/{{ i.id }}" class="tid" data-status="{{ i.ticket.status }}">{{ i.id }} &middot; {{ i.ticket.meta.get('title') }}</a>{{ part(i) }}<span class="nm-why">{{ why(i) }}</span></span>
+    <span class="nm-title"><a href="/ticket/{{ i.id }}" class="tid" data-status="{{ i.ticket.status }}">{{ i.id }} &middot; {{ i.ticket.meta.get('title') }}</a>{{ part(i) }}{{ lane_marks(i.ticket, cap if cap is defined else '') }}<span class="nm-why">{{ why(i) }}</span></span>
     <span class="nm-btns"><form class="post-once" method="post" action="/needs-me/seen" data-progress="Sending,Saving,Done"><input type="hidden" name="token" value="{{ token() }}"><input type="hidden" name="ids" value="{{ i.id }}"><input type="hidden" name="next" value="{{ back }}"><button class="ghostb" type="submit">Mark seen</button></form><a class="rowb" href="/ticket/{{ i.id }}">Open</a></span>
   </div>{% endfor %}{% if changes|length > shown %}<a class="nm-more" href="{{ more_href }}">{{ changes|length - shown }} more changes · see them all on the board &rarr;</a>{% endif %}{% endif %}
   {% if not nm %}<div class="nm-empty"><b>{{ empty_head }}</b><span class="nm-note">{{ empty_body }}</span></div>{% endif %}

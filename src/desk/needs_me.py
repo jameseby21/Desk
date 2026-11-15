@@ -16,7 +16,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from . import asks as asksmod
+from . import asks as asksmod, lanes
 from .ops import _COMMENT_LINE
 from .store import Store
 from .ticket import Ticket, parse_checks
@@ -308,6 +308,8 @@ def build(store: Store, who: str | None = None, now: dt.datetime | None = None, 
     state = _load(store)
     asks, changes = [], []
     for t in (tickets if tickets is not None else store.tickets()):
+        if lanes.is_snoozed(t, now.date()):  # DESK-0283: a snoozed ticket stays off Needs me (Today, the board, the CLI) until its date
+            continue
         a = ask_of(store, t, who, now)
         if a:
             asks.append(a)

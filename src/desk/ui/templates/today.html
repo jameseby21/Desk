@@ -30,6 +30,7 @@
     </div>
   </div>
 </div>
+{% include "_lanes_bar.html" %}
 {% if review_line %}<p class="muted" style="margin:10px 0 0"><span class="label">Ticket review</span> <a href="/ticket/{{ review_line[0].id }}">{{ review_line[0].meta.get('title') }}</a> · {{ review_line[1] }} waiting</p>{% endif %}
 
 <section id="immediate" class="t-sec imm{% if v.imm_missed %} imm-missed{% endif %}" aria-label="Immediate Action Required">
@@ -44,7 +45,7 @@
 
 <section class="t-sec" id="needs-you">
   <h2>{{ heading('needs') }} <small>Answer these and the rest can move</small></h2>
-  {% if v.needs %}<div class="rows">{% for t in v.needs %}{{ row(t, 'ask:' ~ v.ask_label(t), v.due_text(t)) }}{% endfor %}</div>
+  {% if v.needs %}<div class="rows">{% for t in v.needs %}{{ row(t, 'ask:' ~ v.ask_label(t), v.due_text(t), t.meta.get('smallest_step') if cap == 'rough' else '') }}{% endfor %}</div>
   {% else %}{{ empty(style, "Nothing is waiting on you.") }}{% endif %}
   <div class="card asked" id="asked">
     <span class="label">Your questions</span>

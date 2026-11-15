@@ -33,6 +33,7 @@ from urllib.parse import quote
 from markupsafe import Markup
 
 from . import events as ev
+from . import routes_lanes
 from .markdown import finish_comments, has_mermaid, prep_comments, render as md_html, summary_html
 
 TEMPLATES = Path(__file__).parent / "templates"
@@ -395,6 +396,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
             ts = [t for t in ts if tag in bf.tags_of(t)]
         if ttype:
             ts = [t for t in ts if bf.type_of(t) == ttype]
+        ts = routes_lanes.narrow(request, s, ts, "today")  # DESK-0283: snoozed, other lanes, and subtickets or agent-only work left off
         week = ops.week_ago()
         stale = [t for t in ts if s.is_stale(t)]
         decided = [t for t in ts if t.status in ("approved", "done", "rejected", "changes_requested") and str(t.meta.get("updated", "")) >= week]
@@ -576,7 +578,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         every = s.tickets()
         fam = subt.Family(every)
         every = fam.mains(every)  # DESK-0208: main tickets only; each card carries the progress of its subtickets
-        ts = bf.apply(every, sel)
+        ts = routes_lanes.narrow(request, s, bf.apply(every, sel), "board")  # DESK-0283: snoozed and other lanes left off
         of = compmod.by_project(s)
         names = {compmod.slug(n): n for n in of.values()}
         if not company:  # an address that opens a project or a group (an old link, a reload) opens its company too
@@ -625,6 +627,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         all_t = s.tickets()
         fam = subt.Family(all_t)  # DESK-0208: main tickets only
         ts = [t for t in bf.apply(fam.mains(all_t), sel) if t.project == project and trk.track_slug(bv.group_name(t, by) if bv.group_name(t, by) not in (bv.UNTRACKED, bv.NO_SPRINT) else "") == slug]
+        ts = routes_lanes.narrow(request, s, ts, "board")  # DESK-0283
         ts, nm_items, nm_extra = needs_only(s, ts, needs)
         return templates.TemplateResponse(request, "_bcols_frag.html", ctx(request, s, tickets=sorted(ts, key=lambda t: t.id), s=s, project=project, slug=slug, by=by, family=fam,
                                                                     filter_q=bf.query(sel, **nm_extra), needs=nm_extra.get("needs", ""), nm_items=nm_items))
@@ -640,6 +643,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         all_t = s.tickets()
         fam = subt.Family(all_t)  # DESK-0208: main tickets only
         ts = [t for t in bf.apply(fam.mains(all_t), sel) if t.project == project and trk.track_slug(bv.group_name(t, by) if bv.group_name(t, by) not in (bv.UNTRACKED, bv.NO_SPRINT) else "") == slug]
+        ts = routes_lanes.narrow(request, s, ts, "board")  # DESK-0283
         ts, nm_items, nm_extra = needs_only(s, ts, needs)
         items = bv.column_items(ts, col, priority.scores(s).key)[max(offset, 0):]
         if frag:
@@ -1381,6 +1385,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
             return JSONResponse({"ok": True, "message": f"Moved to {s.get(ticket_id).status}.", "stamp": str(ev.ticket_stamp(s, t.id))})
         return _back(ticket_id, ok="move", anchor="decision")
 
+    routes_lanes.install(app, templates, store, tokens)  # DESK-0283: lane chip, lane bar, lane and snooze routes
     return app
 
 
