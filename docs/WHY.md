@@ -41,6 +41,8 @@ Plain words are the default. If you want a Scottish Terrier named Drew fetching 
 
 One field, `ask`, tells you what a ticket wants before you read it: approve this, choose one, set a direction, answer a question, provide something, give feedback, do a step, just so you know, or nothing. The reply box matches the ask. You never have to work out what a ticket is asking.
 
+You do not have to open tickets to answer them. Press `D` on any page and Decide brings the questions to you one at a time, each with the worker's recommendation and why, and what each button does next. `Y` agrees, `N` sends it back with your reason, `S` snoozes it for a week. On Today you can tick several and approve them together after a dry run. Sort the inbox puts new tickets in Now, Planned, Later or Park with one key. Desk never writes an answer you did not give: with no recommendation, your own words are needed.
+
 ## Work and life on one board
 
 A job application, a specialist appointment, a SQL exercise and a pull request are all things you intend to do this week. Desk keeps them on one board with the same honesty: a soft goal is recorded as what it was, a partial day counts, and two things finished together earn a line ("Take a break" and "Duolingo lesson" completed together, +100 for efficiency). Turn it off if you want a work-only board; it is a setting, not a mandate.

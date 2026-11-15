@@ -253,6 +253,22 @@ def test_batch_approve_dry_run_then_one_batch_for_all(store, monkeypatch):
     assert store.get(loner.id).status == "ready" and not [e for e in activity.read(store.home, loner.id) if e.batch]
 
 
+def test_one_undo_puts_a_batch_approve_back(store, monkeypatch):
+    """Protects: How to validate step 2 of DESK-0285, tick two rows, Approve all, then one Undo (DESK-0284) and both are back in review."""
+    pytest.importorskip("desk.undo", reason="DESK-0284's Undo is not on this branch; this runs once the two are merged")
+    ok = "Built and tested.\n\nChaz recommends: approve; the checks pass."
+    a, b = _review(store, "Build the export", ok), _review(store, "Build the import", ok)
+    c = _owner(store, monkeypatch)
+    r = c.post("/decide/batch", data={"token": _tok(c), "ids": [a.id, b.id], "back": "/"}, follow_redirects=False)
+    assert store.get(a.id).status == store.get(b.id).status == "approved"
+    r = c.post(f"/undo/batch/{_q(r)['undo']}", headers={"Accept": "application/json", "X-Desk-Undo-Request": "1"})
+    assert r.status_code == 200 and r.json()["ok"], r.text
+    for t in (a, b):
+        back = store.get(t.id)
+        assert back.status == "review", (t.id, back.status)
+        assert "Agree with the recommendation: approve." in back.section("Decision")  # the old line stays; the undo adds its own line
+
+
 def test_batch_back_never_leaves_desk(store, monkeypatch):
     """Protects: no open redirect, a back of //host or with a backslash falls back to / on the dry run's Cancel and after Approve."""
     ok = "Built and tested.\n\nChaz recommends: approve; the checks pass."
