@@ -204,6 +204,16 @@ def test_the_lanes_switch_on_settings_changes_today(store, monkeypatch):
     assert sorted(p.read_bytes() for p in store.tickets_dir.glob("*.md")) == before
 
 
+def test_a_bad_notify_value_in_desk_toml_never_breaks_settings(store, monkeypatch):
+    """Protects /settings: a word where desk.toml [notify] wants a number gives one plain sentence in the Phone and email box,
+    and every other section still draws."""
+    p = store.home / "desk.toml"
+    p.write_bytes(p.read_bytes() + b'\n[notify]\ndaily_budget = "lots"\n')
+    r = _owner(store, monkeypatch).get("/settings")
+    assert r.status_code == 200 and "could not read the [notify] settings" in r.text
+    assert 'id="lanes"' in r.text and 'id="motivation"' in r.text and 'id="delegations"' in r.text
+
+
 # ---- the origin guard stays outermost ---------------------------------------------------------------------------------------
 
 def test_the_origin_guard_runs_before_every_other_middleware(store):

@@ -42,6 +42,17 @@ def lane_prefs(request) -> dict:
     return {"lane": lane, "show_all": show_all}
 
 
+UNREADABLE = "Desk could not read the [notify] settings in desk.toml. Run drew notify status to see what is wrong; nothing was changed."
+
+
+def safe_notify_view(home) -> dict:
+    """notify_view, or one plain sentence when desk.toml holds a value Desk cannot read: Settings never fails because of it."""
+    try:
+        return notify_view(home)
+    except Exception:  # a hand-edited desk.toml (a word where a number goes) must not take the whole page down
+        return {"error": UNREADABLE}
+
+
 def install(templates, store) -> None:
     """Template helpers for settings.html (one line in create_app). No route: the forms post to the packages' own routes."""
-    templates.env.globals.update(notify_view=lambda: notify_view(store().home), lane_prefs=lane_prefs)
+    templates.env.globals.update(notify_view=lambda: safe_notify_view(store().home), lane_prefs=lane_prefs)
