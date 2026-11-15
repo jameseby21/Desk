@@ -171,7 +171,7 @@ def test_palette_approve_and_assign_post_through_the_same_routes(store):
 def test_snooze_and_lane_write_the_fields_with_one_batch_each(store):
     """Snooze 1 week and Move to Later write snooze_until and lane through Store.save, each change carrying its batch id for undo."""
     t = _t(store, "Later maybe", status="ready")  # ready: the Planned lane, so Later is a move
-    c = TestClient(create_app(store.home))
+    c = TestClient(create_app(store.home), base_url="http://127.0.0.1:8799")  # DESK-0283's lane route answers this computer only
     acts = {a["key"]: a for a in c.get(f"/palette/actions/{t.id}").json()["actions"]}
     r = c.post(acts["snooze"]["url"], data=acts["snooze"]["fields"], headers=JSON)
     assert r.status_code == 200 and r.json()["batch"].startswith("b-"), r.text
@@ -197,7 +197,7 @@ LANE_FORM = {"token", "lane", "reason", "snooze", "next"}  # the fields DESK-028
 def test_palette_lane_park_and_snooze_post_the_lane_menus_fields_to_its_one_route(store):
     """Lane, Park and Snooze post DESK-0283's lane-menu fields (lane, reason, snooze) to /ticket/<ID>/lane; no second snooze route exists."""
     t = _t(store, "Later maybe", status="ready")
-    c = TestClient(create_app(store.home))
+    c = TestClient(create_app(store.home), base_url="http://127.0.0.1:8799")  # DESK-0283's lane route answers this computer only
     acts = {a["key"]: a for a in c.get(f"/palette/actions/{t.id}").json()["actions"]}
     for key in ("snooze", "lane-now", "lane-later", "park"):
         assert acts[key]["url"] == f"/ticket/{t.id}/lane", key
