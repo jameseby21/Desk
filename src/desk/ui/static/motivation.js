@@ -2,7 +2,8 @@
 
    The count comes from /motivation/state.json (the event log, never stored here). The last count seen today sits in sessionStorage, so
    a page opened after a decision (a form post, an in-place swap, even a change from the terminal) celebrates once. The celebration is
-   skipped when the Motivation switch is off, and is a still highlight (no motion) when the system asks for reduced motion.
+   skipped when the Motivation switch is off, and is a still highlight (no motion) when the system asks for reduced motion. With the
+   count switched off and the celebration on, the "+1" shows by itself where the count would be, then hides again.
 
    The focus timer keeps {id, title, end} in localStorage, so it survives a reload and shows on every page. When it ends, the header
    asks "Done or snooze?": Done posts to /focus/done/<id> (an approved ticket closes, with an undo toast; any other ticket stays as it is
@@ -22,8 +23,9 @@
   function calm() { return !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches); }
 
   /* -- decided today and the celebration -- */
-  function celebrate(up) {
+  function celebrate(up, counting) {
     if (root.getAttribute("data-celebrate") !== "1") return;
+    if (!counting) { countEl.textContent = ""; countEl.hidden = false; }  // the count is off: the "+1" alone, for the moment
     countEl.classList.remove("mot-pop", "mot-still");
     void countEl.offsetWidth;  // restart the animation when two decisions land close together
     var plus = mk("span", "mot-plus", "+" + up);
@@ -39,16 +41,22 @@
       countEl.appendChild(burst);
       setTimeout(function () { burst.remove(); }, 900);
     }
-    setTimeout(function () { plus.remove(); countEl.classList.remove("mot-pop", "mot-still"); }, 2400);
+    setTimeout(function () {
+      plus.remove(); countEl.classList.remove("mot-pop", "mot-still");
+      if (root.getAttribute("data-count") !== "1") countEl.hidden = true;
+    }, 2400);
   }
 
   function showCount(s) {
-    if (!s || root.getAttribute("data-count") !== "1") return;
-    countEl.hidden = false;
-    countEl.textContent = s.text;
-    countEl.classList.toggle("met", !!s.met);
+    if (!s) return;
+    var counting = root.getAttribute("data-count") === "1";
+    if (counting) {
+      countEl.hidden = false;
+      countEl.textContent = s.text;
+      countEl.classList.toggle("met", !!s.met);
+    }
     var seen = get(sessionStorage, SEEN_KEY);
-    if (seen && seen.day === s.day && s.decided > seen.n) celebrate(s.decided - seen.n);
+    if (seen && seen.day === s.day && s.decided > seen.n) celebrate(s.decided - seen.n, counting);
     put(sessionStorage, SEEN_KEY, { day: s.day, n: s.decided });
   }
 

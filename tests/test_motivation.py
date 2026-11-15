@@ -294,6 +294,59 @@ def test_focus_timer_survives_a_reload_and_ends_with_done_or_snooze(store):
     assert store.get(t.id).status == "inbox"
 
 
+def test_the_count_switch_off_hides_the_count(store):
+    """Protects the count switch: off renders data-count="0" in every header and state.json says so; on renders data-count="1"."""
+    c = TestClient(create_app(store.home))
+    assert 'data-count="1"' in c.get("/").text and c.get("/motivation/state.json").json()["count_on"] is True
+    r = c.post("/settings/motivation", data={"focus": "on", "focus_minutes": "25", "goal": "5", "count": "off", "celebrate": "on"}, headers=JSON)
+    assert r.status_code == 200 and mot.load(store.home)["count"] is False
+    assert 'data-count="0"' in c.get("/").text and 'data-count="1"' not in c.get("/settings").text
+    assert c.get("/motivation/state.json").json()["count_on"] is False
+
+
+CELEBRATE = """<script>
+try{sessionStorage.setItem('desk-decided-seen',JSON.stringify({day:'@DAY@',n:0}));}catch(e){}
+@STUB@
+(function(){  // poll from the moment the page is parsed: on a busy machine load can fire after the 2.4 s celebration is over
+ var el=document.getElementById('mot-count'),out={},t0=Date.now();
+ var iv=setInterval(function(){
+  ['mot-pop','mot-still'].forEach(function(c){if(el.classList.contains(c))out[c]=true;});
+  if(el.querySelector('.mot-burst'))out.burst=true;
+  var pl=el.querySelector('.mot-plus');if(pl)out.plus=pl.textContent;
+  if(!el.hidden)out.shown=true;
+  if((out.plus&&!pl&&!el.classList.contains('mot-pop')&&!el.classList.contains('mot-still'))||Date.now()-t0>6000){/* the celebration is over */clearInterval(iv);out.hiddenAfter=el.hidden;out.textAfter=el.textContent;
+   fetch('/m',{method:'POST',body:JSON.stringify(out)});}
+ },50);})();</script>"""
+REDUCED = ("window.matchMedia=function(q){return {matches:/reduce/.test(q),media:q,addListener:function(){},removeListener:function(){},"
+           "addEventListener:function(){},removeEventListener:function(){}};};")  # the system asks for less motion
+
+
+@pytest.mark.skipif(browser() is None, reason="no Edge or Chrome installed")
+@pytest.mark.parametrize("case", ["motion", "reduced", "count-off", "celebrate-off"])
+def test_a_new_decision_celebrates_once_by_the_switches_and_reduced_motion(store, case):
+    """Protects the celebration at run time: one new decision pops with a burst, is a still highlight under reduced motion, still
+    shows (then hides) when only the count is off, and does nothing when the celebration is off."""
+    mot.save(store.home, focus=True, focus_minutes=25, goal=5, count=case != "count-off", celebrate=case != "celebrate-off")
+    t = _review(store, "Approve: the plan")
+    today = dt.date.today()
+    _status_event(store, t.id, today, "approved", hm="00:00:01")  # the owner, confirmed, decided one ticket today
+    script = CELEBRATE.replace("@DAY@", today.isoformat()).replace("@STUB@", REDUCED if case == "reduced" else "")
+    got = drive(store, script, f"/ticket/{t.id}")
+    if case == "celebrate-off":
+        assert not (got.get("mot-pop") or got.get("mot-still") or got.get("plus")), got
+        assert got["shown"] and got["textAfter"] == "1 of 5 decided today", got
+        return
+    assert got.get("plus") == "+1", got
+    if case == "reduced":
+        assert got.get("mot-still") and not got.get("mot-pop") and not got.get("burst"), got
+    else:
+        assert got.get("mot-pop") and got.get("burst") and not got.get("mot-still"), got
+    if case == "count-off":
+        assert got["shown"] and got["hiddenAfter"] is True, got  # the burst shows by itself, then the count stays hidden
+    else:
+        assert got["hiddenAfter"] is False and got["textAfter"] == "1 of 5 decided today", got
+
+
 def test_the_agents_list_follows_todays_filters(store):
     """Protects: a Tag (or Company, Track, Sprint, Type) filter on Today narrows the agents list like every other row."""
     a = ops.new(store, "Tagged work", "desk", "feature")
