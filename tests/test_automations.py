@@ -224,6 +224,35 @@ def test_stale_label_then_close_with_a_reason_and_owner_tickets_are_kept(home, n
     assert home.get(mine.id).status == "ready" and "stale" in home.get(mine.id).tags
 
 
+def test_review_waiting_a_week_tags_after_seven_days_and_tells_the_owner_once(home, no_gh):
+    """Skill management: a review untouched for more than seven days gets review-overdue and one queued note; not on day seven."""
+    t = make(home, status="review")
+    run(home, "review-waiting-a-week", today=TODAY + dt.timedelta(days=7))
+    assert "review-overdue" not in home.get(t.id).tags and notify_queue.pending(home.home) == []
+    run(home, "review-waiting-a-week", today=TODAY + dt.timedelta(days=8))
+    run(home, "review-waiting-a-week", today=TODAY + dt.timedelta(days=9))
+    after = home.get(t.id)
+    assert after.status == "review" and "review-overdue" in after.tags
+    q = notify_queue.pending(home.home)
+    assert [x["ids"] for x in q] == [[t.id]] and q[0]["source"] == "automation:review-waiting-a-week" and "8 days in review" in q[0]["text"]
+
+
+def test_approved_waits_to_ship_tags_after_a_day_and_tells_the_owner_once(home, no_gh):
+    """Skill release: an approved feature not done after more than a day gets ship-pending and one queued note; a task does not."""
+    t = make(home, status="approved")
+    task = make(home, "Task: approved paperwork", status="approved")
+    task.meta["type"] = "task"
+    home.save(task)
+    run(home, "approved-waits-to-ship", today=TODAY + dt.timedelta(days=1))
+    assert "ship-pending" not in home.get(t.id).tags and notify_queue.pending(home.home) == []
+    run(home, "approved-waits-to-ship", today=TODAY + dt.timedelta(days=2))
+    run(home, "approved-waits-to-ship", today=TODAY + dt.timedelta(days=3))
+    after = home.get(t.id)
+    assert after.status == "approved" and "ship-pending" in after.tags and "ship-pending" not in home.get(task.id).tags
+    q = notify_queue.pending(home.home)
+    assert [x["ids"] for x in q] == [[t.id]] and q[0]["source"] == "automation:approved-waits-to-ship"
+
+
 def test_stale_close_never_rejects_a_ticket_waiting_on_the_owner_or_in_progress(home, no_gh):
     """Rule 10: a ticket blocked on the owner, claimed or in progress is labelled stale but never auto-closed."""
     waiting = make(home, "Build: waits on the owner's answer")
