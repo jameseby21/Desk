@@ -269,6 +269,7 @@ def test_lists_sort_by_score_cards_show_it_and_explain_prints_every_term(shop, c
     assert re.search(r"\+24\.0\s+value\s+top priority, set by hand\s+default", text) and re.search(r"\+8\.0\s+type\s+a bug", text) and "due in 1 day" in text
     assert "Levels: default → store → track rules → project; the nearest wins." in text
     c = TestClient(create_app(shop.home))
+    c.cookies.set("desk_show", "all")  # DESK-0283: these tickets are agent-only (owner and assignee both agents), hidden from Today unless Show all is on
     today = c.get("/").text
     rows = re.findall(r'<a class="trow[^"]*" href="/ticket/([A-Z]+-\d+)"', today)
     assert rows.index(mid.id) >= 0 and re.search(rf'<b class="score" title="Score \d+: [^"]+">\d+</b>', today)
@@ -309,6 +310,7 @@ def test_a_page_scores_the_store_once_never_per_card(shop, monkeypatch):
     real = priority.stamp
     monkeypatch.setattr(priority, "stamp", lambda st: calls.append(1) or real(st))
     c = TestClient(create_app(shop.home))
+    c.cookies.set("desk_show", "all")  # DESK-0283: these tickets are agent-only (owner and assignee both agents), hidden from Today unless Show all is on
     for path in ("/", "/board?open=*&g=*", "/projects"):
         calls.clear()
         page = c.get(path).text

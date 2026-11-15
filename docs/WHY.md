@@ -20,7 +20,8 @@ Ticket tools grew up making managers feel in control. These are the habits that 
 | Approval by emoji | A thumbs-up is not a decision. | Approval is your words on the record. "Looks good" doesn't count. |
 | Decisions buried in comment threads | Forty replies later, who decided what? | Talk and decisions live apart. A decision is one line, with a name and a date. |
 | Close the bug, forget the bug | So it comes back in March. | Every fix buries a lesson: the rule and the test that keep it from happening twice. |
-| Plans that assume a perfect week | No week is. | Tell Desk how the week is going. On a rough one it shows each ticket's smallest step, and that still counts. |
+| Plans that assume a perfect week | No week is. | Tell Desk how the week is going. On a rough one it shows only the Now lane, each with its smallest step, and that still counts. |
+| A list where everything shouts at once | So nothing gets done. | Every ticket has a lane: Now, Planned, Later or Parked. Snooze what can wait. Park what is not now, with a reason. Nothing is deleted, and a hard deadline is never hidden. |
 | Your tickets locked in their database | Export is a premium feature, apparently. | Tickets are Markdown files in your own repo. Desk reads them; it never owns them. |
 
 ## How a ticket moves

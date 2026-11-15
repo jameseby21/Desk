@@ -153,6 +153,7 @@ def test_projects_page_and_its_counts_leave_subtickets_out(store):
 def test_today_counts_leave_subtickets_out_but_its_rows_list_them_labelled(store):
     m, icon, ask, plain = _fx(store)
     c = TestClient(create_app(store.home))
+    c.cookies.set("desk_show", "all")  # DESK-0283: agent-only work (the main ticket and the plain one) is hidden by default; Show all draws it
     page = c.get("/").text
     label = f"part of {m.id}: {MAIN}"
     assert re.search(r'status%3Aready">1 ready</a>', page), page  # the plain ticket; the icon is ready too but is a subticket

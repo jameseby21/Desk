@@ -35,6 +35,7 @@
   <span class="chip {% if t.status=='review' %}ball{% elif t.status=='blocked' %}red{% endif %}">{{ screen(t.status) }}</span>
   {% set dl = deadline_of(t) %}{% if dl %}<span class="chip{% if dl[0] == 'hard' and dl[3] %} red{% endif %} deadline" title="Deadline {{ dl[1] }}">{{ dl[0]|capitalize }} deadline {{ dl[1] }} · {{ dl[2] }}</span>{% endif %}
   {% if stale %}<span class="chip red">{{ screen('stale') }}</span>{% endif %}
+  {% include "_lane_pick.html" %}
   {% if t.meta.get('sprint') %}<a class="chip" href="/sprint/{{ sprint_slug(t.meta.get('sprint')) }}" title="Sprint page">{{ t.meta.get('sprint') }}</a>{% endif %}
   {% for tag in t.tags %}<span class="tag">#{{ tag }}</span>{% endfor %}
 </div>

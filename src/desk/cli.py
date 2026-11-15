@@ -1544,6 +1544,9 @@ def build_parser() -> argparse.ArgumentParser:
     rp = rsub.add_parser("sync", help="regenerate the checkbox list and KPI block in place")
     rp.add_argument("id", nargs="?", help="default: this week's review ticket")
     rp.set_defaults(fn=cmd_review_sync)
+    from . import cli_lanes  # DESK-0283: lane, snooze, park
+
+    cli_lanes.register(sub)
     return p
 
 
