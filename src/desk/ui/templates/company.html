@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Desk · {% if c %}{{ c.title }}{% else %}Companies{% endif %}{% endblock %}
+{% block body %}
+<link rel="stylesheet" href="{{ asset('brief.css') }}">
+<div class="brief">
+{% if c %}
+<div class="br-head">
+  <p class="label">Company · {{ c.open }} open ticket{{ 's' if c.open != 1 }}</p>
+  <h1>{{ c.title }}: {% if c.mvp_total %}first version {{ c.mvp_done }} of {{ c.mvp_total }} done{% else %}no first version (MVP) planned yet{% endif %}</h1>
+  <p class="br-sub">Projects: {% for k, title in c.projects %}<a href="/board?project={{ k }}">{{ title }}</a>{{ ', ' if not loop.last }}{% endfor %}</p>
+  <p class="br-tools no-print"><a class="btn small" href="/board?company={{ c.slug }}">Board</a> <button type="button" class="btn small" onclick="window.print()">Print</button></p>
+</div>
+<div class="wk-grid">
+  <section class="card br-tile" aria-labelledby="cm-h"><h2 id="cm-h">First version (MVP)</h2>
+    {% if c.mvp_total %}<div class="bt-meter" role="meter" aria-valuemin="0" aria-valuemax="{{ c.mvp_total }}" aria-valuenow="{{ c.mvp_done }}" aria-label="First version tickets done"><i style="width:{{ c.mvp_done * 100 / c.mvp_total }}%"></i></div>
+    {% if c.mvp_open %}<ul class="br-list">{% for r in c.mvp_open %}<li><a class="tid" href="/ticket/{{ r.id }}">{{ r.id }}</a> {{ r.title }}</li>{% endfor %}</ul>{% else %}<p>Every first-version ticket is done.</p>{% endif %}
+    {% else %}<p class="muted">Tag tickets mvp to track the first version here.</p>{% endif %}</section>
+  <section class="card br-tile" aria-labelledby="cn-h"><h2 id="cn-h">Now <small>{{ c.now_count }}</small></h2>
+    {% if c.now %}<ul class="br-list">{% for r in c.now %}<li><a class="tid" href="/ticket/{{ r.id }}">{{ r.id }}</a> {{ r.title }}</li>{% endfor %}</ul>{% else %}<p class="muted">Nothing urgent.</p>{% endif %}</section>
+  <section class="card br-tile" aria-labelledby="cs-h"><h2 id="cs-h">Last shipped</h2>
+    {% if c.last_ship %}{% set r = c.last_ship %}<p><a class="tid" href="/ticket/{{ r.id }}">{{ r.id }}</a> {{ r.title }} <span class="muted">· {{ r.when.strftime('%b') }} {{ r.when.day }}</span>{% if r.link %} · <a href="{{ r.link }}" rel="noopener">see it live</a>{% endif %}</p>{% else %}<p class="muted">Nothing has shipped yet.</p>{% endif %}</section>
+  <section class="card br-tile" aria-labelledby="cd-h"><h2 id="cd-h">Next decision{% if c.decisions > 1 %} <small>of {{ c.decisions }}</small>{% endif %}</h2>
+    {% if c.next_decision %}{% set d = c.next_decision %}<p><span class="nm-ask">{{ d.chip }}</span> <a class="tid" href="{{ d.open_href }}">{{ d.id }}</a> {{ d.title }}</p>{% else %}<p class="muted">Nothing waits on you here.</p>{% endif %}</section>
+</div>
+{% else %}
+<div class="br-head"><h1>Companies</h1><p class="br-sub">One page per company: its first version, what is urgent, what shipped last and the next decision.</p></div>
+<ul class="br-list co-list">{% for slug, title, n in all_companies %}<li><a href="/company/{{ slug }}"><b>{{ title }}</b></a> <span class="muted">· {{ n }} open</span></li>{% endfor %}</ul>
+{% endif %}
+</div>
+{% endblock %}

@@ -248,6 +248,7 @@ Plain HTML forms over FastAPI and Jinja2; no build step. The only JavaScript is 
 - **Board**: one column per status, filter by project.
 - **Ticket**: every section rendered as Markdown (see Rich bodies), acceptance checkboxes with a count, the Report beside them with a red **Not run** tag when it is empty, Attachments with inline images, Approve and Send back forms (both require words, acting as the configured owner), a guarded Move form, comments.
 - **Projects**: one row per `projects/*.md` with its prefix and aliases, counts by status and last activity.
+- **Daily brief** (`/brief`, `drew brief`): what to decide today with one-click answers, hard deadlines this week, what shipped yesterday; `/brief/week` writes the weekly review by itself and prints on one page. Also `/flow` (where time goes), `/repeats` (asked twice), `/company/<slug>` (one page per company) and `/deadlines.ics` (a calendar feed). See docs/COMMANDS.md.
 
 The UI calls the same operations as the CLI, so the same rules apply.
 

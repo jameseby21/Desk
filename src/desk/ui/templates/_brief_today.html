@@ -1,0 +1,9 @@
+{# DESK-0288: the work balance and review-debt tiles on Today, included with one line. #}
+{% from "_brief_tiles.html" import balance_bar, debt_meter %}
+{% set bt = brief_tiles(s) %}
+<link rel="stylesheet" href="{{ asset('brief.css') }}">
+<section class="bt-row" aria-label="Your week at a glance">
+  {{ balance_bar(bt.balance) }}
+  {{ debt_meter(bt.debt) }}
+  <p class="bt-more"><a href="/brief">Open the daily brief</a> · <a href="/brief/week">This week</a></p>
+</section>

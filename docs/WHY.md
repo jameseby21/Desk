@@ -51,7 +51,7 @@ The UI is for the owner. The command line is for agents: `drew next` prints the 
 
 ## Free, and paid
 
-**Free, forever (this repo, MIT):** tickets as Markdown in your own git repo; the `drew` command line for you and for agents; the local web app (Today, the queue, tickets, decisions, stats); the lesson library for one repo; proof from the commands you run.
+**Free, forever (this repo, MIT):** tickets as Markdown in your own git repo; the `drew` command line for you and for agents; the local web app (Today, the daily brief, the queue, tickets, decisions, stats); the lesson library for one repo; proof from the commands you run.
 
 **Paid, hosted by JA Insights (when it exists):** sync across your machines without running a server; one lesson library across all your projects; proof captured from your CI without copy and paste; approvals from your phone with a full record; seats for AI agents next to your people. What you keep if you leave: everything, because it was always in your repo.
 

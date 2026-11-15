@@ -1,0 +1,8 @@
+{# DESK-0288: flow time on the ticket page, from the event log; included with one line. #}
+{% set fl = flow_of(s, t) %}
+{% if fl.start %}<link rel="stylesheet" href="{{ asset('brief.css') }}">
+<details class="card fl-card" id="flow">
+  <summary><span class="label">Where the time went</span> <b>{{ fl.total_text }}</b> {% if fl.closed %}from start to done{% else %}so far{% endif %} · {% for r in fl.rows if r.pct %}{{ r.label|lower }} {{ r.time }}{{ ', ' if not loop.last }}{% endfor %}</summary>
+  {% include "_flow_bar.html" %}
+  <p class="muted fl-note">Time in each status: {% for st, tx in fl.statuses %}{{ screen(st) }} {{ tx }}{{ ' · ' if not loop.last }}{% endfor %}. Waiting on you counts review, and blocked on you.</p>
+</details>{% endif %}
