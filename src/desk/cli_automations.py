@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import datetime as dt
 import sys
+import time
 
 from . import automations as au
 from . import identity
@@ -12,6 +13,8 @@ from .config import HomeNotFound, find_home
 from .store import Store
 
 BAR = 20
+INTERVAL = 1.0  # seconds between two count lines inside one rule or one undo; tests set it to 0
+_last = [0.0]
 
 
 def register(sub) -> None:
@@ -112,9 +115,32 @@ def _print_items(res: au.Sweep) -> None:
                 print(f"    held back: {i.skipped}")
 
 
+def _bar(frac: float) -> str:
+    fill = max(0, min(BAR, round(BAR * frac)))
+    return f"[{'#' * fill}{'-' * (BAR - fill)}]"
+
+
 def _progress(i: int, n: int, rule: str, changed: int) -> None:
-    fill = round(BAR * i / n) if n else BAR
-    print(f"[{'#' * fill}{'-' * (BAR - fill)}] {i} of {n} rules · {rule}: {changed} ticket(s)", file=sys.stderr, flush=True)
+    print(f"{_bar(i / n if n else 1)} {i} of {n} rules · {rule}: {changed} ticket(s)", file=sys.stderr, flush=True)
+
+
+def _due() -> bool:
+    """At most one count line per INTERVAL, so a slow rule shows it is moving without flooding the terminal."""
+    now = time.monotonic()
+    if now - _last[0] < INTERVAL:
+        return False
+    _last[0] = now
+    return True
+
+
+def _tick(i: int, n: int, rule: str, k: int, m: int) -> None:
+    if k < m and _due():
+        print(f"{_bar(((i - 1) + k / m) / n if n and m else 0)} rule {i} of {n} · {rule}: ticket {k} of {m}", file=sys.stderr, flush=True)
+
+
+def _undo_progress(k: int, n: int, tid: str) -> None:
+    if k == 1 or k == n or _due():
+        print(f"{_bar(k / n if n else 1)} restoring {k} of {n} · {tid}", file=sys.stderr, flush=True)
 
 
 def cmd_dry_run(args) -> None:
@@ -136,7 +162,8 @@ def cmd_run(args) -> None:
     s = _store(args)
     rules, repos = _rules(s)
     me = identity.CURRENT.get()
-    res = au.sweep(s, rules, repos, today=_today(args), apply=True, only=args.rule, progress=_progress,
+    _last[0] = time.monotonic()
+    res = au.sweep(s, rules, repos, today=_today(args), apply=True, only=args.rule, progress=_progress, tick=_tick,
                    started_by=me.name if me is not None else "")
     _print_items(res)
     for n in res.notes:
@@ -157,7 +184,8 @@ def cmd_init(args) -> None:
 def cmd_undo(args) -> None:
     s = _store(args)
     try:
-        done, kept = au.undo(s, args.batch)
+        _last[0] = time.monotonic()
+        done, kept = au.undo(s, args.batch, progress=_undo_progress)
     except au.AutomationError as e:
         _die(str(e))
     for k in kept:

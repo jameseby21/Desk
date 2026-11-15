@@ -419,6 +419,92 @@ def test_page_shows_rules_and_run_now_writes_as_automation_with_undo_params(home
     assert "works+once" in again.headers["location"]
 
 
+def _page_client(home, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from desk import people
+    from desk.ui.app import create_app
+
+    monkeypatch.setattr(identity, "os_user", lambda: "jeby")
+    people.link_os_user(home.home, "james", "jeby")
+    return TestClient(create_app(home.home))
+
+
+def _token(page, action):
+    import re
+    return re.search(rf'action="{action}"[^>]*>\s*<input type="hidden" name="token" value="([^"]+)"', page).group(1)
+
+
+def test_run_now_offers_its_own_undo_on_the_page_and_it_restores(home, no_gh, monkeypatch):
+    """Without DESK-0284 merged, the page after Run now still has an Undo that puts the whole run back."""
+    c = _page_client(home, monkeypatch)
+    parent = _family(home)
+    r = c.post("/automations/run", data={"token": _token(c.get("/automations").text, "/automations/run")}, follow_redirects=False)
+    batch = r.headers["location"].split("undo=")[1].split("&")[0]
+    page = c.get(r.headers["location"]).text
+    assert 'action="/automations/undo"' in page and f'value="{batch}"' in page and f"drew auto undo {batch}" in page
+    u = c.post("/automations/undo", data={"token": _token(page, "/automations/undo"), "batch": batch}, follow_redirects=False)
+    assert u.status_code == 303 and "Undone" in c.get(u.headers["location"]).text
+    assert home.get(parent.id).status == "in_progress"
+    assert 'action="/automations/undo"' not in c.get(f"/automations?undo={batch}").text  # undone once: no second button
+
+
+def test_run_now_in_the_browser_reports_rule_and_ticket_counts_then_the_result(home, no_gh, monkeypatch):
+    """Visible progress: the browser's Run now is a job whose poll names the rule and the ticket count, then the result and its Undo."""
+    import time
+
+    c = _page_client(home, monkeypatch)
+    parent = _family(home)
+    seen = []
+    real = au.sweep
+
+    def slow(*a, **k):  # remember every count the job publishes
+        tick = k.get("tick")
+        if tick:
+            k["tick"] = lambda *x: (seen.append(x), tick(*x))
+        return real(*a, **k)
+
+    monkeypatch.setattr(au, "sweep", slow)
+    before = len(home.tickets())
+    r = c.post("/automations/run", data={"token": _token(c.get("/automations").text, "/automations/run")},
+               headers={"Accept": "application/json"})
+    jid = r.json()["job"]
+    for _ in range(200):
+        j = c.get(f"/automations/job/{jid}").json()
+        if j["state"] != "running":
+            break
+        time.sleep(0.05)
+    assert j["state"] == "done" and j["message"].startswith("Done:") and j["undo"].startswith("b-")
+    assert j["total"] >= 1 and j["done"] == j["total"] and j["step"].startswith("Rule ")
+    assert any(x[3] == x[4] == before for x in seen), seen[-3:]  # a rule counted through every ticket in the store
+    assert home.get(parent.id).status == "review"
+    u = c.post("/automations/undo", data={"token": _token(c.get("/automations?undo=" + j["undo"]).text, "/automations/undo"),
+                                         "batch": j["undo"]}, headers={"Accept": "application/json"})
+    uid = u.json()["job"]
+    for _ in range(200):
+        k = c.get(f"/automations/job/{uid}").json()
+        if k["state"] != "running":
+            break
+        time.sleep(0.05)
+    assert k["state"] == "done" and k["message"].startswith(f"Undone: {k['total']} ticket(s)") and k["done"] == k["total"] >= 1
+    assert home.get(parent.id).status == "in_progress"
+
+
+def test_cli_run_and_undo_print_ticket_counts_inside_a_rule(home, no_gh, capsys, monkeypatch):
+    """Visible progress: a long rule prints 'ticket k of m' as it goes and undo prints 'restoring k of n', not only a final line."""
+    from desk import cli_automations
+
+    monkeypatch.setattr(cli_automations, "INTERVAL", 0)
+    parent = _family(home)
+    main(["--home", str(home.home), "auto", "run", "--rule", "subtickets-done-parent-to-review"])
+    cap = capsys.readouterr()
+    assert "rule 1 of 1 · subtickets-done-parent-to-review: ticket 1 of 2" in cap.err
+    batch = cap.out.split("drew auto undo ")[1].split()[0]
+    main(["--home", str(home.home), "auto", "undo", batch])
+    cap = capsys.readouterr()
+    assert f"restoring 1 of 1 · {parent.id}" in cap.err and "Undone: 1 ticket(s)" in cap.out
+
+
 def test_page_without_a_rules_file_says_how_to_start(store):
     """No automations.yaml: the page says so in one sentence and names `drew auto init`."""
     from fastapi.testclient import TestClient

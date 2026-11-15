@@ -17,3 +17,4 @@
 .auto-held{color:var(--red)}
 .auto-src{font-size:13px;color:var(--muted)}
 @media (max-width:420px){.auto-tiles{grid-template-columns:1fr}}
+.auto-run[hidden]{display:none}

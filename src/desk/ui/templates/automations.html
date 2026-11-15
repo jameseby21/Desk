@@ -10,8 +10,15 @@
   {% set on = rules|selectattr('enabled')|list %}
   <p class="auto-lead">{{ on|length }} of {{ rules|length }} rules are on. Today they would change <b>{{ res.changed|length }}</b> ticket{{ '' if res.changed|length == 1 else 's' }}.</p>
   {% if msg %}<p class="auto-msg" role="status">{{ msg }}</p>{% endif %}
+  {% if undo %}
+  <form method="post" action="/automations/undo" class="auto-run auto-undo" data-job data-progress="Starting,Restoring,Done">
+    <input type="hidden" name="token" value="{{ token() }}"><input type="hidden" name="batch" value="{{ undo }}">
+    <button class="btn" type="submit">Undo this run</button>
+    <span class="auto-hint">Puts back every ticket this run changed. From a terminal: drew auto undo {{ undo }}</span>
+  </form>
+  {% endif %}
   {% for n in res.notes %}<p class="auto-note">{{ n }}</p>{% endfor %}
-  <form method="post" action="/automations/run" class="auto-run" data-progress="Checking,Running rules,Done">
+  <form method="post" action="/automations/run" class="auto-run" data-job data-progress="Starting,Running rules,Done">
     <input type="hidden" name="token" value="{{ token() }}">
     <button class="btn ball" type="submit" {% if not res.changed %}disabled{% endif %}>Run now</button>
     <span class="auto-hint">Changes are made by automation, never as you. One Undo takes back the whole run.</span>
@@ -36,4 +43,5 @@
   </ul>
   {% endif %}
 </section>
+<script src="{{ asset('automations.js') }}" defer></script>
 {% endblock %}

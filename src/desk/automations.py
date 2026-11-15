@@ -595,8 +595,9 @@ def _weekly_review(rule: Rule, c: Ctx, write: bool, journal: _Journal | None) ->
 
 
 def sweep(store: Store, rules: list[Rule], repos: list | None = None, today: dt.date | None = None, apply: bool = False,
-          only: str | None = None, progress=None, started_by: str = "") -> Sweep:
-    """Run every enabled rule (or the one named) over the open tickets. apply=False changes nothing and says what would change."""
+          only: str | None = None, progress=None, started_by: str = "", tick=None) -> Sweep:
+    """Run every enabled rule (or the one named) over the open tickets. apply=False changes nothing and says what would change.
+    progress(i, n, rule, changed) after each rule; tick(i, n, rule, k, m) as each rule reads ticket k of m, so a slow rule shows a count."""
     today = today or dt.date.today()
     out = Sweep(applied=apply)
     use = [r for r in rules if r.enabled and (only is None or r.name == only)]
@@ -613,8 +614,9 @@ def sweep(store: Store, rules: list[Rule], repos: list | None = None, today: dt.
                     tickets = store.tickets()
                 c = Ctx(store, today, tickets, subtickets.Family(tickets), prs, {t.id: t for t in tickets}, touched)
                 identity.CURRENT.set(actor(rule.name)) if apply else None
+                step = (lambda k, m, i=i, name=rule.name: tick(i, len(use), name, k, m)) if tick else None
                 with activity.because(f"rule {rule.name}"):
-                    found = _run_rule(rule, c, apply, journal)
+                    found = _run_rule(rule, c, apply, journal, step)
                 out.items += found
                 wrote = apply and any(x.changes and not x.skipped for x in found)
                 if progress:
@@ -637,7 +639,7 @@ class _nothing:
         return False
 
 
-def _run_rule(rule: Rule, c: Ctx, write: bool, journal) -> list[Item]:
+def _run_rule(rule: Rule, c: Ctx, write: bool, journal, step=None) -> list[Item]:
     if rule.scheduled:
         key, due = period(rule, c.today)
         if c.today < due:
@@ -646,9 +648,13 @@ def _run_rule(rule: Rule, c: Ctx, write: bool, journal) -> list[Item]:
             it = _weekly_review(rule, c, write, journal)
         else:
             it = _create(rule, c, key, write, journal)
+        if step:
+            step(1, 1)
         return [it] if it else []
     found = []
-    for t in c.tickets:
+    for k, t in enumerate(c.tickets, start=1):
+        if step:
+            step(k, len(c.tickets))
         if t.status in CLOSED:
             continue
         ok, why, vals = match(rule, t, c)
@@ -668,9 +674,15 @@ def _run_rule(rule: Rule, c: Ctx, write: bool, journal) -> list[Item]:
 
 # ---- undo ---------------------------------------------------------------------------------------
 
-def undo(store: Store, batch: str) -> tuple[list[str], list[str]]:
+def journal_open(home: Path, batch: str) -> bool:
+    """True when run `batch` changed something and has not been undone yet (the page offers its Undo only then)."""
+    return bool(re.fullmatch(r"b-[0-9a-f]{12}", batch or "")) and (Path(home) / JOURNAL / f"{batch}.json").is_file()
+
+
+def undo(store: Store, batch: str, progress=None) -> tuple[list[str], list[str]]:
     """Restore what one run changed. (restored ticket ids, the ones left alone with why). A ticket changed after the run is left alone,
-    named, so nobody's later work is lost; a ticket the run created is closed as rejected with the reason (its record stays)."""
+    named, so nobody's later work is lost; a ticket the run created is closed as rejected with the reason (its record stays).
+    progress(k, n, ticket id) after each ticket, so a long undo shows a count."""
     if not re.fullmatch(r"b-[0-9a-f]{12}", batch or ""):
         raise AutomationError(f"`{batch}` is not a batch id; `drew auto run` prints it (b- and 12 letters or digits).")
     p = store.home / JOURNAL / f"{batch}.json"
@@ -682,7 +694,10 @@ def undo(store: Store, batch: str) -> tuple[list[str], list[str]]:
     who = me.name if me is not None else None
     done, kept = [], []
     with activity.because(UNDO_WHY.format(batch=batch)):  # marks the restores, so hand_set does not take them for a person's choice
-        for tid, row in data["tickets"].items():
+        rows = list(data["tickets"].items())
+        for k, (tid, row) in enumerate(rows, start=1):
+            if progress:
+                progress(k, len(rows), tid)
             f = store.home / row["path"]
             now = f.read_bytes().decode("utf-8") if f.is_file() else None
             if now != row.get("after"):
