@@ -255,11 +255,16 @@ def test_the_toast_shows_at_phone_width_and_z_undoes(store):
     t = ops.new(store, "Browser undo", "desk")
     with activity.batch("b-eeeeeeeeeeee"):
         set_field(store, t.id, priority="p0")
+    # The script runs again on every load (the live auto-refresh may reload the page): it measures and presses Z once per session.
     script = """<script>
 window.addEventListener("load", function () { setTimeout(function () {
-  var t = document.querySelector(".undo-toast"), r = t ? t.getBoundingClientRect() : null;
-  var out = {toast: !!t, text: t ? t.textContent : "", left: r ? r.left : -1, right: r ? r.right : 0, vw: document.documentElement.clientWidth, addr: location.search};
-  document.dispatchEvent(new KeyboardEvent("keydown", {key: "z", bubbles: true}));
+  var out = null; try { out = JSON.parse(sessionStorage.getItem("t-out") || "null"); } catch (e) {}
+  if (!out) {
+    var t = document.querySelector(".undo-toast"), r = t ? t.getBoundingClientRect() : null;
+    out = {toast: !!t, text: t ? t.textContent : "", left: r ? r.left : -1, right: r ? r.right : 0, vw: document.documentElement.clientWidth, addr: location.search};
+    try { sessionStorage.setItem("t-out", JSON.stringify(out)); } catch (e) {}
+    document.dispatchEvent(new KeyboardEvent("keydown", {key: "z", bubbles: true}));
+  }
   var n = 0, iv = setInterval(function () { var t2 = document.querySelector(".undo-toast"); n++;
     if ((t2 && /Undone/.test(t2.textContent)) || n > 80) { clearInterval(iv); out.after = t2 ? t2.textContent : "";
       fetch("/m", {method: "POST", body: JSON.stringify(out)}); } }, 100);
@@ -432,3 +437,26 @@ window.addEventListener("load", function () { setTimeout(function () {
     assert got["open"] and "3" in got["text"] and got["go"] == "Go ahead (3)", got
     assert got["afterCancel"] == 0 and got["goneAfterCancel"] and got["afterEsc"] == 0, got
     assert got["afterGo"] == 1 and got["goneAfterGo"], got
+
+
+def test_the_toast_survives_an_auto_refresh_of_the_page(store):
+    """A live reload right after a write (the page's auto-refresh) keeps the Undo toast, so the write can still be taken back."""
+    from browser_harness import browser, drive
+
+    if not browser():
+        pytest.skip("no headless Edge or Chrome on this machine")
+    t = ops.new(store, "Reload keeps the toast", "desk")
+    with activity.batch("b-abababababab"):
+        set_field(store, t.id, priority="p0")
+    script = """<script>
+window.addEventListener("load", function () { setTimeout(function () {
+  var first = false; try { first = !sessionStorage.getItem("t-reloaded"); if (first) sessionStorage.setItem("t-reloaded", "1"); } catch (e) {}
+  if (first) { location.reload(); return; }
+  var t = document.querySelector(".undo-toast"), b = t ? t.querySelector("button.ball") : null;
+  fetch("/m", {method: "POST", body: JSON.stringify({toast: !!t, text: t ? t.textContent : "", undo: b ? b.textContent : "", addr: location.search,
+                                                   nav: performance.getEntriesByType("navigation")[0].type})});
+}, 300); });
+</script>"""
+    got = drive(store, script, f"/ticket/{t.id}?undo=b-abababababab&msg=Priority%20saved.", width=390)
+    assert got["nav"] == "reload" and "undo=" not in got["addr"], got
+    assert got["toast"] and got["text"].startswith("Priority saved.") and got["undo"] == "Undo", got

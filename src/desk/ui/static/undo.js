@@ -8,7 +8,18 @@
    Forms with class undo-form (the /undo page) post in place the same way; a change that was changed since asks "Undo anyway". */
 (function () {
   "use strict";
-  var SHOW_MS = 10000, current = null;
+  var SHOW_MS = 10000, current = null, KEEP = "desk-undo-toast";
+
+  /* A toast with Undo outlives a reload of the same page (the live auto-refresh can reload right after a write): it is kept in
+     sessionStorage until it closes, and shown again for the seconds it has left. */
+  function keep(o) {
+    try { if (o) sessionStorage.setItem(KEEP, JSON.stringify({ text: o.text, batch: o.batch, redo: !!o.redo, path: location.pathname, until: Date.now() + o.ms }));
+          else sessionStorage.removeItem(KEEP); } catch (e) { /* private window: the toast just does not survive a reload */ }
+  }
+  function kept() {
+    try { var k = JSON.parse(sessionStorage.getItem(KEEP) || "null"); sessionStorage.removeItem(KEEP);
+          return k && k.batch && k.path === location.pathname && k.until - Date.now() > 1000 ? k : null; } catch (e) { return null; }
+  }
 
   (function css() {  // the stylesheet sits beside this script, at the same build version
     var me = document.currentScript || document.querySelector('script[src*="undo.js"]');
@@ -36,7 +47,7 @@
 
   function close() {
     if (!current) return;
-    clearTimeout(current.timer); current.el.remove(); current = null;
+    clearTimeout(current.timer); current.el.remove(); current = null; keep(null);
   }
 
   function undoBatch(batch, redo, force) {
@@ -46,6 +57,7 @@
     var fd = new FormData(); if (force) fd.set("force", "1");
     post("/undo/batch/" + encodeURIComponent(batch), fd).then(function (x) {
       if (x.ok) {
+        keep({ text: x.j.message || "Undone.", batch: x.j.batch || "", redo: !redo, ms: SHOW_MS });  // if the refresh is a full reload, the Redo comes back
         refresh().then(function () { show({ text: x.j.message || "Undone.", batch: x.j.batch || "", redo: !redo }); });
         return;
       }
@@ -77,7 +89,9 @@
     document.body.appendChild(el);
     current = { el: el, text: text, btn: btn, bar: bar, actions: actions, batch: o.batch || "", redo: !!o.redo, busy: false };
     bar.firstChild.style.animationDuration = SHOW_MS + "ms";
-    current.timer = setTimeout(close, o.error ? SHOW_MS * 2 : SHOW_MS);
+    var ms = o.error ? SHOW_MS * 2 : Math.min(SHOW_MS, o.ms || SHOW_MS);
+    current.timer = setTimeout(close, ms);
+    if (o.batch) keep({ text: o.text || "Saved.", batch: o.batch, redo: o.redo, ms: ms });
     el.addEventListener("mouseenter", function () { if (current && current.el === el) { clearTimeout(current.timer); el.classList.add("held"); } });
     el.addEventListener("mouseleave", function () { if (current && current.el === el && !current.busy) { el.classList.remove("held"); current.timer = setTimeout(close, SHOW_MS / 2); } });
     return el;
@@ -115,7 +129,7 @@
   /* A redirect after a plain form post: ?undo=<batch>&msg=<sentence>. Shown once; the address is cleaned so a reload does not repeat it. */
   (function fromAddress() {
     var q = new URLSearchParams(location.search), b = q.get("undo"), m = q.get("msg");
-    if (!b && !m) return;
+    if (!b && !m) { var k = kept(); if (k) show({ text: k.text, batch: k.batch, redo: k.redo, ms: k.until - Date.now() }); return; }
     q.delete("undo"); q.delete("msg");
     try { history.replaceState(null, "", location.pathname + (q.toString() ? "?" + q.toString() : "") + location.hash); } catch (e) { /* old browser */ }
     show({ text: m || "Saved.", batch: b || "" });
@@ -131,7 +145,7 @@
     var DP = window.DeskProgress, p = DP ? DP.start(DP.slotFor(b), { steps: DP.stepsOf(form) || ["Sending", "Undoing", "Done"] }) : null;  // the bar where you clicked
     if (p) p.step(1);
     post(form.getAttribute("action"), new FormData(form)).then(function (x) {
-      if (x.ok) { if (p) p.done(x.j.message || "Undone."); refresh().then(function () { show({ text: x.j.message || "Undone.", batch: x.j.batch || "", redo: true }); }); return; }
+      if (x.ok) { if (p) p.done(x.j.message || "Undone."); keep({ text: x.j.message || "Undone.", batch: x.j.batch || "", redo: true, ms: SHOW_MS }); refresh().then(function () { show({ text: x.j.message || "Undone.", batch: x.j.batch || "", redo: true }); }); return; }
       if (p) p.fail(x.j.error || "Could not undo. Nothing was changed.");
       b.disabled = false; b.textContent = label;
       var t = form.querySelector("[name=token]"); if (t && x.j.token) t.value = x.j.token;
