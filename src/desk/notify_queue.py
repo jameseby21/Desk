@@ -23,8 +23,54 @@ def enqueue(home: Path, kind: str, text: str, ids: tuple[str, ...] | list[str] =
     return item
 
 
-def pending(home: Path) -> list[dict]:
+CURSOR = Path(".desk") / "notify-queue.cursor"  # DESK-0289: bytes of the queue already handled; the queue itself stays append-only
+
+
+def _cursor(home: Path) -> int:
+    try:
+        return int((Path(home) / CURSOR).read_text(encoding="utf-8").strip() or 0)
+    except (OSError, ValueError):
+        return 0
+
+
+def read_counted(home: Path) -> tuple[list[dict], int, int]:
+    """The items nobody has handled yet, the byte offset just past them (pass it to `advance` once they are handled), and how many
+    complete lines could not be read. A corrupt line is skipped, never raised: one bad line must not hold every later one back."""
     p = Path(home) / FILE
     if not p.exists():
-        return []
-    return [json.loads(x) for x in p.read_text(encoding="utf-8").splitlines() if x.strip()]
+        return [], 0, 0
+    data = p.read_bytes()
+    start = min(_cursor(home), len(data))
+    end = data.rfind(b"\n", start) + 1  # a line still being written is left for the next pass
+    if end <= start:
+        return [], start, 0
+    items, bad = [], 0
+    for raw in data[start:end].split(b"\n"):
+        if not raw.strip():
+            continue
+        try:
+            item = json.loads(raw.decode("utf-8"))
+        except ValueError:  # JSONDecodeError and UnicodeDecodeError are both ValueErrors
+            item = None
+        if isinstance(item, dict):
+            items.append(item)
+        else:
+            bad += 1
+    return items, end, bad
+
+
+def read_from_cursor(home: Path) -> tuple[list[dict], int]:
+    """The readable items nobody has handled yet and the byte offset just past them; unreadable lines are skipped (see read_counted)."""
+    items, end, _ = read_counted(home)
+    return items, end
+
+
+def advance(home: Path, offset: int) -> None:
+    p = Path(home) / CURSOR
+    p.parent.mkdir(parents=True, exist_ok=True)
+    p.write_bytes(f"{int(offset)}\n".encode("ascii"))
+
+
+def pending(home: Path) -> list[dict]:
+    """The queued items not yet handled by `drew notify drain`."""
+    return read_from_cursor(home)[0]

@@ -1553,6 +1553,7 @@ def build_parser() -> argparse.ArgumentParser:
     cli_capture.register(sub)  # DESK-0286: drew capture hotkey
     from . import cli_brief  # DESK-0288: drew brief
     cli_brief.register(sub)
+    __import__("desk.cli_notify", fromlist=["register"]).register(sub)  # DESK-0289: drew notify
     return p
 
 

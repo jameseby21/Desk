@@ -234,6 +234,7 @@ Rules the CLI and the UI both enforce, and `desk validate` checks in the files:
 | `desk doctor [--repo PATH]` | anyone | Installed version and commit, repo path and HEAD, tool and store paths, anything on the UI port. Exit 1 when the installed code is older than the repo |
 | `desk upgrade [--repo PATH]` | owner | Refuses while the UI port is in use (names the PID), else `uv tool install --force <repo>` |
 | `desk home` | anyone | Print the resolved store |
+| `desk notify pair\|test\|brief\|drain\|status\|schedule --print` | owner | Phone push (ntfy) and email (your own SMTP) for the morning brief and alerts; paid adapters ready but off; see [docs/NOTIFICATIONS.md](docs/NOTIFICATIONS.md) |
 
 Refusals print a plain reason and exit 1, so an agent sees exactly why. Output is UTF-8 on every platform, including Windows consoles.
 

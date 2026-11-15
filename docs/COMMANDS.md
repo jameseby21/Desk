@@ -35,6 +35,18 @@ Every command a person or an agent runs day to day, with what it does and when. 
 | `drew park <ID> "reason"` | DESK-0283: `lane: parked` plus a one-line `park_reason`; nothing is deleted, and `drew lane <ID> planned` brings it back (the reason leaves the file but stays in the activity log). `drew validate` warns when a Later or Parked ticket has a branch or a worker (claimed or in progress), when an emergency (p0 or tagged `emergency`) is put in Later or Parked or is snoozed, and when a snooze runs past a hard deadline; `drew lane`, `drew snooze` and `drew park` print the same warnings for the ticket they just changed | when an idea is decided "not now" |
 | `drew needs-me [--as NAME] [--json] [--seen ID...] [--seen-all]` | the tickets with an ask for you (a decision ticket you hold, a review only you may approve, a ticket you hold to do) and the tickets someone else changed since you last acted on them (a comment, a checked line, a status, Report or proof change); each with its reason line (`ask: approve · from Patch · due Mon`, `changed: 2 comments by Lily · 5:10 AM`) and a closing `N asks for you · K changed by someone else`. Reading a ticket never counts as acting. `--seen ID` is Mark seen (clears a change without acting; asks stay until answered), `--seen-all` clears every change | start of a session, before the comment sweep |
 
+## Notifications
+Phone push and email for the morning brief and alerts; the full guide, costs and your steps are in [NOTIFICATIONS.md](NOTIFICATIONS.md).
+
+| Command | What it does | When |
+| --- | --- | --- |
+| `drew notify pair [--new]` | makes a random 32-character ntfy topic, saves it in `%USERPROFILE%\.desk\notify.env` (outside every repository; `DESK_NOTIFY_ENV` names another file) and prints the phone steps and the subscribe link; run again to see the same topic, `--new` replaces it | once, to pair the phone |
+| `drew notify test [--channel NAME]` | sends one line, "Desk test: notifications work", to every channel that is on, and says which worked; with `--channel NAME` it says why that channel is off when it is | after pairing or changing a key |
+| `drew notify brief [--dry-run]` | sends the morning brief (ids, titles that pass the private-term scan, counts) with held items folded in; `--dry-run` prints exactly the text and sends nothing | each morning (scheduled), or to preview |
+| `drew notify drain [--dry-run]` | sends what other parts of Desk queued (`.desk/notify-queue.jsonl`) through the privacy filter, the daily budget and quiet hours, showing `[i/n]` per item and a closing count; held items wait for the next brief | every 15 minutes (scheduled) |
+| `drew notify status [--json]` | which channels are on, which keys are set (masked), quiet hours, budget used today, queued, held and unreadable counts, whether the private-term scan is ready | when something did not arrive |
+| `drew notify schedule --print` | prints the two `schtasks` lines to paste into a Command Prompt (brief at `brief_time`, drain every 15 minutes, both through `pythonw.exe` so no window opens); Desk never installs them | once, after `drew notify test` worked |
+
 ## Data and environment
 | Command | What it does | Notes |
 | --- | --- | --- |
