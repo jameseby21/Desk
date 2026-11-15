@@ -3,8 +3,9 @@ path is resolved (links and junctions followed) and found inside a folder the ow
 a password store or a private folder. Every refusal is one plain sentence a person can act on.
 
 Allowed folders: desk.toml `[files] allowed_roots` (a list; `~` and `%VAR%` are expanded). Default: the store itself, Documents and
-Downloads. The name rules below always apply; folder names are checked below the allowed folder, so a store that sits under AppData
-(a test folder) still works while AppData inside Documents does not."""
+Downloads; an empty list turns local files off. The name rules below always apply (`[files] deny_names` adds patterns); folder
+names are checked below the allowed folder, so a store that sits under AppData (a test folder) still works while AppData inside
+Documents does not."""
 
 from __future__ import annotations
 
@@ -16,10 +17,15 @@ import sys
 from pathlib import Path
 from urllib.parse import unquote
 
-# File names that are never served, whatever folder they sit in (case does not matter).
-DENY_NAMES = (".env", ".env.*", "*.pem", "*.key", "*.pfx", "*.p12", "id_rsa*", "id_ed25519*", "id_ecdsa*", "*.kdbx", "*.kdb")
+# File names that are never served, whatever folder they sit in (case does not matter). desk.toml [files] deny_names adds more.
+DENY_NAMES = (
+    ".env", ".env.*", "*.env", "*.pem", "*.key", "*.pfx", "*.p12", "*.ppk", "*.asc", "*.gpg", "*.ovpn", "*.jks", "*.keystore",
+    "id_rsa*", "id_ed25519*", "id_ecdsa*", "id_dsa*", "*.kdbx", "*.kdb",
+    ".netrc", "_netrc", ".git-credentials", ".npmrc", ".pypirc", ".pgpass", ".htpasswd",
+    "*credential*", "*secret*", "token*.json", "*.token", "*password*",
+)
 # Folder names that are never entered below an allowed folder.
-DENY_DIRS = {".ssh", ".git", ".claude", "jeby-private", "secure docs", "appdata", ".gnupg", ".aws"}
+DENY_DIRS = {".ssh", ".git", ".claude", "jeby-private", "secure docs", "appdata", ".gnupg", ".aws", ".azure", ".kube", ".docker"}
 _RESERVED = re.compile(r"^(con|prn|aux|nul|com[0-9]|lpt[0-9]|conin\$|conout\$)(\..*)?$", re.I)  # Windows device names
 _SHORT = re.compile(r"~\d")  # an 8.3 short name such as PROGRA~1
 _DRIVE = re.compile(r"^[A-Za-z]:[\\/]")
@@ -40,11 +46,12 @@ def default_roots(home: Path) -> list[Path]:
 
 
 def allowed_roots(home: Path, config: dict | None = None) -> list[Path]:
-    """The folders Desk may open, resolved, that exist. desk.toml [files] allowed_roots replaces the default list."""
+    """The folders Desk may open, resolved, that exist. desk.toml [files] allowed_roots replaces the default list; an empty list
+    turns local files off."""
     raw = ((config or {}).get("files") or {}).get("allowed_roots")
     if isinstance(raw, str):
         raw = [raw]
-    paths = [Path(os.path.expandvars(os.path.expanduser(str(p)))) for p in raw] if raw else default_roots(home)
+    paths = [Path(os.path.expandvars(os.path.expanduser(str(p)))) for p in raw] if raw is not None else default_roots(home)
     out: list[Path] = []
     for p in paths:
         try:
@@ -68,14 +75,20 @@ def _under(path: Path, root: Path) -> bool:
         return False
 
 
-def denied_name(name: str) -> bool:
+def extra_names(config: dict | None) -> tuple[str, ...]:
+    """desk.toml [files] deny_names: more name patterns to refuse, added to DENY_NAMES (never replacing it)."""
+    raw = ((config or {}).get("files") or {}).get("deny_names") or ()
+    return (raw,) if isinstance(raw, str) else tuple(str(x) for x in raw)
+
+
+def denied_name(name: str, extra: tuple[str, ...] = ()) -> bool:
     low = name.lower()
-    return any(fnmatch.fnmatch(low, pat) for pat in DENY_NAMES)
+    return any(fnmatch.fnmatch(low, pat.lower()) for pat in DENY_NAMES + tuple(extra))
 
 
-def _denied_below(path: Path, root: Path) -> str:
+def _denied_below(path: Path, root: Path, extra: tuple[str, ...] = ()) -> str:
     """The reason a resolved path is refused by the name rules, or ''."""
-    if denied_name(path.name):
+    if denied_name(path.name, extra):
         return "Desk never opens key, password or secret files."
     rel = Path(os.path.relpath(path, root)) if _under(path, root) else path
     for part in rel.parts:
@@ -128,6 +141,8 @@ def check(home: Path, raw: str, config: dict | None = None, *, want: str = "file
     p = clean(raw)
     roots = allowed_roots(home, config)
     if not roots:
+        if ((config or {}).get("files") or {}).get("allowed_roots") == []:
+            raise Refused("Desk opens no local files, because the list of allowed folders in desk.toml is empty.")
         raise Refused("No allowed folders exist; set [files] allowed_roots in desk.toml.")
     asked = Path(os.path.abspath(p))
     try:
@@ -139,7 +154,8 @@ def check(home: Path, raw: str, config: dict | None = None, *, want: str = "file
         if any(_under(asked, r) for r in roots):
             raise Refused("That path is a link that leads outside the folders Desk may open.")
         raise Refused("That file is outside the folders Desk may open. Add its folder to [files] allowed_roots in desk.toml.")
-    reason = _denied_below(asked, next((r for r in roots if _under(asked, r)), root)) or _denied_below(real, root)
+    extra = extra_names(config)
+    reason = _denied_below(asked, next((r for r in roots if _under(asked, r)), root), extra) or _denied_below(real, root, extra)
     if reason:
         raise Refused(reason)
     if want == "file" and not real.is_file():

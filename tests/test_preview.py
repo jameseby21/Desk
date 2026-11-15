@@ -444,3 +444,33 @@ def test_a_utf16_part_with_a_doctype_is_refused(roots):
     plain = xml.replace(' encoding="UTF-16"', "").replace('<!DOCTYPE d [<!ENTITY e "ENTITY-EXPANDED">]>', "").replace("&e;", "kept")
     ok = _zip(root / "u16-plain.docx", {"word/document.xml": "\ufeff".encode("utf-16-le") + plain.encode("utf-16-le")})
     assert officetext.extract(ok)["paragraphs"] == ["kept"]
+
+
+def test_an_empty_allowed_list_turns_local_files_off(store, tmp_path):
+    """desk.toml [files] allowed_roots = [] means no folder may be opened, not the default Documents and Downloads."""
+    assert lf.allowed_roots(store.home, {"files": {"allowed_roots": []}}) == []
+    assert lf.allowed_roots(store.home, {}) != []
+    f = store.home / "note.txt"
+    f.write_text("hello\n", encoding="utf-8")
+    with pytest.raises(lf.Refused, match="opens no local files") as off:
+        lf.check(store.home, str(f), {"files": {"allowed_roots": []}})
+    assert plainwords.grade(str(off.value)) <= 10 and not plainwords.jargon(str(off.value))
+    assert lf.check(store.home, str(f), {}) == Path(os.path.realpath(f))
+
+
+def test_common_credential_files_are_never_served(client, roots, store):
+    """Credential and token files that tools leave in Documents or Downloads are refused even inside an allowed folder."""
+    root, _ = roots
+    names = ("credentials.json", "client_secret_123.json", ".git-credentials", ".netrc", "_netrc", ".npmrc", ".pypirc", ".pgpass",
+             "putty.ppk", "client.ovpn", "secrets.yaml", "secrets.toml", "token.json", "prod.env", "private.asc", ".htpasswd")
+    for name in names:
+        (root / name).write_text("token = value\n", encoding="utf-8")
+        assert _local(client, root / name, "raw").status_code == 403, name
+        assert _local(client, root / name, "card").status_code == 403, name
+    (root / "meeting notes.txt").write_text("hello\n", encoding="utf-8")
+    assert _local(client, root / "meeting notes.txt", "raw").status_code == 200
+    (root / "budget.private").write_text("x\n", encoding="utf-8")
+    cfg = {"files": {"allowed_roots": [str(root)]}}
+    assert lf.check(store.home, str(root / "budget.private"), cfg)
+    with pytest.raises(lf.Refused, match="never opens"):
+        lf.check(store.home, str(root / "budget.private"), {"files": {**cfg["files"], "deny_names": ["*.PRIVATE"]}})
