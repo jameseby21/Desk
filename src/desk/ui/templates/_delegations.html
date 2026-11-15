@@ -2,7 +2,7 @@
 {% set rows = delegations() %}
 <section class="card dm-delegs" id="delegations" style="max-width:70ch;margin:18px 0">
   <span class="label">Things others may approve for you</span>
-  {% if request.query_params.get('msg') %}<p class="dm-msg" role="status">{{ request.query_params.get('msg') }}</p>{% endif %}
+  {% if request.query_params.get('msg') %}<noscript><p class="dm-msg" role="status">{{ request.query_params.get('msg') }}</p></noscript>{% endif %}{# DESK-0282: the Undo toast says it once #}
   {% set gone = delegation_removed(request.query_params.get('put_back', '')) %}
   {% if gone %}<form class="post-once" method="post" action="/settings/delegations/restore" data-progress="Sending,Saving,Done"><input type="hidden" name="token" value="{{ token() }}"><input type="hidden" name="key" value="{{ request.query_params.get('put_back') }}"><button class="btn" type="submit">Put it back</button> <span class="muted">{{ person(gone.who) }} may approve “{{ gone.pattern }}” again, as before.</span><span class="dp-slot"></span></form>{% endif %}
   {% if rows %}

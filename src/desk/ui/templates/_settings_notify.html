@@ -1,0 +1,13 @@
+{# DESK-0282: what DESK-0289 sends to your phone and email, read from desk.toml [notify]. Shown here, changed in the file. #}
+{% set nv = notify_view() %}
+<section class="card" id="notify-settings" style="max-width:70ch;margin:18px 0">
+  <span class="label">Phone and email</span>
+  <dl class="docmeta">
+    <dt>Quiet hours</dt><dd>{% if nv.quiet %}{{ nv.quiet_start }} to {{ nv.quiet_end }}. {% if nv.urgent_bypasses_quiet %}Urgent ones still come.{% else %}Urgent ones wait too.{% endif %}{% else %}Off{% endif %}</dd>
+    <dt>Daily limit</dt><dd>{{ nv.budget }} a day, {{ nv.used_today }} sent today. The rest wait for the next brief.</dd>
+    <dt>Morning brief</dt><dd>{{ nv.brief_time or 'Not set' }}</dd>
+    <dt>Where they go</dt><dd>{% for c in nv.channels %}{{ c.name }} ({{ 'ready' if c.ready else 'not set up' }}){% if not loop.last %} · {% endif %}{% else %}Nowhere yet{% endfor %}</dd>
+    <dt>Waiting</dt><dd>{{ nv.queued }} in line, {{ nv.held }} kept for the next brief</dd>
+  </dl>
+  <p class="muted">To change these, edit <code>[notify]</code> in desk.toml. <code>drew notify pair</code> sets up your phone; <code>drew notify status</code> shows the same as this box.</p>
+</section>

@@ -1,14 +1,14 @@
 /* Keys (DESK-0290): the global key map, the shortcut sheet, recently viewed tickets, unsent drafts and the theme preview.
-   - ? opens a one-screen sheet of every key; g then t, b, n, d, r or u moves between pages; / opens search (search.js).
-   - No key fires while you type in a field. On /decide its own single keys (Y, N, S, E, J, K, Space) stay Decide mode's: this map
-     only takes ?, g and the key right after g.
+   - ? opens a one-screen sheet of every key; g then t, b, n, d, i, r, c or u moves between pages; / opens search (search.js).
+   - No key fires while you type in a field. On /decide and /triage their own single keys (Y, N, S, E, J, K, Space, 1-4, M, and ?
+     for their own key list) stay theirs: this map only takes g and the key right after g there (DESK-0282).
    - The last 10 tickets opened on this device are kept in localStorage for the palette (search.js lists them when it is empty).
    - Text typed into a ticket's comment or answer box is kept in localStorage per ticket and field, comes back after a reload, and is
      cleared when the post goes through (progress.js and composer.js send a `desk:sent` event). */
 (function () {
   "use strict";
   var GO = [["t", "/", "Today"], ["b", "/board", "Board"], ["n", "/board?needs=1", "Needs me"], ["d", "/decide", "Decide mode"],
-            ["r", "/brief", "Daily brief"], ["u", "/undo", "Undo log"]];
+            ["i", "/triage", "Sort the inbox"], ["r", "/brief", "Daily brief"], ["c", "/changes", "Changes"], ["u", "/undo", "Undo log"]];
   var CHORD_MS = 1500;
   function get(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
   function put(k, v) { try { if (v == null) localStorage.removeItem(k); else localStorage.setItem(k, v); } catch (e) { /* storage off: nothing kept */ } }
@@ -31,6 +31,17 @@
     row(dl, ["/"], "Search tickets, docs and intake.");
     row(dl, ["Ctrl K"], "Search, or act on the open ticket.");
     GO.forEach(function (g) { row(dl, ["g", g[0]], "Go to " + g[2] + "."); });
+    row(dl, ["D"], "Decide mode, one question at a time.");
+    row(dl, ["Z"], "Undo the last change while its note shows.");
+    b.appendChild(dl);
+    b.appendChild(mk("h3", "", "In Decide mode and Sort the inbox"));
+    dl = mk("dl");
+    row(dl, ["Y"], "Agree with the answer picked for you.");
+    row(dl, ["N"], "Send it back. Type why, then Enter.");
+    row(dl, ["S"], "Snooze it for a week.");
+    row(dl, ["1-4"], "In the inbox: Now, Planned, Later or Park.");
+    row(dl, ["J"], "Next one; K goes back; E opens the ticket.");
+    row(dl, ["?"], "Their own list of keys.");
     b.appendChild(dl);
     b.appendChild(mk("h3", "", "In the search box"));
     dl = mk("dl");
@@ -77,6 +88,7 @@
       if (g) { e.preventDefault(); e.stopImmediatePropagation(); location.href = g[1]; }
       return;
     }
+    if (k === "?" && document.querySelector("[data-dm]")) return;  // DESK-0282: Decide and Sort the inbox show their own key list
     if (k === "?") { e.preventDefault(); openSheet(); return; }
     if (k === "g" && !e.shiftKey) { e.preventDefault(); startChord(); }
   }, true);  // capture: the key after g is the chord's, before a page's own single-key handler sees it

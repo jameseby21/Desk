@@ -35,6 +35,13 @@ def _no_private_people(tmp_path_factory, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _no_real_notify_keys(tmp_path_factory, monkeypatch):
+    """No test reads the owner's real ~/.desk/notify.env (DESK-0289 keys; /settings shows which channels are ready, DESK-0282)."""
+    monkeypatch.setenv("DESK_NOTIFY_ENV", str(tmp_path_factory.mktemp("nonotify") / "notify.env"))
+    monkeypatch.setenv("DESK_NOTIFY_OFFLINE", "1")
+
+
+@pytest.fixture(autouse=True)
 def _no_ambient_identity(monkeypatch):
     """The tests run inside a Claude Code session whose environment names it; nothing of that may leak into what a test records (DESK-0144)."""
     for var in ("CLAUDECODE", "CLAUDE_CODE_SESSION_ID", "CLAUDE_SESSION_ID", "DESK_ACTOR", "DESK_ACTOR_KIND", "DESK_INSTANCE", "DESK_SUBAGENT_ID", "DESK_PARENT_SESSION"):

@@ -17,8 +17,8 @@ _PRIORITY = {"p0": 0, "p1": 1, "p2": 2, "p3": 3}
 
 
 def queue(store: Store) -> list[Ticket]:
-    """Every inbox ticket, most urgent first, then oldest first."""
-    ts = [t for t in store.tickets() if t.status == "inbox"]
+    """Every inbox ticket that is not snoozed (DESK-0282: snooze means the same on every page), most urgent first, then oldest first."""
+    ts = [t for t in store.tickets() if t.status == "inbox" and not lanes.is_snoozed(t)]
     return sorted(ts, key=lambda t: (_PRIORITY.get(str(t.meta.get("priority")), 9), str(t.meta.get("created") or ""), t.id))
 
 

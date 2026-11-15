@@ -239,9 +239,6 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
     app.state.stopping = False
     app.add_middleware(timing.TimingMiddleware)
     app.add_middleware(IdentityMiddleware, find_store=lambda: Store(home or find_home()))
-    from .origin_guard import LocalOnly
-
-    app.add_middleware(LocalOnly)  # added last, so outermost: pages from this computer only (rule 80 item 10; DESK-0290 review)
     tokens = Tokens()
     app.state.tokens = tokens
     shown = {"censor": None, "style": "plain"}  # per request: the profanity filter (None when switched off) and the style that picks the words on screen
@@ -1409,6 +1406,11 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
     from . import routes_keys  # DESK-0290: palette actions, saved views, theme and type size; last, so it skips routes others own
 
     routes_keys.register(app, templates, store, ctx)
+    from . import routes_loop  # DESK-0282: the daily loop's settings (lanes on this device, notifications) on /settings
+    routes_loop.install(templates, store)
+    from .origin_guard import LocalOnly
+
+    app.add_middleware(LocalOnly)  # added last, so outermost (outside DESK-0284's UndoMiddleware too): pages from this computer only (rule 80 item 10; DESK-0290 review)
     return app
 
 

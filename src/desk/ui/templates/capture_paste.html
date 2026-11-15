@@ -5,7 +5,7 @@
 <div class="cap-wrap">
 <h1>Paste asks</h1>
 <p class="muted cap-lead">Paste a chat or an email. Desk finds each ask (please, can you, need, should, must, TODO, a question) and proposes one ticket for it. Only the rows you tick are created.</p>
-{% if msg %}<div class="notice" role="status" id="paste-msg">{{ msg }}</div>{% endif %}
+{% if msg %}<noscript><div class="notice" role="status" id="paste-msg">{{ msg }}</div></noscript>{% endif %}{# DESK-0282: the Undo toast says it once #}
 {% if made %}<ul class="cap-made" id="paste-made">{% for t in made %}<li><a href="/ticket/{{ t.id }}"><span class="chip">{{ t.id }}</span> {{ t.meta.title }}</a></li>{% endfor %}</ul>{% endif %}
 {% if rows is none %}
 <form class="card cap-form" method="post" action="/capture/paste" data-progress="none">

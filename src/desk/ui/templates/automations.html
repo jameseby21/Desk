@@ -9,7 +9,7 @@
   {% else %}
   {% set on = rules|selectattr('enabled')|list %}
   <p class="auto-lead">{{ on|length }} of {{ rules|length }} rules are on. Today they would change <b>{{ res.changed|length }}</b> ticket{{ '' if res.changed|length == 1 else 's' }}.</p>
-  {% if msg %}<p class="auto-msg" role="status">{{ msg }}</p>{% endif %}
+  {% if msg %}<noscript><p class="auto-msg" role="status">{{ msg }}</p></noscript>{% endif %}{# DESK-0282: the Undo toast says it once #}
   {% if undo %}
   <form method="post" action="/automations/undo" class="auto-run auto-undo" data-job data-progress="Starting,Restoring,Done">
     <input type="hidden" name="token" value="{{ token() }}"><input type="hidden" name="batch" value="{{ undo }}">

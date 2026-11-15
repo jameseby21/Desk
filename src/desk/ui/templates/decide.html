@@ -8,7 +8,7 @@
     {% if items %}<span class="dm-count" aria-label="Question {{ pos + 1 }} of {{ items|length }}">{{ pos + 1 }} of {{ items|length }}</span>{% endif %}
     <span class="dm-links"><a href="/triage">Sort the inbox</a><button type="button" class="ghostb" data-dm-help aria-expanded="false"><kbd>?</kbd> Keys</button></span>
   </div>
-  {% if msg %}<div class="dm-msg" role="status">{{ msg }}</div>{% endif %}
+  {% if msg %}<noscript><div class="dm-msg" role="status">{{ msg }}</div></noscript>{% endif %}{# DESK-0282: the Undo toast says it once #}
   {% if error %}<div class="dm-err" role="alert">{{ error }}</div>{% endif %}
   {% if not can %}<div class="dm-ro" role="note">{{ why_not }}</div>{% endif %}
   <div class="dm-help card" id="dm-help" hidden>
