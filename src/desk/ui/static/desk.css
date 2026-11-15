@@ -510,9 +510,13 @@ header .search-open kbd{position:absolute;right:10px;top:50%;transform:translate
 @media (prefers-reduced-motion:no-preference){.tl-ev{animation:tl-in .18s ease-out}}
 @keyframes tl-in{from{opacity:0;transform:translateY(-3px)}to{opacity:1;transform:none}}
 @media (max-width:600px){.tl-latest .tl-cap,.tl-latest .tl-kind{display:none}.tl-latest{gap:6px;padding:8px 10px}.tl-strip-wrap{padding:8px 10px}
-  /* a phone keeps who and what: two lines, clamped, instead of one line cut to "claude-code Saved…" */
-  .tl-latest{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;white-space:normal;line-height:1.35}
-  .tl-latest>*{display:inline;margin-right:6px}.tl-latest .tl-dot{display:inline-block}.tl-latest .tl-what{overflow:visible}}
+  /* a phone keeps who, when and what: who, the date and '+N git saves since' each whole on the first line (wrapping as whole items),
+     then what changed in a two-line clamp of its own. The clamp sits on .tl-what, which has no padding, so a third line can never
+     show through the bottom padding as it did when the padded box itself was clamped (DESK-0305 checker F1). */
+  .tl-latest{flex-wrap:wrap;row-gap:2px;white-space:normal;line-height:1.35}
+  .tl-latest .tl-who,.tl-latest .tl-when,.tl-latest .tl-plus{white-space:nowrap}
+  .tl-latest .tl-who{max-width:100%;overflow:hidden;text-overflow:ellipsis}
+  .tl-latest .tl-what{order:9;flex:1 1 100%;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden;overflow-wrap:anywhere}}
 
 /* DESK-0149 (Chaz M1 to M6): Needs me, Today's block under Immediate Action Required and the board's Needs me view */
 .nm{margin:14px 0 0;padding:18px 20px;display:flex;flex-direction:column;gap:12px}
