@@ -103,12 +103,13 @@ def register(app, templates, store, ctx) -> None:
     def wants_json(request: Request) -> bool:
         return "application/json" in request.headers.get("accept", "")
 
-    def answer(request, ok: bool, message: str, back: str, batch: str = "", code: int = 200, stamp: str = ""):
-        """JSON for the palette and in-place forms; a redirect with `undo` and `msg` (the DESK-0284 toast) for a plain form."""
+    def answer(request, ok: bool, message: str, back: str, batch: str = "", code: int = 200, stamp: str = "", extra=None):
+        """JSON for the palette and in-place forms; a redirect with `undo` and `msg` (the DESK-0284 toast) for a plain form. `extra` is
+        a function giving more JSON fields, called only for a JSON answer (so a plain form issues no tokens it cannot use)."""
         if wants_json(request):
             if not ok:
                 return JSONResponse({"error": message, "token": tokens.issue()}, status_code=code)
-            return JSONResponse({"ok": True, "message": message, "batch": batch, "stamp": stamp})
+            return JSONResponse({"ok": True, "message": message, "batch": batch, "stamp": stamp, **(extra() if extra else {})})
         sep = "&" if "?" in back else "?"
         if not ok:
             return RedirectResponse(f"{back}{sep}error={quote(message)}", status_code=303)
@@ -191,29 +192,43 @@ def register(app, templates, store, ctx) -> None:
         s = store()
         return templates.TemplateResponse(request, "views.html", ctx(request, s, views=saved_views.load(s.home)))
 
+    def undo_of(label: str, route: str, **fields):
+        """What the in-place answer offers to reverse this change: the route and fields that put the views back, with a fresh token."""
+        return lambda: {"undo": {"label": label, "url": route, "fields": {**fields, "token": tokens.issue()}}, "token": tokens.issue()}
+
     @router.post("/views")
-    def post_view(request: Request, name: str = Form(""), url: str = Form(""), token: str = Form("")):
-        """Save the current board or search filter under a name; it is pinned in the header of every page."""
+    def post_view(request: Request, name: str = Form(""), url: str = Form(""), token: str = Form(""), at: str = Form("")):
+        """Save the current board or search filter under a name; it is pinned in the header of every page. `at` puts a view back in
+        its old place (the Undo of a removal)."""
         back = saved_views.clean_url(url) or "/views"
         if not tokens.use(token):
             return answer(request, False, "That form was already sent; reload the page.", back, code=409)
         s = store()
+        nice = " ".join(name.split())
+        old = next((v for v in saved_views.load(s.home) if v["name"].lower() == nice.lower()), None)
         try:
-            saved_views.add(s.home, name, url)
+            saved_views.add(s.home, name, url, at=int(at) if at.strip().isdigit() else None)
         except ValueError as e:
             return answer(request, False, str(e), back, code=422)
         s.sync_after("desk: saved view")
-        return answer(request, True, f"Saved the view {' '.join(name.split())}. It is in the header now.", back)
+        if old is None:
+            msg = f"Put back the view {nice}." if at.strip() else f"Saved the view {nice}. It is in the header now."
+            return answer(request, True, msg, back, extra=undo_of("Undo", "/views/remove", name=nice))
+        return answer(request, True, f"Changed the view {nice} to this filter.", back, extra=undo_of("Undo", "/views", name=old["name"], url=old["url"]))
 
     @router.post("/views/remove")
     def post_view_remove(request: Request, name: str = Form(""), token: str = Form("")):
         if not tokens.use(token):
             return answer(request, False, "That form was already sent; reload the page.", "/views", code=409)
         s = store()
-        if not saved_views.remove(s.home, name):
+        views = saved_views.load(s.home)
+        at = next((i for i, v in enumerate(views) if v["name"].lower() == " ".join(name.split()).lower()), None)
+        if at is None or not saved_views.remove(s.home, name):
             return answer(request, False, f"There is no saved view called {name}.", "/views", code=404)
         s.sync_after("desk: removed view")
-        return answer(request, True, f"Removed the view {name}. Nothing else changed.", "/views")
+        gone = views[at]
+        return answer(request, True, f"Removed the view {gone['name']}. Nothing else changed.", "/views",
+                      extra=undo_of("Put it back", "/views", name=gone["name"], url=gone["url"], at=str(at)))
 
     # -- display settings -------------------------------------------------------------
     @router.post("/settings/display")
@@ -258,6 +273,6 @@ def _local(url: str) -> str:
 
 def _save_view_url(request) -> str:
     """The board or search address this page shows, when it can be saved as a view; '' elsewhere."""
-    url = request.url.path + ("?" + request.url.query if request.url.query else "")
-    return saved_views.clean_url(url) if request.url.query else ""
+    url = saved_views.clean_url(request.url.path + ("?" + request.url.query if request.url.query else ""))
+    return url if "?" in url else ""  # a filter to save; a bare /board (or one that only carried a message) has none
 

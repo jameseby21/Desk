@@ -308,6 +308,37 @@ def test_saved_views_are_pinned_in_the_header_and_removable(store):
     assert "Desk review" not in c.get("/").text
 
 
+def test_saved_view_writes_say_what_happened_and_can_be_undone(store):
+    """Save, change and remove each answer one plain sentence and an Undo that puts the views back exactly as they were; a failure says why."""
+    c = TestClient(create_app(store.home))
+    r = c.post("/views", data={"name": "Desk review", "url": "/board?project=desk", "token": _tok(c)}, headers=JSON).json()
+    assert r["ok"] and r["message"].startswith("Saved the view Desk review.") and c.app.state.tokens.valid(r["token"])
+    u = r["undo"]
+    assert c.post(u["url"], data=u["fields"], headers=JSON).json()["ok"] and saved_views.load(store.home) == []
+    saved_views.add(store.home, "Desk review", "/board?project=desk")
+    saved_views.add(store.home, "Open asks", "/search?q=ask:approve")
+    before = saved_views.load(store.home)
+    r = c.post("/views", data={"name": "desk review", "url": "/board?project=desk&status=review", "token": _tok(c)}, headers=JSON).json()
+    assert r["ok"] and "Changed the view" in r["message"] and saved_views.load(store.home)[0]["url"] == "/board?project=desk&status=review"
+    assert c.post(r["undo"]["url"], data=r["undo"]["fields"], headers=JSON).json()["ok"] and saved_views.load(store.home) == before
+    r = c.post("/views/remove", data={"name": "Desk review", "token": _tok(c)}, headers=JSON).json()
+    assert r["ok"] and r["undo"]["label"] == "Put it back" and [v["name"] for v in saved_views.load(store.home)] == ["Open asks"]
+    assert c.post(r["undo"]["url"], data=r["undo"]["fields"], headers=JSON).json()["ok"]
+    assert saved_views.load(store.home) == before  # back in its old place, first
+    bad = c.post("/views", data={"name": "", "url": "/board?project=desk", "token": _tok(c)}, headers=JSON)
+    assert bad.status_code == 422 and "name" in bad.json()["error"] and c.app.state.tokens.valid(bad.json()["token"])
+
+
+def test_a_saved_view_never_keeps_one_off_messages_in_its_address(store):
+    """A board address still carrying ?msg=, ?undo= or ?error= is saved as its filter only, so opening the view never repeats an old message."""
+    saved_views.add(store.home, "Desk", "/board?project=desk&msg=Saved%20it&undo=b-0123456789ab&error=Nope")
+    assert saved_views.load(store.home) == [{"name": "Desk", "url": "/board?project=desk"}]
+    c = TestClient(create_app(store.home))
+    page = c.get("/board", params={"project": "desk", "msg": "Saved it", "undo": "b-0123456789ab"}).text
+    assert 'name="url" value="/board?project=desk"' in page
+    assert "Save view" not in c.get("/board", params={"msg": "Saved it"}).text  # nothing left to save once the message is gone
+
+
 # -- plain words -----------------------------------------------------------------------------------------------------------
 
 def test_new_words_on_screen_pass_the_plain_words_check(store):
@@ -432,6 +463,31 @@ def test_dark_chosen_on_a_light_computer_paints_errors_and_masks_dark_in_a_brows
     assert got["attr"] == "dark" and not got["os"], got
     assert got["ferr"] == "rgb(255, 140, 146)" and got["mask"] == "rgb(90, 42, 45)", got
     assert got["shownReady"] == "rgba(0, 0, 0, 0)", got
+
+
+VIEWS = _HEAD + """
+var msg=function(){var m=document.querySelector('.dp-msg');return m?m.textContent:'';};
+if(step===0){document.querySelector('.sv-save').open=true;var f=document.querySelector('form.sv-form');f.querySelector('[name=name]').value='Desk review';
+ f.querySelector('button[type=submit]').click();out.saved=await until(function(){return /Saved the view Desk review/.test(msg());});
+ out.saveUndo=!!document.querySelector('.sv-undo');out.stayed=location.pathname+location.search;
+ st.setItem('step','1');save();location.href='/views';return;}
+if(step===1){document.querySelector('form.sv-remove button[type=submit]').click();
+ out.removed=await until(function(){return /Removed the view Desk review/.test(msg());});
+ var u=document.querySelector('.sv-undo');out.undoLabel=u?u.textContent:'';out.struck=!!document.querySelector('li.sv-gone');
+ st.setItem('step','2');save();u.click();out.undone=await until(function(){return /Undone/.test(msg());});save();return;}
+out.chip=!!document.querySelector('header .sv a.sv-chip');st.clear();done();
+""" + _TAIL
+
+
+@pytest.mark.skipif(browser() is None, reason="no Edge or Chrome installed")
+def test_saving_and_removing_a_view_say_so_in_place_and_put_it_back_undoes_it(store):
+    """In a browser: Save view and Remove show their sentence where you clicked without leaving the page; Put it back restores the view."""
+    _t(store, "Something on the board")
+    got = drive(store, VIEWS, "/board?project=desk", timeout=60)
+    assert got["saved"] and got["saveUndo"] and got["stayed"] == "/board?project=desk", got
+    assert got["removed"] and got["undoLabel"] == "Put it back" and got["struck"], got
+    assert got["undone"] and got["chip"], got
+    assert saved_views.load(store.home) == [{"name": "Desk review", "url": "/board?project=desk"}]
 
 
 DRAFT = _HEAD + """

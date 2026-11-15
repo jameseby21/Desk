@@ -6,7 +6,7 @@
 {% if views %}
 <ul class="sv-list">{% for v in views %}
   <li class="card"><a class="sv-name" href="{{ v.url }}">{{ v.name }}</a><code class="sv-url">{{ v.url }}</code>
-    <form method="post" action="/views/remove" class="post-once" data-progress="none"><input type="hidden" name="token" value="{{ token() }}"><input type="hidden" name="name" value="{{ v.name }}"><button class="btn small" type="submit" aria-label="Remove {{ v.name }}">Remove</button></form></li>
+    <form method="post" action="/views/remove" class="post-once sv-remove" data-progress="none"><input type="hidden" name="token" value="{{ token() }}"><input type="hidden" name="name" value="{{ v.name }}"><button class="btn small" type="submit" aria-label="Remove {{ v.name }}">Remove</button></form></li>
 {% endfor %}</ul>
 {% else %}
 <p>No saved views yet.</p>

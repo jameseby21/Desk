@@ -37,12 +37,16 @@ def load(home: Path) -> list[dict]:
     return out[:MAX_VIEWS]
 
 
+ONE_OFF = ("undo", "msg", "error")  # a write's message in the address (the DESK-0284 toast); a view keeps the filter, not the message
+
+
 def clean_url(url: str) -> str:
-    """The URL when it is one of Desk's filter pages (path and query only), else ''."""
+    """The URL when it is one of Desk's filter pages (path and query only, one-off message parameters left out), else ''."""
     u = urlsplit((url or "").strip())
     if u.scheme or u.netloc or u.path not in PAGES:
         return ""
-    return u.path + ("?" + u.query if u.query else "")
+    q = "&".join(p for p in u.query.split("&") if p and p.split("=", 1)[0] not in ONE_OFF)
+    return u.path + ("?" + q if q else "")
 
 
 def _write(home: Path, views: list[dict]) -> None:
@@ -51,8 +55,9 @@ def _write(home: Path, views: list[dict]) -> None:
     path(home).write_bytes(text.encode("utf-8"))
 
 
-def add(home: Path, name: str, url: str) -> list[dict]:
-    """Save `url` under `name`; the same name again replaces that view in place. Raises ValueError with a plain sentence."""
+def add(home: Path, name: str, url: str, at: int | None = None) -> list[dict]:
+    """Save `url` under `name`; the same name again replaces that view in place. A new view goes last, or at position `at` (how
+    Undo puts a removed view back where it was). Raises ValueError with a plain sentence."""
     name = " ".join((name or "").split())
     url = clean_url(url)
     if not name or not _NAME.match(name):
@@ -67,7 +72,7 @@ def add(home: Path, name: str, url: str) -> list[dict]:
     else:
         if len(views) >= MAX_VIEWS:
             raise ValueError(f"There are already {MAX_VIEWS} saved views. Remove one on the Views page first.")
-        views.append({"name": name, "url": url})
+        views.insert(len(views) if at is None else max(0, min(at, len(views))), {"name": name, "url": url})
     _write(home, views)
     return views
 

@@ -126,6 +126,39 @@
   }
   restore();
 
+  /* -- saved views: Save and Remove post in place --------------------------------------------------------------------------
+     The bar and the sentence appear where you clicked (DeskProgress), and an Undo (Put it back, for a removal) posts what the server
+     handed back to reverse it. Without script the forms still post and redirect with the sentence in the address. */
+  function undoButton(p, host, undo) {
+    var b = mk("button", "btn small sv-undo", undo.label || "Undo"); b.type = "button";
+    b.addEventListener("click", function () {
+      var P = window.DeskProgress, fd = new FormData(), q = P.start(host, { steps: ["Sending", "Saving", "Done"] });
+      Object.keys(undo.fields).forEach(function (k) { fd.append(k, undo.fields[k]); });
+      P.post(undo.url, fd, { progress: q, timeoutMs: 15000 }).then(function (x) {
+        if (!x.ok) { q.fail(P.failText(x), P.failDetail(x)); return; }
+        q.done("Undone. " + (x.j.message || "")); setTimeout(function () { P.reload(); }, 1200);
+      }, function (err) { q.fail(P.failText(null, err), P.failDetail(null, err)); });
+    });
+    p.root.appendChild(b);
+  }
+  document.addEventListener("submit", function (e) {
+    var f = e.target, P = window.DeskProgress;
+    if (!f.matches || !f.matches("form.sv-form, form.sv-remove") || !P || !window.FormData) return;
+    e.preventDefault();
+    var btn = f.querySelector("button[type=submit]");
+    if (btn && btn.disabled) return;
+    var host = P.slotFor(btn || f), p = P.start(host, { steps: ["Sending", "Saving", "Done"] });
+    if (btn) btn.disabled = true;
+    P.post(f.getAttribute("action"), new FormData(f), { progress: p, timeoutMs: 15000 }).then(function (x) {
+      var t = f.querySelector("[name=token]"); if (t && x.j && x.j.token) t.value = x.j.token;  // the next post needs a fresh one
+      if (btn) btn.disabled = false;
+      if (!x.ok) { p.fail(P.failText(x), P.failDetail(x)); return; }
+      p.done(x.j.message || "Saved.");
+      if (x.j.undo) undoButton(p, host, x.j.undo);
+      var li = f.closest("li"); if (li && f.matches(".sv-remove")) { li.classList.add("sv-gone"); if (btn) btn.hidden = true; }
+    }, function (err) { if (btn) btn.disabled = false; p.fail(P.failText(null, err), P.failDetail(null, err)); });
+  });
+
   /* -- theme and type size preview (Settings) ---------------------------------------------------------------------------- */
   var disp = document.getElementById("display");
   if (disp) disp.addEventListener("change", function (e) {
