@@ -681,7 +681,9 @@ def unattach(store: Store, t: Ticket, name: str) -> None:
     lines = [ln for ln in (t.sections.get("Attachments") or "").split("\n") if rel not in ln]
     t.sections["Attachments"] = "\n".join(lines)
     store.save(t)
-    path.unlink()
+    from . import undo  # DESK-0284: kept beside the undo log, not deleted, so undoing the removal brings the file back
+
+    undo.keep_file(store, t.id, path)
 
 
 def capture_screen(dest: Path) -> Path:

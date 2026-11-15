@@ -9,7 +9,13 @@ change and its undo. Two things are never put back by deleting text:
 The log keeps values cut to one line, so a section's full text cannot come back from it. `remember` keeps the full old and new value
 of every field and section a save changed in `.desk/undo/<ID>.jsonl` (local, beside the search index; `.desk/` is never committed),
 and `.desk/undo/batches.jsonl` says which tickets a batch touched. A change made before this existed can still be undone when its
-logged value is complete (a field under 120 characters); otherwise the refusal says why.
+logged value is complete (a field under 120 characters); otherwise the refusal says why. A screenshot removed from Attachments is kept
+in `.desk/undo/assets/<ID>/` (`keep_file`), so undoing the removal brings the file back with its line.
+
+An undo of an undo is a redo: a withdrawn comment comes back by a `Restored:` line and a reverted Decision by a `Restores the decision:`
+line, each naming the original, never a withdrawal of a withdrawal. A Decision is undone with the rest of the save it was part of (the
+status it set), never alone. Before anything is written every change is also checked against the store's rules, so a dry run and a
+real run agree and a batch is never left half undone.
 
 A revert is refused when the field or section has changed since (the refusal names who changed it, when, and their kind), unless it
 is forced. A batch is checked as a whole first: either every change in it is undone, newest first, or nothing is written.
@@ -78,6 +84,17 @@ def remember(store, old, new, written: list) -> None:
             fh.write(json.dumps({"batch": batch, "ticket": tid, "ts": written[0].ts}) + "\n")
 
 
+def kept_file(home: Path, ticket_id: str, name: str) -> Path:
+    return _dir(home) / "assets" / ticket_id.upper() / name
+
+
+def keep_file(store, ticket_id: str, path: Path) -> None:
+    """Move a file that a save took out of the ticket (a removed screenshot) beside the undo log instead of deleting it."""
+    dest = kept_file(store.home, ticket_id, Path(path).name)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    Path(path).replace(dest)
+
+
 def snapshots(home: Path, ticket_id: str) -> dict[int, dict]:
     out = {}
     try:
@@ -129,8 +146,8 @@ def batch_events(store, batch_id: str) -> list:
 
 
 def last_change(store, ticket_id: str) -> list:
-    """The events of the ticket's last save, as `remember` recorded it; for older events, the trailing ones that share its time,
-    actor and batch."""
+    """The events of the ticket's last save, as `remember` recorded it. Without that record (another clone, or a change from before
+    undo existed) only the last event, or the trailing events of its batch when it has one: never a guess that sweeps in other commands."""
     evs = activity.read(store.home, ticket_id)
     if not evs:
         return []
@@ -138,6 +155,8 @@ def last_change(store, ticket_id: str) -> list:
     save = snapshots(store.home, ticket_id).get(last.seq, {}).get("save")
     if save is not None:  # the save is known exactly
         return [e for e in evs if save <= e.seq <= last.seq]
+    if not last.batch:
+        return [last]
     out = []
     for e in reversed(evs):
         if (e.ts, e.actor, e.batch) != (last.ts, last.actor, last.batch):
@@ -163,6 +182,35 @@ def is_undone(seq: int, done: dict[int, int]) -> bool:
         seen.add(seq)
         seq, n = done[seq], n + 1
     return n % 2 == 1
+
+
+def save_of(store, evs: list, e) -> list:
+    """Every event of the save `e` was written by (from the undo record; without it, the neighbours with the same time, actor and batch)."""
+    snaps = snapshots(store.home, e.ticket)
+    save = snaps.get(e.seq, {}).get("save")
+    if save is not None:
+        return [x for x in evs if snaps.get(x.seq, {}).get("save") == save]
+    same = [x for x in evs if (x.ts, x.actor, x.batch) == (e.ts, e.actor, e.batch)]
+    seqs = {x.seq for x in same}
+    lo = hi = e.seq
+    while lo - 1 in seqs:
+        lo -= 1
+    while hi + 1 in seqs:
+        hi += 1
+    return [x for x in same if lo <= x.seq <= hi]
+
+
+def root_of(evs: list, e):
+    """(the first change in the chain of undos that `e` ends, how many undos deep `e` is): 0 for a change, 1 for its undo, 2 for a redo."""
+    by_seq = {x.seq: x for x in evs}
+    depth, seen = 0, set()
+    while e.seq not in seen:
+        seen.add(e.seq)
+        m = NOTE.search(e.what or "")
+        if not m or int(m.group(1)) not in by_seq:
+            break
+        e, depth = by_seq[int(m.group(1))], depth + 1
+    return e, depth
 
 
 # -- who, in words ---------------------------------------------------------------------------------------------------------
@@ -192,7 +240,7 @@ def saved_sentence(events: list) -> str:
             return f"Comment added to {tid}."
         if e.change == "created":
             return f"{tid} created."
-        return f"{tid} {e.field} saved."
+        return f"{tid} {e.field} changed."
     return f"{len(events)} changes saved on {tid}."
 
 
@@ -212,6 +260,7 @@ class Result:
     reverted: list = field(default_factory=list)  # the events that were undone
     skipped: list = field(default_factory=list)  # (event, why) for changes that have nothing to put back (a git commit)
     written: list = field(default_factory=list)  # the new events
+    redo: list = field(default_factory=list)  # one flag per reverted event: True when it was itself an undo (taking it back is a redo)
 
     @property
     def message(self) -> str:
@@ -219,24 +268,25 @@ class Result:
         if not n:
             return "Nothing to undo." + (f" {self.skipped[0][1]}" if self.skipped else "")
         ids = sorted({e.ticket for e in self.reverted})
+        redo = len(self.redo) == n and all(self.redo)
         if n == 1:
             e = self.reverted[0]
-            what = f"{e.ticket} {_short(e)}"
+            what = f"{e.ticket} {_short(e, redo)}"
         else:
             what = f"{n} changes on {ids[0]}" if len(ids) == 1 else f"{n} changes on {len(ids)} tickets"
         tail = f" {len(self.skipped)} left as they were." if self.skipped else ""
-        return f"Undone: {what}.{tail}"
+        return f"{'Redone' if redo else 'Undone'}: {what}.{tail}"
 
 
-def _short(e) -> str:
+def _short(e, redo: bool = False) -> str:
     if e.change == "field":
         return f"{e.field} is {e.old or 'empty'} again"
     if e.change == "comment":
-        return "comment withdrawn"
+        return "comment restored" if redo else "comment withdrawn"
     if e.change == "created":
         return "set aside as rejected"
     if e.field == "Decision":
-        return "decision withdrawn"
+        return "decision restored" if redo else "decision withdrawn"
     return f"{e.field} is back as it was"
 
 
@@ -268,6 +318,18 @@ def _restore_value(e, snap: dict | None):
     return True, e.old
 
 
+_ASSET = re.compile(r"\]\(assets/[A-Za-z0-9-]+/([^)/\s]+)\)")
+
+
+def _valid(store, t) -> None:
+    """Refuse what the store would refuse on save, before anything is written (a dry run and a real run must agree)."""
+    from .rules import validate_ticket
+
+    errors, _ = validate_ticket(t, store)
+    if errors:
+        raise Refused(f"Could not undo: {'; '.join(errors)}. Nothing was changed.")
+
+
 def _line_of(t) -> str:
     from . import identity
 
@@ -275,8 +337,9 @@ def _line_of(t) -> str:
     return (a.display() if a is not None else "desk"), (f" {a.tag()}" if a is not None else "")
 
 
-def apply(store, t, e, evs: list, snaps: dict, force: bool = False, now: dt.datetime | None = None) -> None:
-    """Change ticket `t` in memory so that event `e` is undone. Raises Refused when it cannot be, or should not be without force."""
+def apply(store, t, e, evs: list, snaps: dict, force: bool = False, now: dt.datetime | None = None, files: list | None = None) -> None:
+    """Change ticket `t` in memory so that event `e` is undone. Raises Refused when it cannot be, or should not be without force.
+    Files to put back (a removed screenshot) are added to `files` as (kept copy, place) pairs, for the caller to move after the save."""
     now = now or dt.datetime.now()
     if e.change == "git":
         raise Refused("A git commit is not undone here; its changes are already events of their own.")
@@ -293,14 +356,20 @@ def apply(store, t, e, evs: list, snaps: dict, force: bool = False, now: dt.date
         if not same and not force:
             raise _in_the_way(store, evs, e, lambda x: x.change == "field" and x.field == e.field, e.field)
         has, val = _restore_value(e, snap)
+        if has and snap is None and isinstance(t.meta.get(e.field), (list, tuple)):  # the log joins a list with ', '
+            val = [x for x in str(val).split(", ") if x]
         if has:
             t.meta[e.field] = copy.deepcopy(val)
         else:
             t.meta.pop(e.field, None)
         return
     if e.change == "comment":
-        words = (e.new or "").replace('"', "'")
-        t.append_line("Comments", f'- {stamp_time} · {who} · Withdrawn: "{words}" (the comment of {e.ts[:16].replace("T", " ")} by {e.actor}){tag} <!-- kind: FYI -->')
+        root, depth = root_of(evs, e)
+        if root.change != "comment":
+            root, depth = e, 0
+        words = (root.new or "").replace('"', "'")
+        verb = "Restored" if depth % 2 else "Withdrawn"  # undoing a withdrawal brings the comment back; it never withdraws the withdrawal
+        t.append_line("Comments", f'- {stamp_time} · {who} · {verb}: "{words}" (the comment of {root.ts[:16].replace("T", " ")} by {root.actor}){tag} <!-- kind: FYI -->')
         return
     if e.change == "created":
         t.append_line("Decision", f'- {stamp_day} · {who} · rejected · "Undone: this ticket was created by mistake (undoes #{e.seq})."')
@@ -310,9 +379,16 @@ def apply(store, t, e, evs: list, snaps: dict, force: bool = False, now: dt.date
         raise Refused(f"{e.ticket} #{e.seq} is a change of a kind undo does not know ({e.change}).")
     snap = snaps.get(e.seq)
     if e.field == "Decision":
-        added = activity._added_lines(snap["old"], snap["new"]) if snap else []
-        named = activity._val(re.sub(r"^\s*[-*+]\s+", "", added[0]) if added else e.new).replace('"', "'")
-        t.append_line("Decision", f'- {stamp_day} · {who} · reverted · "Withdraws the decision: {named}"')
+        root, depth = root_of(evs, e)
+        if root.change != "section" or root.field != "Decision":  # e.g. the Decision line of an undone New ticket
+            root, depth = e, 0
+        rsnap = snaps.get(root.seq)
+        added = activity._added_lines(rsnap["old"], rsnap["new"]) if rsnap else []
+        named = activity._val(re.sub(r"^\s*[-*+]\s+", "", added[0]) if added else root.new).replace('"', "'")
+        if depth % 2:  # a redo: the decision that was withdrawn stands again
+            t.append_line("Decision", f'- {stamp_day} · {who} · restored · "Restores the decision: {named}"')
+        else:
+            t.append_line("Decision", f'- {stamp_day} · {who} · reverted · "Withdraws the decision: {named}"')
         return
     if e.field == "Comments":
         raise Refused("Comments are never removed. Withdraw a comment instead.")
@@ -320,6 +396,15 @@ def apply(store, t, e, evs: list, snaps: dict, force: bool = False, now: dt.date
         raise Refused(f"{e.ticket} {e.field}: the text before this change was not kept (it was made before undo existed), so it cannot be put back.")
     if (t.sections.get(e.field) or "").strip() != (snap["new"] or "").strip() and not force:
         raise _in_the_way(store, evs, e, lambda x: x.change == "section" and x.field == e.field, e.field)
+    if files is not None and e.field == "Attachments":  # a removed screenshot comes back with its line, or the undo is refused
+        folder = store.ticket_assets_dir(t.id)
+        for name in sorted(set(_ASSET.findall(snap["old"] or "")) - set(_ASSET.findall(snap["new"] or ""))):
+            if (folder / name).is_file():
+                continue
+            kept = kept_file(store.home, t.id, name)
+            if not kept.is_file():
+                raise Refused(f"{t.id} Attachments: the file {name} was deleted and not kept, so it cannot come back.")
+            files.append((kept, folder / name))
     t.set_section(e.field, snap["old"])
 
 
@@ -344,7 +429,8 @@ def revert(store, events: list, force: bool = False) -> Result:
                 copies[tid] = store.get(tid)
             except KeyError:
                 raise Refused(f"{tid} is not in this store any more.")
-        apply(store, copies[tid], e, logs[tid], snaps[tid], force)  # a dry run on copies: raises before anything is written
+        apply(store, copies[tid], e, logs[tid], snaps[tid], force, files=[])  # a dry run on copies: raises before anything is written
+        _valid(store, copies[tid])
         todo.append(e)
     if not todo:
         return res
@@ -353,19 +439,28 @@ def revert(store, events: list, force: bool = False) -> Result:
         for e in todo:
             tid = e.ticket.upper()
             t = store.get(tid)
-            apply(store, t, e, activity.read(store.home, tid), snapshots(store.home, tid), force)
+            evs, files = activity.read(store.home, tid), []
+            apply(store, t, e, evs, snapshots(store.home, tid), force, files=files)
             with activity.note(f"undoes #{e.seq}"):
                 with collecting() as got:
                     store.save(t)
+            for kept, place in files:
+                place.parent.mkdir(parents=True, exist_ok=True)
+                kept.replace(place)
             res.written += got
             res.reverted.append(e)
+            res.redo.append(root_of(evs, e)[1] % 2 == 1)
     return res
 
 
 def revert_event(store, ticket_id: str, seq: int, force: bool = False) -> Result:
-    evs = [e for e in activity.read(store.home, ticket_id) if e.seq == int(seq)]
+    log = activity.read(store.home, ticket_id)
+    evs = [e for e in log if e.seq == int(seq)]
     if not evs:
         raise Refused(f"{ticket_id.upper()} has no change #{seq}.")
+    whole = save_of(store, log, evs[0])
+    if any(x.change == "section" and x.field == "Decision" for x in whole):  # a Decision and the status it set go back together
+        evs = whole
     return revert(store, evs, force)
 
 
@@ -385,7 +480,10 @@ def plan(store, events: list) -> tuple[list, list]:
         try:
             if tid not in copies:
                 copies[tid], logs[tid], snaps[tid] = store.get(tid), activity.read(store.home, tid), snapshots(store.home, tid)
-            apply(store, copies[tid], e, logs[tid], snaps[tid])
+            trial = copy.deepcopy(copies[tid])
+            apply(store, trial, e, logs[tid], snaps[tid], files=[])
+            _valid(store, trial)
+            copies[tid] = trial
             ok.append(e)
         except (Refused, KeyError) as x:
             no.append((e, str(x).strip("'")))

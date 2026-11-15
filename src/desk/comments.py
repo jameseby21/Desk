@@ -83,6 +83,38 @@ def _updated(t) -> dt.date | None:
         return None
 
 
+_UNDO_LINE = re.compile(r'^(Withdrawn|Restored): "(.*)" \(the comment of (\d{4}-\d{2}-\d{2} \d{2}:\d{2}) by ([^)]+)\)$')
+
+
+def _without_undo_lines(rows: list) -> tuple[list, set]:
+    """DESK-0284: (rows, mute). An undo's Withdrawn or Restored line is not a comment and answers nothing; a comment that stands
+    withdrawn answers nothing either. One its own author withdrew is left out; one withdrawn by someone else stays listed (`mute`)."""
+    marks = []
+    for i, (when, who, _kind, text, _ident) in enumerate(rows):
+        m = _UNDO_LINE.match(text)
+        if m:
+            marks.append((i, m.group(1) == "Withdrawn", dt.datetime.fromisoformat(m.group(3).replace(" ", "T")), m.group(2).rstrip("…"), who.lower()))
+    if not marks:
+        return rows, set()
+    state: dict[int, tuple[bool, str]] = {}
+    skip = {i for i, *_ in marks}
+    for i, withdrawn, at, words, withdrawer in marks:  # file order: the last line about a comment says whether it stands withdrawn
+        for j, (when, _who, _kind, text, _ident) in enumerate(rows):  # the line it names: its time (the log's may be a minute later) and words
+            if j not in skip and text.replace('"', "'").startswith(words) and dt.timedelta(0) <= at - when.replace(second=0) <= dt.timedelta(minutes=1):
+                state[j] = (withdrawn, withdrawer)
+    keep, mute = [], set()
+    for j, row in enumerate(rows):
+        if j in skip:
+            continue
+        withdrawn, withdrawer = state.get(j, (False, ""))
+        if withdrawn and withdrawer == row[1].lower():
+            continue
+        if withdrawn:
+            mute.add(len(keep))
+        keep.append(row)
+    return keep, mute
+
+
 def entries(store: Store, answerers: tuple[str, ...] = ANSWERERS) -> list[Entry]:
     """Every comment line in the store, with whether it has been answered: a later line by an answerer in the same ticket, or the
     ticket having changed on a day after its last comment (a move, a report, a decision). Dates are days, so a ticket touched on
@@ -101,6 +133,7 @@ def entries(store: Store, answerers: tuple[str, ...] = ANSWERERS) -> list[Entry]
                 continue
             kind, text = split_comment_kind(m.group(4))
             rows.append((when, m.group(3).strip(), kind or "", re.sub(r"\s+", " ", text).strip(), comment_identity(m.group(4))))
+        rows, mute = _without_undo_lines(rows)
         if not rows:
             continue
         last_day = max(r[0].date() for r in rows)
@@ -108,7 +141,7 @@ def entries(store: Store, answerers: tuple[str, ...] = ANSWERERS) -> list[Entry]
         moved = upd is not None and upd > last_day
         title = str(t.meta.get("title") or "")
         for i, (when, who, kind, text, ident) in enumerate(rows):
-            later_answer = any(rows[j][1].lower() in names and (rows[j][0], j) > (when, i) for j in range(len(rows)))
+            later_answer = any(rows[j][1].lower() in names and j not in mute and (rows[j][0], j) > (when, i) for j in range(len(rows)))
             out.append(Entry(t.id, title, when, who, kind, text, later_answer or moved, ident))
     return out
 

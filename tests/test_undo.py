@@ -4,7 +4,8 @@ reverts as one, newest first, or not at all; a change made since is never overwr
 
 import datetime as dt
 import re
-from urllib.parse import parse_qs, urlsplit
+import shutil
+from urllib.parse import parse_qs, unquote, urlsplit
 
 import pytest
 from fastapi.testclient import TestClient
@@ -270,3 +271,164 @@ window.addEventListener("load", function () { setTimeout(function () {
     assert "undo=" not in got["addr"], got  # the address is cleaned, so a reload does not show it again
     assert got["after"].startswith("Undone") and "Redo" in got["after"], got
     assert store.get(t.id).meta["priority"] == "p2"
+
+
+# -- fixes after review (DESK-0284) ------------------------------------------------------------------------------------------
+
+def _approve_in_batch(store, title, words, batch):
+    t = ops.new(store, title, "desk", owner="james")
+    t = store.get(t.id)
+    t.meta["status"] = "review"
+    t.set_section("Report", "Built it.")
+    store.save(t)
+    with activity.batch(batch):
+        ops.decide(store, store.get(t.id), approve=True, reason=words, actor="james")
+    return t.id
+
+
+def test_undoing_a_screenshot_removal_brings_the_file_back(store, tmp_path):
+    """Undo after Remove on a screenshot puts the image file back with its line, so the link answers 200, not a dangling 404."""
+    t = ops.new(store, "Shot", "desk")
+    src = tmp_path / "shot.png"
+    src.write_bytes(b"\x89PNG\r\n\x1a\nfake")
+    dest = ops.attach(store, store.get(t.id), src)
+    c = TestClient(create_app(store.home))
+    r = c.post(f"/ticket/{t.id}/attach/remove", data={"name": dest.name, "token": c.app.state.tokens.issue()}, headers={"Accept": "application/json"})
+    assert r.status_code == 200 and not dest.exists()
+    assert "saved" not in unquote(r.headers["x-desk-undo-msg"])  # a removal is not called "saved"
+    r = c.post(f"/undo/batch/{r.headers['x-desk-undo']}", headers={"Accept": "application/json", "X-Desk-Undo-Request": "1"})
+    assert r.status_code == 200, r.text
+    assert dest.name in store.get(t.id).section("Attachments") and dest.is_file()
+    got = c.get(f"/assets/{t.id}/{dest.name}")
+    assert got.status_code == 200 and got.content.startswith(b"\x89PNG")
+
+
+def test_redo_of_a_withdrawn_comment_restores_it_once(store):
+    """Redo (undo of a withdrawal) writes one Restored line naming the comment, says Redone, and the log reads the comment as live."""
+    t = ops.new(store, "Redo a comment", "desk")
+    ops.comment(store, store.get(t.id), "Hello there", actor="james")
+    seq = activity.read(store.home, t.id)[-1].seq
+    res = undo.revert_event(store, t.id, seq)
+    red = undo.revert_batch(store, res.batch)
+    text = store.get(t.id).section("Comments")
+    assert re.search(r'· Restored: "Hello there" \(the comment of', text.splitlines()[-1]), text
+    assert text.count("Withdrawn:") == 1 and "Withdrawn: 'Withdrawn" not in text
+    assert red.message.startswith("Redone:"), red.message
+    assert not undo.is_undone(seq, undo.undone_by(activity.read(store.home, t.id)))
+    undo.revert_batch(store, red.batch)  # undo once more: withdrawn again, still naming the first comment
+    last = store.get(t.id).section("Comments").splitlines()[-1]
+    assert re.search(r'· Withdrawn: "Hello there" \(the comment of', last), last
+
+
+def test_redo_of_a_reverted_decision_restores_it_by_name(store):
+    """Redo of an undone approve puts the status forward and adds a Restores line naming the decision, not a nested withdrawal."""
+    tid = _approve_in_batch(store, "Redo a decision", "Ship it", "b-ffffffffffff")
+    res = undo.revert_batch(store, "b-ffffffffffff")
+    red = undo.revert_batch(store, res.batch)
+    got = store.get(tid)
+    assert got.status == "approved"
+    last = got.section("Decision").splitlines()[-1]
+    assert "Restores the decision:" in last and "Ship it" in last and "Withdraws" not in last, last
+    assert red.message.startswith("Redone:"), red.message
+
+
+def test_undoing_only_the_decision_row_puts_the_status_back(store):
+    """The per-change Undo on a Decision row undoes the whole save it belongs to, so the ticket is not left approved."""
+    tid = _approve_in_batch(store, "Decision row", "Fine", "b-a1a1a1a1a1a1")
+    dec = [e for e in activity.read(store.home, tid) if e.field == "Decision"][-1]
+    res = undo.revert_event(store, tid, dec.seq)
+    got = store.get(tid)
+    assert got.status == "review" and "· reverted ·" in got.section("Decision").splitlines()[-1]
+    assert {e.field for e in res.reverted} >= {"status", "Decision"}
+
+
+def test_without_a_snapshot_drew_undo_takes_only_the_last_change(store, capsys):
+    """With .desk/undo gone (another clone), `drew undo ID` takes back only the last change, a list comes back as a list, and the dry
+    run says what the real run then does."""
+    t = ops.new(store, "Legacy tags", "desk")
+    set_field(store, t.id, tags=["x"])
+    set_field(store, t.id, tags=["x", "y"])
+    shutil.rmtree(store.home / ".desk" / "undo")
+    run(store, "undo", t.id, "--dry-run")
+    out = capsys.readouterr().out
+    assert "1 of 1 change would be undone" in out and "Created" not in out, out
+    run(store, "undo", t.id)
+    got = store.get(t.id)
+    assert got.meta["tags"] == ["x"] and got.status != "rejected"
+
+
+def test_the_dry_run_refuses_what_the_store_would_refuse(store, capsys):
+    """`drew undo --dry-run` checks the restored ticket against the store's rules, so it never promises an undo the real run refuses."""
+    t = ops.new(store, "Report then review", "desk")
+    t = store.get(t.id)
+    t.set_section("Report", "Built it.")
+    store.save(t)
+    seq = activity.read(store.home, t.id)[-1].seq
+    set_field(store, t.id, status="review")
+    run(store, "undo", t.id, "--seq", str(seq), "--dry-run")
+    out = capsys.readouterr().out
+    assert "0 of 1 change would be undone" in out and "refused" in out, out
+    with pytest.raises(SystemExit):
+        run(store, "undo", t.id, "--seq", str(seq))
+    assert store.get(t.id).section("Report").strip() == "Built it."
+
+
+def test_a_withdrawal_is_never_an_answer_to_the_owners_comment(store):
+    """When the answering comment is withdrawn, the owner's question is open again; the Withdrawn line itself answers nothing."""
+    from desk import comments as cm
+
+    t = ops.new(store, "Asked", "desk")
+    ops.comment(store, store.get(t.id), "Why is this like that?", actor="james")
+    tok = as_("patch", "session")
+    try:
+        ops.comment(store, store.get(t.id), "Because of the rule.", actor="patch")
+        assert cm.query(store, author="james", unanswered=True) == []
+        undo.revert_event(store, t.id, activity.read(store.home, t.id)[-1].seq)
+    finally:
+        identity.CURRENT.reset(tok)
+    open_ = cm.query(store, author="james", unanswered=True)
+    assert [r.text for r in open_] == ["Why is this like that?"]
+    assert not [r for r in cm.query(store) if r.text.startswith(("Withdrawn:", "Restored:"))]
+
+
+def test_the_count_dialog_cancels_or_goes_ahead_once(store):
+    """In a real browser: a form with data-confirm-count=3 shows the count; Cancel and Esc post nothing; Go ahead (3) posts once."""
+    from browser_harness import browser, drive
+
+    if not browser():
+        pytest.skip("no headless Edge or Chrome on this machine")
+    script = """<script>
+window.addEventListener("load", function () { setTimeout(function () {
+  var out = {}, posts = 0, f = document.createElement("form");
+  f.setAttribute("data-confirm-count", "3"); f.method = "post"; f.action = "/nowhere";
+  f.addEventListener("submit", function (e) { e.preventDefault(); e.stopPropagation(); posts++; });
+  document.body.appendChild(f);
+  function dlg() { return document.querySelector("dialog.undo-confirm"); }
+  function btn(label) { return Array.prototype.find.call(dlg().querySelectorAll("button"), function (b) { return b.textContent.indexOf(label) === 0; }); }
+  function send() { fetch("/m", {method: "POST", body: JSON.stringify(out)}); }
+  try {
+    f.requestSubmit();
+    out.open = !!(dlg() && dlg().open); out.text = dlg() ? dlg().textContent : ""; out.go = btn("Go ahead") ? btn("Go ahead").textContent : "";
+    btn("Cancel").click();
+    setTimeout(function () {
+      try {
+        out.afterCancel = posts; out.goneAfterCancel = !dlg();
+        f.requestSubmit();
+        dlg().dispatchEvent(new Event("cancel", {cancelable: true}));
+        setTimeout(function () {
+          try {
+            out.afterEsc = posts;
+            f.requestSubmit(); btn("Go ahead").click();
+            setTimeout(function () { out.afterGo = posts; out.goneAfterGo = !dlg(); send(); }, 200);
+          } catch (e) { out.error = String(e); send(); }
+        }, 200);
+      } catch (e) { out.error = String(e); send(); }
+    }, 200);
+  } catch (e) { out.error = String(e); send(); }
+}, 300); });
+</script>"""
+    got = drive(store, script, "/")
+    assert not got.get("error"), got
+    assert got["open"] and "3" in got["text"] and got["go"] == "Go ahead (3)", got
+    assert got["afterCancel"] == 0 and got["goneAfterCancel"] and got["afterEsc"] == 0, got
+    assert got["afterGo"] == 1 and got["goneAfterGo"], got
