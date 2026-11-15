@@ -63,8 +63,9 @@ class FakeSmtp:
         self.host, self.port, self.steps, self.sent = host, port, [], []
         FakeSmtp.instances.append(self)
 
-    def starttls(self):
+    def starttls(self, context=None):
         self.steps.append("starttls")
+        self.context = context
 
     def login(self, user, pw):
         self.steps.append(("login", user, pw))
@@ -269,6 +270,28 @@ def test_smtp_uses_starttls_and_the_app_password():
     assert r.ok and (s.host, s.port) == ("smtp.gmail.com", 587)
     assert s.steps[:2] == ["starttls", ("login", "owner@example.com", "pw")]
     assert s.sent[0]["To"] == "phone@example.com" and s.sent[0]["Subject"] == "Desk brief"
+
+
+def test_smtp_tls_verifies_the_server_certificate_and_hostname(monkeypatch):
+    """The app password only travels over TLS that checks the certificate and hostname (no man-in-the-middle on STARTTLS or port 465)."""
+    import ssl
+
+    FakeSmtp.instances.clear()
+    ch = next(c for c in nc.all_channels() if c.name == "smtp")
+    ch.send(nc.Note("Desk", "body"), {"SMTP_USER": "owner@example.com", "SMTP_PASSWORD": "pw"}, smtp=FakeSmtp)
+    ctx = FakeSmtp.instances[0].context
+    assert ctx is not None and ctx.verify_mode == ssl.CERT_REQUIRED and ctx.check_hostname is True
+    seen = {}
+
+    def fake_ssl(host, port, **kw):
+        seen.update(kw)
+        return FakeSmtp(host, port)
+
+    monkeypatch.delenv("DESK_NOTIFY_OFFLINE")
+    monkeypatch.setattr(nc.smtplib, "SMTP_SSL", fake_ssl)
+    nc.smtp_connect("smtp.example.com", 465)
+    ctx = seen.get("context")
+    assert ctx is not None and ctx.verify_mode == ssl.CERT_REQUIRED and ctx.check_hostname is True
 
 
 def test_postmark_request_matches_its_api():

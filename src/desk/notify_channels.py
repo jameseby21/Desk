@@ -17,6 +17,7 @@ import json
 import os
 import secrets as _secrets
 import smtplib
+import ssl
 import string
 import urllib.error
 import urllib.parse
@@ -123,11 +124,16 @@ def http_post(url: str, data: bytes, headers: dict[str, str]) -> Response:
         return Response(e.code, e.read(4096).decode("utf-8", "replace"))
 
 
+def tls_context() -> ssl.SSLContext:
+    """TLS that checks the server's certificate and hostname; smtplib's own default does neither, so the app password could be read."""
+    return ssl.create_default_context()
+
+
 def smtp_connect(host: str, port: int):
     if os.environ.get("DESK_NOTIFY_OFFLINE"):
         raise Offline("notifications are offline (DESK_NOTIFY_OFFLINE is set)")
     if int(port) == 465:
-        return smtplib.SMTP_SSL(host, port, timeout=TIMEOUT_SECONDS)
+        return smtplib.SMTP_SSL(host, port, timeout=TIMEOUT_SECONDS, context=tls_context())
     return smtplib.SMTP(host, port, timeout=TIMEOUT_SECONDS)
 
 
@@ -199,7 +205,7 @@ class Smtp(Channel):
         conn = smtp(host, port)
         try:
             if port != 465:
-                conn.starttls()
+                conn.starttls(context=tls_context())
             conn.login(sec["SMTP_USER"], sec["SMTP_PASSWORD"])
             conn.send_message(msg)
         finally:

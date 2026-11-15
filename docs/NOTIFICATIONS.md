@@ -33,7 +33,7 @@ Owner: DESK-0289. Commands: [COMMANDS.md](COMMANDS.md#notifications).
 | Service | **Your own mail account over SMTP** (adapter `smtp`, on once configured; Gmail settings by default) | **Postmark** (adapter `postmark`, off) | SMTP: free with your account. Postmark: free for 100 emails a month, then $15 a month for 10,000 | SMTP: turn on 2-Step Verification, create an app password at myaccount.google.com/apppasswords, then put `SMTP_USER` (your address), `SMTP_PASSWORD` (the app password) and `SMTP_TO` (where the brief goes) in notify.env. Postmark: create an account, confirm a sender signature, then put `POSTMARK_TOKEN`, `POSTMARK_FROM` and `POSTMARK_TO` in notify.env and add `"postmark"` to `channels` |
 
 - **Gmail app passwords need 2-Step Verification.** They are not offered when 2-Step Verification uses only security keys, on a work or school account, or with Advanced Protection.
-- Another mail provider works too. Set `smtp_host` and `smtp_port` in `[notify]`; port 465 uses SSL, and any other port uses STARTTLS.
+- Another mail provider works too. Set `smtp_host` and `smtp_port` in `[notify]`; port 465 uses SSL, and any other port uses STARTTLS. Either way Desk checks the server's certificate and name before it sends the password.
 - **Other services checked:**
   - Resend is free for 3,000 emails a month (100 a day), then $20 a month for 50,000.
   - Brevo's pricing page could not be read, so it was not checked.
