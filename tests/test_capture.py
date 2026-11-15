@@ -187,6 +187,46 @@ def test_nothing_ticked_writes_nothing(store):
     assert r.status_code == 422 and "Tick at least one row" in r.text and store.tickets() == []
 
 
+def _paste_form(c, store, projects):
+    rows = capture.split_asks(store, PASTE)[:len(projects)]
+    return {"token": _tok(c), "pick": [str(i) for i in range(len(rows))], "title": [r.title for r in rows], "project": projects,
+            "type": [r.type for r in rows], "said": [r.said for r in rows]}
+
+
+def test_a_bad_row_among_good_ones_writes_nothing_and_keeps_the_rows(store):
+    """Every ticked row is checked before any is written: one unknown project means no ticket at all, and the edited rows come back."""
+    c = _client(store)
+    data = _paste_form(c, store, ["jre", "nope"])
+    data["title"][0] = "Send the edited invoice"
+    r = c.post("/capture/paste/create", data=data, follow_redirects=False)
+    assert r.status_code == 422 and store.tickets() == []
+    assert "no project called nope" in r.text and "Nothing was saved" in r.text and "Undo takes them back" not in r.text
+    assert 'value="Send the edited invoice"' in r.text and r.text.count('name="pick"') == 2  # the person's edits are not lost
+
+
+def test_a_write_that_fails_partway_still_offers_undo_and_syncs(store, monkeypatch):
+    """If a write fails after some tickets were made, the answer carries undo=<batch> for them and the store is synced."""
+    from desk.store import Store
+    synced = []
+    monkeypatch.setattr(Store, "sync_after", lambda self, msg="": synced.append(msg))
+    real, calls = capture.create, []
+
+    def flaky(*a, **k):
+        calls.append(1)
+        if len(calls) == 2:
+            raise OSError("The disk refused the second ticket.")
+        return real(*a, **k)
+
+    monkeypatch.setattr(capture, "create", flaky)
+    c = _client(store)
+    r = c.post("/capture/paste/create", data=_paste_form(c, store, ["jre", "desk"]), follow_redirects=False)
+    assert r.status_code == 303, r.text
+    q = parse_qs(urlsplit(r.headers["location"]).query)
+    assert [t.id for t in store.tickets()] == ["JRE-0001"] and q["made"] == ["JRE-0001"]
+    assert _batches(store, "JRE-0001") == {q["undo"][0]} and "Undo takes them back" in q["msg"][0]
+    assert synced, "the ticket already written was not synced"
+
+
 # ---- files ------------------------------------------------------------------------------------------------------------------
 
 def test_drop_on_a_ticket_attaches_any_file_type(store):

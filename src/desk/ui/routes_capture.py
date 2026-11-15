@@ -171,6 +171,22 @@ def router(store, templates, ctx, tokens, acting) -> APIRouter:
         if not chosen:
             return page(request, "capture_paste.html", status=422, text="\n".join(said), rows=cap.split_asks(s, "\n".join(said)), made=[],
                         msg="Tick at least one row to create it. Nothing was saved.", projects=projects_of(s), types=TYPES, lane_word=LANE_WORD)
+        def at(xs: list[str], i: int) -> str:
+            return xs[i] if i < len(xs) else ""
+
+        def text_of(i: int) -> str:
+            return at(said, i) or title[i]
+
+        def again(msg: str):  # the ticked rows as the person left them (edited titles, chosen projects), so nothing is retyped
+            rows = [cap.Proposed(title=title[i], said=text_of(i), project=at(project, i), named=True, type=at(type, i) or "task",
+                                 lane=cap.guess_lane(text_of(i))) for i in chosen]
+            return page(request, "capture_paste.html", status=422, text="\n".join(said), rows=rows, made=[], msg=msg,
+                        projects=projects_of(s), types=TYPES, lane_word=LANE_WORD)
+
+        for n, i in enumerate(chosen, 1):  # every row is checked before any is written, so a bad row never leaves half a list
+            problem = cap.row_problem(s, text_of(i), title=title[i], project=at(project, i))
+            if problem:
+                return again(f"Row {n}: {problem} Nothing was saved.")
         me = acting(request)
         b = cap.batch_id()
         made = []
@@ -178,15 +194,15 @@ def router(store, templates, ctx, tokens, acting) -> APIRouter:
             s.sync_before()
             with activity.batch(b):
                 for i in chosen:
-                    pj = project[i] if i < len(project) else ""
-                    ty = type[i] if i < len(type) and type[i] in TYPES else ""
-                    made.append(cap.create(s, said[i] if i < len(said) else title[i], me.name, title=title[i], project=pj, type_=ty, how="pasted text"))
-            s.sync_after(f"desk: capture {len(made)} from pasted text")
+                    ty = at(type, i) if at(type, i) in TYPES else ""
+                    made.append(cap.create(s, text_of(i), me.name, title=title[i], project=at(project, i), type_=ty, how="pasted text"))
         except (RuleError, ValueError, OSError) as e:
-            n = len(made)
-            note = f" {n} ticket(s) were made before it stopped; Undo takes them back." if n else " Nothing was saved."
-            return page(request, "capture_paste.html", status=422, text="\n".join(said), rows=None, made=made, msg=f"{e}{note}",
-                        projects=projects_of(s), types=TYPES, lane_word=LANE_WORD)
+            if not made:
+                return again(f"{e} Nothing was saved.")
+            s.sync_after(f"desk: capture {len(made)} from pasted text")  # the tickets already written are kept and synced
+            msg = f"{e} {len(made)} ticket(s) were made before it stopped; Undo takes them back."
+            return RedirectResponse(f"/capture/paste?made={','.join(t.id for t in made)}&undo={quote(b)}&msg={quote(msg)}", status_code=303)
+        s.sync_after(f"desk: capture {len(made)} from pasted text")
         msg = f"Created {len(made)} ticket{'s' if len(made) != 1 else ''}: {', '.join(t.id for t in made)}."
         return RedirectResponse(f"/capture/paste?made={','.join(t.id for t in made)}&undo={quote(b)}&msg={quote(msg)}", status_code=303)
 

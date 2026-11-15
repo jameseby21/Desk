@@ -174,18 +174,29 @@ def guess(store: Store, text: str) -> Guess:
     return Guess(title=title_for(text), project=project, named=named, type=guess_type(s), lane=guess_lane(s), text=s)
 
 
+def row_problem(store: Store, text: str, *, title: str = "", project: str = "") -> str:
+    """Why `create` would refuse this sentence, in plain words, or an empty string. The paste page checks every ticked row with it
+    before writing any, so one bad row never leaves half a list behind."""
+    g = guess(store, text)
+    if not " ".join((title or g.title).split()):
+        return "Type a sentence first: what you want done, in your words."
+    project = project or g.project
+    if not project:
+        return "Desk has no projects yet, so there is nowhere to put the ticket. Add projects/<key>.md first."
+    if project not in store.projects():
+        return f"Desk has no project called {project}. Pick one from the list."
+    return ""
+
+
 def create(store: Store, text: str, creator: str, *, mvp: str = "", project: str = "", type_: str = "", title: str = "", how: str = "palette") -> Ticket:
     """Write one inbox ticket for a captured sentence and return it. Raises RuleError in plain words when there is nothing to write.
     `project`, `type_` and `title` override the guesses (the paste page lets a person correct them)."""
+    problem = row_problem(store, text, title=title, project=project)
+    if problem:
+        raise RuleError(problem)
     g = guess(store, text)
     title = " ".join((title or g.title).split())[:200]
-    if not title:
-        raise RuleError("Type a sentence first: what you want done, in your words.")
     project = project or g.project
-    if not project:
-        raise RuleError("Desk has no projects yet, so there is nowhere to put the ticket. Add projects/<key>.md first.")
-    if project not in store.projects():
-        raise RuleError(f"Desk has no project called {project}. Pick one from the list.")
     type_ = type_ or g.type
     pe = peoplemod.load(store.home)
     t = store.create(title, project, type_, priority="p2", size="s", owner="main", source=f"Captured from the {how}, {today()}")
