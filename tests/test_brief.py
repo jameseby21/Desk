@@ -283,7 +283,7 @@ def test_brief_answer_forms_only_for_the_owner(store, fx, monkeypatch):
     assert f'action="/ticket/{fx["rev"].id}/decide"' in c.get("/brief").text  # the owner, assumed, may answer
     c.cookies.set("desk_who", "coworker")
     page = c.get("/brief").text
-    assert fx["rev"].id in page and "/decide" not in page
+    assert fx["rev"].id in page and not re.search(r'<form[^>]*action="[^"]*decide', page)  # no answer form; decide.css and decide.js load on every page
 
 
 def test_flow_skips_closed_time_and_counts_a_reopen(store):
