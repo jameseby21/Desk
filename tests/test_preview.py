@@ -474,3 +474,16 @@ def test_common_credential_files_are_never_served(client, roots, store):
     assert lf.check(store.home, str(root / "budget.private"), cfg)
     with pytest.raises(lf.Refused, match="never opens"):
         lf.check(store.home, str(root / "budget.private"), {"files": {**cfg["files"], "deny_names": ["*.PRIVATE"]}})
+
+
+def test_markdown_preview_never_loads_pictures_from_the_web(client, roots):
+    """A local Markdown file's web pictures are shown as a note, never fetched, so opening it tells no outside site anything."""
+    root, _ = roots
+    (root / "track.md").write_text("# Notes\n\n![pixel](https://tracker.example/p.png?u=1)\n\n![two](//other.example/q.png)\n\n"
+                                   "![three](/\\third.example/r.png)\n\n![ok](/preview/DESK-0001/a.png)\n", encoding="utf-8")
+    r = _local(client, root / "track.md")
+    assert r.status_code == 200
+    for host in ("tracker.example", "other.example", "third.example"):
+        assert f'src="https://{host}' not in r.text and f'src="//{host}' not in r.text and f'src="/\\{host}' not in r.text, host
+    assert "tracker.example" in r.text  # the address is still shown as text
+    assert '<img src="/preview/DESK-0001/a.png"' in r.text

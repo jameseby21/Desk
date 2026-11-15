@@ -35,6 +35,20 @@ _LOOPBACK_HOSTS = {"127.0.0.1", "localhost", "[::1]"}
 _LOOPBACK_CLIENTS = {"127.0.0.1", "::1"}
 CROSS_SITE = "Desk only answers its own pages on this computer."
 BAD_HOST = "Desk only answers at 127.0.0.1 or localhost on its own port."
+_IMG_TAG = re.compile(r'<img src="([^"]*)" alt="([^"]*)"[^>]*>')
+_OWN_SRC = re.compile(r"^(/[^/\\]|data:image/)", re.I)  # a path on Desk itself, or a picture inside the file
+
+
+def no_web_pictures(markup: str) -> str:
+    """A previewed Markdown file is not trusted: a picture from the web would tell that site the file was opened, so it is shown as
+    its address instead of being fetched. Pictures on Desk itself still show."""
+
+    def swap(m: re.Match) -> str:
+        if _OWN_SRC.match(html.unescape(m.group(1))):
+            return m.group(0)
+        return f'<span class="muted">[picture from the web, not loaded: {m.group(2) or "no description"} &lt;{m.group(1)}&gt;]</span>'
+
+    return _IMG_TAG.sub(swap, markup)
 
 
 def _port(request: Request) -> int:
@@ -111,7 +125,7 @@ def make_router(get_store: Callable[[], Store]) -> APIRouter:
         try:
             if kind == "markdown":
                 text, data["cut"] = fp.read_text(target)
-                data["html"] = md_html(text)
+                data["html"] = no_web_pictures(md_html(text))
             elif kind == "text":
                 data["text"], data["cut"] = fp.read_text(target)
             elif kind == "csv":
