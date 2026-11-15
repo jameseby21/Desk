@@ -18,6 +18,22 @@ from .. import activity, decidemode as dm, delegations as dg, lanes, people as p
 from ..rules import RuleError
 
 _ID = re.compile(r"^[A-Za-z][A-Za-z0-9]*-\d+$")
+_BACK = re.compile(r"/(?![/\\])[A-Za-z0-9_?=&%.\-/]*")  # a path on this site; never //host (another site) or a backslash
+LOOPBACK = {"127.0.0.1", "localhost", "::1"}  # Desk serves on this computer only (rule 80 item 10)
+FOREIGN = ("This request was not addressed to Desk on this computer (127.0.0.1 or localhost), so it was refused. "
+           "Open Desk from its own address and try again.")
+
+
+def safe_back(back: str, query: bool = True) -> str:
+    """`back` when it is a path on this site (with a query only when `query`), else `/`: a link or redirect never leaves Desk."""
+    back = back or ""
+    return back if _BACK.fullmatch(back) and (query or "?" not in back) else "/"
+
+
+def from_here(request) -> bool:
+    """True when the request is addressed to this computer (its Host is a loopback name), so a page on another site that rebinds its
+    name to 127.0.0.1 can not post a decision."""
+    return (request.url.hostname or "").strip("[]").lower() in LOOPBACK
 
 
 def plain(text: str, limit: int = 280) -> str:
@@ -82,6 +98,8 @@ def build(*, templates, ctx, store, tokens, acting) -> APIRouter:
 
     @r.post("/decide/answer")
     def decide_answer(request: Request, id: str = Form(""), action: str = Form(""), option: str = Form(""), words: str = Form(""), next: str = Form(""), token: str = Form("")):
+        if not from_here(request):
+            return refuse(FOREIGN)
         if not tokens.use(token):
             return spent()
         s = store()
@@ -114,6 +132,8 @@ def build(*, templates, ctx, store, tokens, acting) -> APIRouter:
 
     @r.post("/decide/delegate")
     def decide_delegate(request: Request, id: str = Form(""), who: str = Form(""), pattern: str = Form(""), token: str = Form("")):
+        if not from_here(request):
+            return refuse(FOREIGN)
         if not tokens.use(token):
             return spent()
         s = store()
@@ -135,28 +155,30 @@ def build(*, templates, ctx, store, tokens, acting) -> APIRouter:
         s = store()
         can, why_not = may_decide(request, s)
         plan = dm.plan_batch(s, ids)
-        safe_back = back if re.fullmatch(r"/[A-Za-z0-9_?=&%.\-/]*", back or "") else "/"
+        dest = safe_back(back)
         return templates.TemplateResponse(request, "decide_batch.html", ctx(request, s, plan=plan, ok=[p for p in plan if not p.skip], left=[p for p in plan if p.skip],
-                                                                             can=can, why_not=why_not, back=safe_back))
+                                                                             can=can, why_not=why_not, back=dest))
 
     @r.post("/decide/batch")
     def batch_post(request: Request, ids: list[str] = Form([]), back: str = Form("/"), token: str = Form("")):
+        if not from_here(request):
+            return refuse(FOREIGN)
         if not tokens.use(token):
             return spent()
         s = store()
         can, why_not = may_decide(request, s)
         if not can:
             return refuse(why_not, "/")
-        safe_back = back if re.fullmatch(r"/[A-Za-z0-9_?=&%.\-/]*", back or "") and "?" not in back else "/"
+        dest = safe_back(back, query=False)
         plan = dm.plan_batch(s, ids)
         bid = dm.new_batch_id()
         done, refused = dm.run_batch(s, plan, bid, viewer=acting(request))
         if not done:
-            return go(safe_back, msg="Nothing was approved: none of those can be approved in a batch. Open them one by one.")
+            return go(dest, msg="Nothing was approved: none of those can be approved in a batch. Open them one by one.")
         msg = f"Approved {len(done)} ticket{'s' if len(done) != 1 else ''}: {', '.join(done)}."
         if refused:
             msg += f" Not approved: {', '.join(i for i, _ in refused)}."
-        return go(safe_back, undo=bid, msg=msg)
+        return go(dest, undo=bid, msg=msg)
 
     # ---- inbox triage ---------------------------------------------------------------------------------------------------------
 
@@ -176,6 +198,8 @@ def build(*, templates, ctx, store, tokens, acting) -> APIRouter:
 
     @r.post("/triage/place")
     def triage_place(request: Request, id: str = Form(""), lane: str = Form(""), reason: str = Form(""), into: str = Form(""), next: str = Form(""), token: str = Form("")):
+        if not from_here(request):
+            return refuse(FOREIGN)
         if not tokens.use(token):
             return spent()
         s = store()
@@ -203,6 +227,8 @@ def build(*, templates, ctx, store, tokens, acting) -> APIRouter:
 
     @r.post("/settings/delegations/remove")
     def delegation_remove(request: Request, index: int = Form(-1), pattern: str = Form(""), token: str = Form("")):
+        if not from_here(request):
+            return refuse(FOREIGN)
         if not tokens.use(token):
             return spent()
         s = store()

@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 from desk import activity, decidemode, delegations, identity, lanes, ops, people
 from desk.ui.app import create_app
 
+HERE = "http://127.0.0.1:8799"  # Desk's own loopback address; a write from any other Host is refused (rule 80 item 10)
 CHOOSE = "Options: A lime mark, it leaves the rotation; B a second candidate is drawn and rotates."
 
 
@@ -39,13 +40,13 @@ def _owner(store, monkeypatch):
     """A browser on the owner's machine: the OS user is linked to the owner in people.yaml, so the identity is confirmed."""
     monkeypatch.setattr(identity, "os_user", lambda: "owner-login")
     people.link_os_user(store.home, "james", "owner-login")
-    return TestClient(create_app(store.home))
+    return TestClient(create_app(store.home), base_url=HERE)
 
 
 def _someone_else(store, monkeypatch):
     monkeypatch.setattr(identity, "os_user", lambda: "helper-login")
     people.link_os_user(store.home, "chaz", "helper-login")
-    return TestClient(create_app(store.home))
+    return TestClient(create_app(store.home), base_url=HERE)
 
 
 def _tok(c):
@@ -189,10 +190,10 @@ def test_the_owner_named_by_this_browser_decides_like_the_assumed_owner(store, m
     """Protects: one identity rule, the owner named by the browser's cookie decides as the assumed owner does; anyone else it names can not."""
     t = _ask(store, "Approve: the logo rule", "Plain.", report="Chaz recommends: approve; it is ready.")
     monkeypatch.setattr(identity, "os_user", lambda: "nobody-listed")
-    c = TestClient(create_app(store.home), cookies={"desk_who": "chaz"})
+    c = TestClient(create_app(store.home), cookies={"desk_who": "chaz"}, base_url=HERE)
     r = c.post("/decide/answer", data={"token": _tok(c), "id": t.id, "action": "approve"}, follow_redirects=False)
     assert r.status_code == 403 and store.get(t.id).status == "ready"
-    c = TestClient(create_app(store.home), cookies={"desk_who": "james"})
+    c = TestClient(create_app(store.home), cookies={"desk_who": "james"}, base_url=HERE)
     assert "disabled" not in c.get("/decide").text.split('id="dm-form"', 1)[1].split("</form>", 1)[0]
     r = c.post("/decide/answer", data={"token": _tok(c), "id": t.id, "action": "approve"}, follow_redirects=False)
     assert r.status_code == 303 and store.get(t.id).status == "approved"
@@ -250,6 +251,34 @@ def test_batch_approve_dry_run_then_one_batch_for_all(store, monkeypatch):
         marked = [e for e in activity.read(store.home, t.id) if e.batch]
         assert marked and {e.batch for e in marked} == {q["undo"]}
     assert store.get(loner.id).status == "ready" and not [e for e in activity.read(store.home, loner.id) if e.batch]
+
+
+def test_batch_back_never_leaves_desk(store, monkeypatch):
+    """Protects: no open redirect, a back of //host or with a backslash falls back to / on the dry run's Cancel and after Approve."""
+    ok = "Built and tested.\n\nChaz recommends: approve; the checks pass."
+    a, b = _review(store, "Build the export", ok), _review(store, "Build the import", ok)
+    c = _owner(store, monkeypatch)
+    for bad in ("//evil.example/x", "/\\evil.example/x", "///evil.example"):
+        page = c.get("/decide/batch", params={"ids": a.id, "back": bad}).text
+        assert 'href="/">Cancel' in page and "evil.example" not in page
+    r = c.post("/decide/batch", data={"token": _tok(c), "ids": [a.id], "back": "//evil.example/x"}, follow_redirects=False)
+    assert r.headers["location"].startswith("/?") and store.get(a.id).status == "approved"
+    r = c.post("/decide/batch", data={"token": _tok(c), "ids": [b.id], "back": "/board"}, follow_redirects=False)
+    assert r.headers["location"].startswith("/board?")  # a plain local back still works
+
+
+def test_a_write_from_a_foreign_host_is_refused(store, monkeypatch):
+    """Protects: rule 80 item 10, Decide's writes answer only requests addressed to this computer (no DNS-rebinding batch approve)."""
+    ok = "Built and tested.\n\nChaz recommends: approve; the checks pass."
+    a = _review(store, "Build the export", ok)
+    c = _owner(store, monkeypatch)
+    for url, data in (("/decide/batch", {"ids": [a.id]}), ("/decide/answer", {"id": a.id, "action": "approve"}),
+                      ("/decide/delegate", {"id": a.id, "who": "main", "pattern": "exports"}), ("/triage/place", {"id": a.id, "lane": "later"})):
+        r = c.post(url, data={"token": _tok(c), **data}, headers={"host": "evil.example:8765"}, follow_redirects=False)
+        assert r.status_code == 403 and "this computer" in r.text, url
+    assert store.get(a.id).status == "review" and delegations.load(store.home) == [] and "lane" not in store.get(a.id).meta
+    r = c.post("/decide/batch", data={"token": _tok(c), "ids": [a.id]}, headers={"host": "localhost:8765"}, follow_redirects=False)
+    assert r.status_code == 303 and store.get(a.id).status == "approved"
 
 
 # ---- inbox triage ------------------------------------------------------------------------------------------------------------
