@@ -267,6 +267,16 @@ def test_trailing_junk_cannot_smuggle_a_program_past_the_refusal(store, name):
     assert capture.stored_name(name).lower().rsplit(".", 1)[-1] in ("exe", "bat", "ps1", "cmd")  # the name it would have been saved as
 
 
+def test_a_refused_drop_without_script_shows_the_reason_on_the_ticket_page(store):
+    """A drop sent as a plain form (no JSON) that is refused lands back on the ticket with the refusal shown, not silently."""
+    t = ops.new(store, "Files", "desk")
+    c = _client(store)
+    r = c.post(f"/ticket/{t.id}/drop", data={"token": _tok(c)}, files={"file": ("setup.exe", b"MZ", "application/octet-stream")}, follow_redirects=False)
+    assert r.status_code == 303 and urlsplit(r.headers["location"]).path == f"/ticket/{t.id}"
+    shown = c.get(r.headers["location"]).text
+    assert "Desk does not take .exe files" in shown and not store.ticket_assets_dir(t.id).exists()
+
+
 def test_files_over_the_size_limit_are_refused(store):
     """Acceptance 3: the desk.toml [attachments] max_mb limit applies to dropped files."""
     toml = store.home / "desk.toml"

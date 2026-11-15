@@ -215,7 +215,8 @@ def router(store, templates, ctx, tokens, acting) -> APIRouter:
         def fail(msg: str, code: int):
             if js:
                 return JSONResponse({"error": msg, "token": tokens.issue()}, status_code=code)
-            return RedirectResponse(f"/ticket/{quote(ticket_id)}?msg={quote(msg)}#attachments", status_code=303)
+            # `error` is what the ticket page shows as a refusal; `msg` is for the success toast and would read as one
+            return RedirectResponse(f"/ticket/{quote(ticket_id)}?error={quote(msg)}#attachments", status_code=303)
 
         if not tokens.use(token):  # spent at once, so a double Enter or a double drop can never write twice
             return fail("That drop was already sent; nothing was attached twice.", 409)
