@@ -343,3 +343,11 @@ def test_a_fetch_without_the_browser_cookie_leaves_the_last_seen_marker_alone(st
     assert marker.read_bytes() == before
     assert 'id="since-last-visit"' in person.get(f"/ticket/{t.id}").text
     assert t.id in person.get("/changes").text
+
+
+def test_changes_with_a_timezone_in_at_opens_instead_of_failing(store):
+    """Protects: /changes?at= with a UTC offset reads the moment as local time instead of answering 500."""
+    with acting("patch", "session"):
+        ops.new(store, "Something changed", "desk")
+    r = _browser(store).get("/changes", params={"at": "2026-11-14T00:00:00+00:00"})
+    assert r.status_code == 200 and "What changed" in r.text, r.text[:300]

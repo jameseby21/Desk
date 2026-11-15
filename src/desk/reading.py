@@ -117,10 +117,12 @@ def _write(home: Path, data: dict) -> None:
 
 
 def _parse_ts(v) -> dt.datetime | None:
+    """A time as the event log keeps it (local, no offset); one with an offset is turned into local time first."""
     try:
-        return dt.datetime.fromisoformat(str(v)) if v else None
+        d = dt.datetime.fromisoformat(str(v)) if v else None
     except ValueError:
         return None
+    return d.astimezone().replace(tzinfo=None) if d is not None and d.tzinfo is not None else d
 
 
 def seen_at(home: Path, viewer: str, ticket_id: str) -> dt.datetime | None:
