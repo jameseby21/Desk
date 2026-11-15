@@ -199,6 +199,45 @@ def test_snooze_from_the_timer_sets_tomorrow_in_one_undoable_batch(store):
     assert again.status_code == 409 and again.json()["token"]
 
 
+def test_the_timers_done_closes_an_approved_ticket_in_one_undoable_batch(store, as_owner):
+    """Protects the timer's Done on an approved Now ticket: it closes the ticket inside a batch and hands back the undo toast's data."""
+    t = _review(store, "Ship the fix")
+    t.meta["priority"] = "p0"
+    store.save(t)
+    ops.decide(store, store.get(t.id), True, "Ship it.", actor="james")
+    c = TestClient(create_app(store.home))
+    assert 'data-focus-start="%s"' % t.id in c.get(f"/ticket/{t.id}").text
+    r = c.post(f"/focus/done/{t.id}", data={"token": c.app.state.tokens.issue()}, headers=JSON)
+    assert r.status_code == 200, r.text
+    j = r.json()
+    assert store.get(t.id).status == "done" and j["ok"] and j["message"] == f"{t.id} is closed." and "open" not in j
+    ev = [e for e in activity.read(store.home, t.id) if e.field == "status"]
+    assert ev[-1].new == "done" and ev[-1].batch == j["batch"] and re.fullmatch(r"b-[0-9a-f]{12}", j["batch"])
+    form = c.post(f"/focus/done/{t.id}", data={"token": c.app.state.tokens.issue()}, follow_redirects=False)
+    assert form.status_code == 303 and "msg=" in form.headers["location"]  # already closed: said in words, nothing written
+
+
+@pytest.mark.parametrize("status", ["inbox", "ready", "in_progress", "review"])
+def test_the_timers_done_on_a_ticket_not_yet_approved_stops_and_opens_the_decision_box(store, status):
+    """Protects the timer's Done on a Now ticket that cannot close yet: no refusal, no write, a plain sentence and the decision box."""
+    t = ops.new(store, "Fix the outage", "desk", "bug", priority="p0")
+    t.meta.update({"status": status, "owner": "james", "assignee": "patch"})
+    t.set_section("Report", "Built and tested.")
+    store.save(t)
+    before = len(activity.read(store.home, t.id))
+    c = TestClient(create_app(store.home))
+    assert 'data-focus-start="%s"' % t.id in c.get(f"/ticket/{t.id}").text
+    r = c.post(f"/focus/done/{t.id}", data={"token": c.app.state.tokens.issue()}, headers=JSON)
+    assert r.status_code == 200, r.text
+    j = r.json()
+    assert j["ok"] and j["open"] == f"/ticket/{t.id}#decision" and "batch" not in j
+    assert j["message"].startswith("Timer stopped.") and "→" not in j["message"] and "_" not in j["message"], j["message"]
+    assert not plainwords.jargon(j["message"])
+    assert store.get(t.id).status == status and len(activity.read(store.home, t.id)) == before
+    form = c.post(f"/focus/done/{t.id}", data={"token": c.app.state.tokens.issue()}, follow_redirects=False)
+    assert form.status_code == 303 and form.headers["location"].startswith(f"/ticket/{t.id}?msg=") and form.headers["location"].endswith("#decision")
+
+
 def test_new_motivation_words_are_plain():
     """Protects DESK-0253 for the new screen text: grade 10 or under and no jargon word."""
     from pathlib import Path
@@ -236,17 +275,23 @@ var out={},sleep=function(ms){return new Promise(function(r){setTimeout(r,ms);})
  await sleep(600);
  out.clock=sessionStorage.getItem('t-clock');out.ended=f.textContent;
  out.buttons=[].map.call(f.querySelectorAll('button'),function(b){return b.textContent;});
+ f.querySelector('button').click();await sleep(1000);out.slot=(f.querySelector('.mot-slot')||{}).textContent||'';
+ await sleep(1200);out.hash=location.hash;out.stored=localStorage.getItem('desk-focus');
  fetch('/m',{method:'POST',body:JSON.stringify(out)});})();});</script>"""
 
 
 @pytest.mark.skipif(browser() is None, reason="no Edge or Chrome installed")
 def test_focus_timer_survives_a_reload_and_ends_with_done_or_snooze(store):
-    """Protects Acceptance 1: the timer is in the header after a reload and ends with the two buttons."""
+    """Protects Acceptance 1: the timer is in the header after a reload, ends with the two buttons, and Done on a ticket that
+    cannot close yet stops the timer, says why in words and opens the decision box (no refusal)."""
     t = ops.new(store, "Fix the outage", "desk", "bug", priority="p0")
     got = drive(store, FOCUS, f"/ticket/{t.id}")
     assert got["clock"].startswith(f"Focus {t.id} · 2"), got  # 24:5x or 25:00 left
     assert "Time is up" in got["ended"] and "done or snooze?" in got["ended"], got
     assert got["buttons"][:2] == ["Done", "Snooze till tomorrow"], got
+    assert "Timer stopped" in got["slot"] and "still in the inbox" in got["slot"] and "→" not in got["slot"], got
+    assert got["hash"] == "#decision" and got["stored"] is None, got
+    assert store.get(t.id).status == "inbox"
 
 
 def test_the_agents_list_follows_todays_filters(store):

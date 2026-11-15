@@ -5,8 +5,9 @@
    skipped when the Motivation switch is off, and is a still highlight (no motion) when the system asks for reduced motion.
 
    The focus timer keeps {id, title, end} in localStorage, so it survives a reload and shows on every page. When it ends, the header
-   asks "Done or snooze?": Done posts to the ticket's existing Move (to done), Snooze to /focus/snooze/<id> (until tomorrow). Each shows
-   progress, then one plain sentence. Storage may be missing (a private window); the page still works, the timer just does not persist. */
+   asks "Done or snooze?": Done posts to /focus/done/<id> (an approved ticket closes, with an undo toast; any other ticket stays as it is
+   and its decision box opens for the next step), Snooze to /focus/snooze/<id> (until tomorrow). Each shows progress, then one plain
+   sentence. Storage may be missing (a private window); the page still works, the timer just does not persist. */
 (function () {
   "use strict";
   var root = document.getElementById("mot");
@@ -105,6 +106,7 @@
         put(localStorage, FOCUS_KEY, null);
         if (x.j && x.j.batch && window.deskToast) window.deskToast({ text: x.j.message || okText, batch: x.j.batch });
         done.disabled = snooze.disabled = true;
+        if (x.j && x.j.open) setTimeout(function () { location.assign(x.j.open); }, 1200);  // not closable yet: the decision box
         setTimeout(function () { drawFocus(); refresh(); }, 2500);
       } else {
         done.disabled = snooze.disabled = false;
@@ -113,7 +115,7 @@
     }
     done.addEventListener("click", function () {
       done.disabled = snooze.disabled = true;
-      post("/ticket/" + encodeURIComponent(f.id) + "/move", { to: "done" }, slot).then(function (x) { after(x, "Closed."); });
+      post("/focus/done/" + encodeURIComponent(f.id), {}, slot).then(function (x) { after(x, "Closed."); });
     });
     snooze.addEventListener("click", function () {
       done.disabled = snooze.disabled = true;
