@@ -1554,6 +1554,7 @@ def build_parser() -> argparse.ArgumentParser:
     from . import cli_brief  # DESK-0288: drew brief
     cli_brief.register(sub)
     __import__("desk.cli_notify", fromlist=["register"]).register(sub)  # DESK-0289: drew notify
+    from . import cli_automations; cli_automations.register(sub)  # DESK-0292: drew auto
     return p
 
 

@@ -1403,6 +1403,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
     app.include_router(routes_capture.router(store, templates, ctx, tokens, acting))  # DESK-0286: capture, paste-to-split, file drop
     from . import routes_brief  # DESK-0288: /brief, /flow, /repeats, /company, /deadlines.ics
     routes_brief.register(app, templates, ctx, store)
+    from . import routes_automations; app.include_router(routes_automations.router(templates, ctx, store, tokens))  # DESK-0292
     from . import routes_keys  # DESK-0290: palette actions, saved views, theme and type size; last, so it skips routes others own
 
     routes_keys.register(app, templates, store, ctx)

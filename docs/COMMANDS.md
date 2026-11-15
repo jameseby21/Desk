@@ -94,6 +94,20 @@ Phone push and email for the morning brief and alerts; the full guide, costs and
 | `drew brand-check [--create]` | projects missing a brand mark |
 | `drew capture hotkey [--dry-run \| --install \| --uninstall] [--port N]` | DESK-0286: a Start-menu shortcut, `Desk capture.lnk` in your own Programs folder, with the key Ctrl+Alt+J, that opens `http://127.0.0.1:<port>/capture` (port: `--port`, else `DESK_UI_PORT`, else 8765). With no flag, or `--dry-run`, it prints the shortcut path, the key, the address and the PowerShell it would run, and changes nothing. `--install` runs it (Windows; no admin rights); `--uninstall` removes the same file. Run it once on the machine where you want the key |
 
+## Automations
+Rules in `automations.yaml` at the store root; every rule, its source and what it does: [AUTOMATIONS.md](AUTOMATIONS.md) (DESK-0292).
+
+| Command or page | What it does | When |
+| --- | --- | --- |
+| `drew auto init` | writes the default `automations.yaml` (thirteen rules found in the record, each with its `source:`); refuses when the file exists | once per store |
+| `drew auto list` | every rule: on or off, what it does, where it comes from | to see what is set up |
+| `drew auto explain <rule>` | one rule in full: source, when, then, whether it overrides hand-set values, and the tickets it matches today | before turning a rule on or off |
+| `drew auto dry-run [--rule NAME] [--today YYYY-MM-DD]` | what each rule would change today and why, ticket by ticket; changes nothing | before every run |
+| `drew auto run [--rule NAME] [--today YYYY-MM-DD]` | the sweep: a progress bar per rule on stderr, and inside a slow rule a `ticket k of m` line at most once a second, then each change and one summary line with the batch id and the undo command; every change is by `automation` (kind rule); pull request rules use `gh` and are skipped with a plain line when it is missing or offline | when you want the rules applied |
+| `drew auto undo <batch>` | puts back every ticket that run changed, with a `restoring k of n` bar on stderr; a ticket the run created is closed as rejected with the reason; a ticket changed after the run is named and left alone | right after a run you did not want |
+| `/automations` (footer link) | the rules as tiles with what each would change today, and **Run now**: it shows which rule and which ticket of how many it is on, then the result sentence and an **Undo this run** button (hidden once DESK-0284's Undo toast is on the page; the redirect also carries `undo=<batch>` and `msg=` for that toast) | the same as dry-run, run and undo, in the browser |
+| `POST /automations/run`, `POST /automations/undo`, `GET /automations/job/<id>` | the page's buttons; with `Accept: application/json` they start a background job and answer `{job}`, and the job answers `{state, step, done, total, message, undo}` until it is done | used by the page's script; without script both post and redirect when finished |
+
 ## In the UI
 | Where | What |
 | --- | --- |
