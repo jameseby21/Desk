@@ -59,9 +59,9 @@
 .bt-debt.bt-high{border-color:var(--red)}
 
 /* Flow time */
-.fl-card{margin:12px 0 0}
-.fl-card>summary{cursor:pointer}
-.fl-card .fl-bar{margin:10px 0 8px}
+.fl-fact>summary{cursor:pointer}
+.fl-fact .fl-bar{margin:8px 0 6px}
+.fl-fact .bt-keys{gap:2px 10px;font-size:12.5px}
 .fl-note{font-size:13px;margin:8px 0 0}
 .fl-table td,.fl-table th{white-space:nowrap}
 .fl-table td:first-child{white-space:normal;min-width:14em}

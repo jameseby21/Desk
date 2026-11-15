@@ -21,8 +21,23 @@ SHOWN = 12  # decision tiles drawn on /brief; the rest are one link away (a stor
 def register(app, templates, ctx, store) -> None:
     router = APIRouter()
 
-    def today_tiles(s) -> dict:
+    def today_tiles(s, company: str = "", track: str = "", sprint: str = "", tag: str = "", ttype: str = "") -> dict:
+        """The two Today tiles, narrowed by the same Company, Track, Sprint, Tag and Type choices as the rest of Today."""
+        from .. import boardfilter as bfl, companies as compmod, tracks as trk
+        from .app import in_sprint
+
         ts = s.tickets()
+        if company:
+            of = compmod.by_project(s)
+            ts = [t for t in ts if compmod.slug(of.get(t.project) or compmod.of(s, t.project)) == company]
+        if track:
+            ts = [t for t in ts if trk.track_of(t) and trk.track_slug(trk.track_of(t)) == track]
+        if sprint:
+            ts = [t for t in ts if in_sprint(t, sprint)]
+        if tag:
+            ts = [t for t in ts if tag in bfl.tags_of(t)]
+        if ttype:
+            ts = [t for t in ts if bfl.type_of(t) == ttype]
         today = dt.date.today()
         return {"balance": bf.balance(s, ts, today), "debt": bf.review_debt(s, ts, today)}
 

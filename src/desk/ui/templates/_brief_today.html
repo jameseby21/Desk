@@ -1,6 +1,6 @@
 {# DESK-0288: the work balance and review-debt tiles on Today, included with one line. #}
 {% from "_brief_tiles.html" import balance_bar, debt_meter %}
-{% set bt = brief_tiles(s) %}
+{% set bt = brief_tiles(s, company=company, track=track, sprint=sprint, tag=tag, ttype=ttype) %}
 <link rel="stylesheet" href="{{ asset('brief.css') }}">
 <section class="bt-row" aria-label="Your week at a glance">
   {{ balance_bar(bt.balance) }}
