@@ -40,6 +40,7 @@ A store is any directory with a `desk.toml`. Desk finds it in this order: the `-
   glossary.md            # one `## Term` per entry; drives popovers and [[Term]] links
   DECISIONS.md           # process decisions, dated, append-only
   .desk/index.sqlite     # derived search index, gitignored, never the source of truth
+  .desk/motivation.toml  # per-person Motivation switches: focus timer, daily goal, count, celebration (DESK-0293)
 ```
 
 Create one with `desk init [path] [--owner name]`.

@@ -1,0 +1,3 @@
+{# DESK-0293: the decided-today line and the focus timer, in the header of every page. motivation.js fills both. #}
+{% set mo = motivation() %}<span class="mot" id="mot" data-count="{{ 1 if mo.count else 0 }}" data-celebrate="{{ 1 if mo.celebrate else 0 }}" data-token="{{ token() }}"><a class="mot-count" id="mot-count" href="/" aria-live="polite" title="Tickets you approved, sent back, closed or let go today" hidden></a><span class="mot-focus" id="mot-focus" hidden></span></span>
+<link rel="stylesheet" href="{{ asset('motivation.css') }}"><script src="{{ asset('motivation.js') }}" defer></script>

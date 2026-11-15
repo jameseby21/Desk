@@ -1,0 +1,2 @@
+{# DESK-0293: Start focus on an open ticket in the Now lane; the timer itself lives in the header (motivation.js). #}
+{% set mo = motivation() %}{% if mo.focus and focus_ok(t) %}<p class="mot-start"><button type="button" class="btn small" id="focus-start" data-focus-start="{{ t.id }}" data-title="{{ t.meta.get('title') }}" data-minutes="{{ mo.focus_minutes }}">Start focus · {{ mo.focus_minutes }} min</button> <span class="muted">A timer in the header. When it ends, you pick Done or Snooze.</span></p>{% endif %}

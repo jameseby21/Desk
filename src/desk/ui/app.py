@@ -1381,6 +1381,8 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
             return JSONResponse({"ok": True, "message": f"Moved to {s.get(ticket_id).status}.", "stamp": str(ev.ticket_stamp(s, t.id))})
         return _back(ticket_id, ok="move", anchor="decision")
 
+    from .routes_motivation import register as register_motivation  # DESK-0293
+    register_motivation(app, templates, store)
     return app
 
 
