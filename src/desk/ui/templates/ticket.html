@@ -43,33 +43,49 @@
 {% include "_motivation_focus.html" %}
 {% set x = score_of(t) if score_of is defined else none %}
 <p class="muted" id="score" style="margin-top:0">{% if x and x.score is not none %}<b class="score{% if x.emergency %} band{% endif %}">{{ x.score }}</b> of 100{% if x.emergency %}, in the emergency band{% endif %} · why: {{ x.why() }} · <a href="/doc/docs/PRIORITY.md">how the score works</a> · {% endif %}{{ t.meta.get('priority') }} · size {{ t.meta.get('size') }} · owner {{ who(t.meta.get('owner')) }} · created {{ t.meta.get('created') }} · updated {{ t.meta.get('updated') }}{% if t.meta.get('done_at') %} · done {{ t.meta.get('done_at') }}{% endif %}{% if t.meta.get('branch') %} · <code>{{ t.meta.get('branch') }}</code>{% endif %}</p>
-{% if tl is defined and tl %}{# DESK-0171: the latest change on one line, then every event; a plain default until Chaz's design (DESK-0170) #}
+{% if tl is defined and tl %}{# DESK-0171 the latest change; DESK-0305 the visual timeline, open by default: the status strip, then the event rail #}
 <section class="tl" id="timeline" aria-label="Timeline of this ticket">
   {% set L = tl.latest %}
-  <p class="tl-latest" id="tl-latest"{% if L %} title="{{ L.actor_name }} ({{ L.kind_label }}) · {{ L.what }} · {{ L.when }}"{% endif %}>
+  <p class="tl-latest" id="tl-latest"{% if L %} title="{{ L.actor_name }} ({{ L.kind_label }}) · {{ L.shown_what }} · {{ L.when }}{% if tl.git_after %} · +{{ tl.git_after }} git saves since{% endif %}"{% endif %}>
     <span class="tl-cap">Latest change</span>
-    {% if L %}<i class="tl-dot" style="background:{{ L.colours.kind }}"></i><b class="tl-who">{{ L.actor_name }}</b><span class="tl-kind">{{ L.kind_label }}</span><span class="tl-what">{{ L.what }}</span><span class="tl-when">{{ L.when }}</span>{% else %}<span class="tl-what muted">No changes recorded yet.</span>{% endif %}
+    {% if L %}<i class="tl-dot" style="background:{{ L.colours.kind }}"></i><b class="tl-who">{{ L.actor_name }}</b><span class="tl-kind">{{ L.kind_label }}</span><span class="tl-what">{{ L.shown_what }}</span><span class="tl-when">{{ L.when }}</span>{% if tl.git_after %}<span class="tl-plus">+{{ tl.git_after }} git save{{ 's' if tl.git_after != 1 else '' }} since</span>{% endif %}{% else %}<span class="tl-what muted">No changes recorded yet.</span>{% endif %}
   </p>
   {% include "_undo_who.html" %}
-  {% if tl.rows %}
-  <details class="tl-all" id="tl-all">
-    <summary>Expand all events ({{ tl.rows|length }})</summary>
-    <div class="tl-tools">
-      <label class="tl-by">Colour by <select id="tl-by" aria-label="Colour the events by">{% for f in tl.facets %}<option value="{{ f.dim }}"{% if f.dim == 'kind' %} selected{% endif %}>{{ f.label }}</option>{% endfor %}</select></label>
-      {% for f in tl.facets %}<details class="tl-f" data-dim="{{ f.dim }}"><summary>{{ f.label }} <span class="tl-on" data-of="{{ f.dim }}"></span></summary>
-        <div class="tl-opts">{% for v, lab, n, col in f.values %}<label><input type="checkbox" value="{{ v }}" data-dim="{{ f.dim }}"><i class="tl-dot" style="background:{{ col }}"></i><span>{{ lab }}</span> <span class="tl-count">{{ n }}</span></label>{% endfor %}</div>
-      </details>{% endfor %}
-      <button type="button" class="btn small" id="tl-clear" hidden>Clear filters</button>
-    </div>
-    <p class="tl-shown" id="tl-shown" aria-live="polite">Showing all {{ tl.rows|length }} events, newest first.</p>
-    <div class="tl-legend" id="tl-legend" aria-label="What the colours mean">{% for f in tl.facets if f.dim == 'kind' %}{% for v, lab, n, col in f.values %}<span><i class="tl-dot" style="background:{{ col }}"></i>{{ lab }} {{ n }}</span>{% endfor %}{% endfor %}</div>
-    <ol class="tl-list" id="tl-list">
-      {% for r in tl.rows %}<li class="tl-ev"{% for d in r.dims %} data-{{ d }}="{{ r.dims[d] }}" data-c-{{ d }}="{{ r.colours[d] }}" data-l-{{ d }}="{{ r.labels[d] }}"{% endfor %}>
-        <i class="tl-mark" style="background:{{ r.colours.kind }}"></i>
-        <div class="tl-body"><div class="tl-head"><b>{{ r.actor_name }}</b> <span class="tl-kind">{{ r.kind_label }}</span> <span class="muted">{{ r.source_label }} · {{ r.when }}</span></div><div class="tl-what">{{ r.what }}</div></div>
-      </li>{% endfor %}
+  <div class="tl-strip-wrap" id="tl-strip">
+    <span class="tl-cap">Status over time</span>
+    <ol class="tl-strip" aria-label="Status over time, oldest first">
+      {% for p in tl.periods %}<li class="tl-seg st-{{ p.css }}{% if p.current %} tl-now{% endif %}" style="flex-grow:{{ p.share }}" tabindex="0" title="{{ p.text }}" data-text="{{ p.text }}"><span class="tl-lab{% if p.share < 18 %} tl-hide{% endif %}" aria-hidden="true">{{ p.label }}</span><span class="vh">{{ p.text }}</span></li>{% endfor %}
     </ol>
-  </details>
+    {% if tl.axis %}<div class="tl-axis" id="tl-axis" aria-hidden="true">{% for pct, lab, cls in tl.axis %}<span class="tl-tick {{ cls }}" style="left:{{ pct }}%">{{ lab }}</span>{% endfor %}</div>{% endif %}
+    <div class="tl-ends"><span class="tl-end">Created {{ tl.created_text }}</span><span class="tl-end">Now</span></div>
+    {% set C = tl.periods[-1] %}<p class="tl-st-info" id="tl-st-info" data-now="{{ C.text }}">{{ C.text }}</p>
+    {% if tl.on_you %}<p class="tl-onyou" id="tl-onyou"><span class="tl-onme">On you</span> {{ tl.on_you }}</p>{% endif %}
+    {% set older = tl.periods|length - tl.key_first %}<ol class="tl-key" id="tl-key" aria-label="Each status period, oldest first">
+      {% if older > 0 %}<li class="tl-k-more"><button type="button" class="btn small" id="tl-key-more" aria-expanded="false">Show the {{ older }} earlier periods</button></li>{% endif %}
+      {% for p in tl.periods %}<li class="tl-k{% if p.current %} tl-k-now{% endif %}"{% if loop.index0 < older %} data-old hidden{% endif %}><i class="tl-sw st-{{ p.css }}" aria-hidden="true"></i><b class="tl-kname">{{ p.label }}</b>{% if p.on_owner %}<span class="tl-onme">on you</span>{% endif %}{% set k = p.key %}<span class="tl-krest">{{ k.pre }}{% if k.wd %}<span class="tl-wd">{{ k.wd }} </span>{% endif %}{{ k.dm }}{% if k.tm %}<span class="tl-tm">{{ k.tm }}</span>{% endif %}{{ k.post }}{% if k.note %}<span class="tl-knote">{{ k.note }}</span>{% endif %}</span></li>{% endfor %}
+    </ol>
+    {% if tl.periods|selectattr('unknown')|list %}<p class="tl-gap" id="tl-gap"><i class="tl-sw st-unknown" aria-hidden="true"></i>Hatched: Not recorded. No status record (Desk's log, a git commit of the ticket file, or its done date) says what the status was then.</p>{% endif %}
+  </div>
+  {% if tl.rows %}
+  <div class="tl-rail-wrap" id="tl-rail">
+    <div class="tl-chips" role="group" aria-label="Show only">
+      <span class="tl-cap">Show only</span>
+      {% for k, lab in tl.chips %}<button type="button" class="tl-chip" data-filter="{{ k }}" aria-pressed="{{ 'true' if k == 'all' else 'false' }}">{{ lab }} <span class="tl-n">{{ tl.counts[k] }}</span></button>{% endfor %}
+    </div>
+    <details class="tl-more-f" id="tl-more-f"><summary>More filters</summary>
+      <div class="tl-tools">
+        {% for f in tl.facets %}<details class="tl-f" data-dim="{{ f.dim }}"><summary>{{ f.label }} <span class="tl-on" data-of="{{ f.dim }}"></span></summary>
+          <div class="tl-opts">{% for v, lab, n, col in f.values %}<label><input type="checkbox" value="{{ v }}" data-dim="{{ f.dim }}"><i class="tl-dot" style="background:{{ col }}"></i><span>{{ lab }}</span> <span class="tl-count">{{ n }}</span></label>{% endfor %}</div>
+        </details>{% endfor %}
+        <button type="button" class="btn small" id="tl-clear" hidden>Clear filters</button>
+      </div>
+    </details>
+    <p class="tl-shown" id="tl-shown" aria-live="polite">{% if tl.units > tl.first %}Showing the newest {{ tl.first_events }} of {{ tl.rows|length }} events.{% elif tl.rows|length == 1 %}Showing the one event.{% else %}Showing all {{ tl.rows|length }} events, newest first.{% endif %}</p>
+    <ol class="tl-days" id="tl-list" data-first="{{ tl.first }}">
+      {{ tl.rail(page_mask()) }}{# built in timeline.rail_html, masked like the rest of the page: a 2,000 event ticket stays under 300 ms (DESK-0305) #}
+    </ol>
+    <button type="button" class="btn small" id="tl-showall" aria-expanded="false" aria-controls="tl-list" data-all="Show all {n} events" data-few="Show the newest {{ tl.first }}"{% if tl.units <= tl.first %} hidden{% endif %}>Show all {{ tl.rows|length }} events</button>
+  </div>
   {% endif %}
 </section>
 <script src="{{ asset('timeline.js') }}" defer></script>

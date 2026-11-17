@@ -339,13 +339,23 @@ def comment_events(t, pe, owner: str) -> list[Event]:
     return out
 
 
+def _git_actor(name: str, email: str, trailers: str, pe, owner: str) -> tuple[str, str]:
+    """(actor, kind) for a commit: the person whose name, alias or OS user matches the git author; a commit whose Co-Authored-By
+    trailer names an AI is a code session's (claude-code)."""
+    from . import identity
+
+    if _AI_COAUTHOR.search(trailers or ""):
+        return "claude-code", "code"
+    p = (identity._person_for(pe, name) or identity._person_for(pe, email.split("@")[0])) if pe is not None else None
+    actor = p.key if p else name
+    return actor, kind_for(actor, "", owner, pe)
+
+
 def git_history(home: Path, pe, owner: str) -> tuple[dict[str, list[Event]], str]:
     """({ticket id: [one event per commit that touched its file]}, a note when there is no git history to read). One `git log` call
     for the whole store; a renamed ticket file keeps its id prefix, so commits are found by id, not by file name. A commit with a
     Co-Authored-By trailer naming an AI is a code session's (claude-code), not its git author's; the raw author is kept in `old`, and
     no git event is confirmed, because a git user name is whatever the machine is set to (sessions commit under the owner's)."""
-    from . import identity
-
     try:
         r = subprocess.run(["git", "-C", str(home), "log", "--format=%x1e%H%x1f%an%x1f%ae%x1f%aI%x1f%s%x1f%(trailers:key=Co-authored-by,valueonly,separator=%x1d)", "--name-only", "--", "tickets/"],
                            capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300)
@@ -362,11 +372,7 @@ def git_history(home: Path, pe, owner: str) -> tuple[dict[str, list[Event]], str
         if len(parts) < 5:
             continue
         sha, name, email, when, subject = parts[:5]
-        p = identity._person_for(pe, name) or identity._person_for(pe, email.split("@")[0]) if pe is not None else None
-        actor = p.key if p else name
-        kind = kind_for(actor, "", owner, pe)
-        if _AI_COAUTHOR.search(parts[5] if len(parts) > 5 else ""):
-            actor, kind = "claude-code", "code"
+        actor, kind = _git_actor(name, email, parts[5] if len(parts) > 5 else "", pe, owner)
         try:
             ts = dt.datetime.fromisoformat(when).replace(tzinfo=None).isoformat()
         except ValueError:
@@ -415,3 +421,157 @@ def migrate(store, apply: bool, progress=None) -> tuple[list[tuple[str, int, int
         for _tid, _c, _g, evs in rows:
             wrote += len(append(store.home, evs))
     return rows, wrote, note
+
+
+# -- a ticket's own git history, read when its page is opened (DESK-0305) --------------------------------------------------------
+# Status changes in a store are mostly made by editing the ticket file and committing it, which never writes a field event, and
+# `drew migrate events` adds commits without their status. So the timeline also reads the ticket file as it was at each commit
+# that touched it: one `git log` for that ticket's paths and one `git cat-file --batch` for the versions. Cached per ticket until
+# the file or the repository's HEAD log changes, so a page refresh costs a few file stats.
+
+@dataclass(frozen=True)
+class Snapshot:
+    """The ticket file as one commit left it: when, who, the subject line, and the status its front matter said."""
+    sha: str
+    ts: str  # local wall-clock time of the author date, YYYY-MM-DDTHH:MM:SS (as git_history writes it)
+    actor: str
+    kind: str
+    author: str  # the raw git author name
+    subject: str
+    status: str  # "" when the file was deleted or its front matter has no status
+    first: bool = False  # the oldest commit of this ticket's file: where git first saw it
+
+
+_FM_STATUS = re.compile(r"^status:[ \t]*['\"]?([^'\"\s#]*)", re.M)
+_SNAP_CACHE: dict = {}
+
+
+def _gitdir(home: Path) -> Path | None:
+    """The .git folder of the repository that holds `home` (a worktree's .git file is followed); None outside git. File checks only."""
+    for d in (Path(home), *Path(home).resolve().parents):
+        g = d / ".git"
+        if g.is_dir():
+            return g
+        if g.is_file():
+            try:
+                line = g.read_text(encoding="utf-8").strip()
+            except OSError:
+                return None
+            if line.startswith("gitdir:"):
+                p = Path(line[len("gitdir:"):].strip())
+                return p if p.is_absolute() else (d / p).resolve()
+            return None
+    return None
+
+
+def _stamp(p: Path | None):
+    try:
+        st = p.stat() if p is not None else None
+    except OSError:
+        return None
+    return (st.st_mtime_ns, st.st_size) if st else None
+
+
+def front_status(text: str) -> str:
+    """The status a ticket file's front matter says, or "" (no front matter or no status line). The body is never read."""
+    if not text.startswith("---"):
+        return ""
+    end = text.find("\n---", 3)
+    m = _FM_STATUS.search(text[: end if end >= 0 else len(text)])
+    return m.group(1).strip() if m else ""
+
+
+def snapshots(home: Path, ticket_id: str, file: Path | None = None, pe=None, owner: str = "") -> list[Snapshot]:
+    """Every commit that touched this ticket's file (`tickets/<ID>-*.md` or `tickets/<ID>.md`, so a renamed slug keeps its history),
+    oldest first, with the status the file said at that commit. [] outside a git repository or when git cannot be read."""
+    tid = ticket_id.upper()
+    gd = _gitdir(home)
+    if gd is None:
+        return []
+    key = (str(Path(home).resolve()), tid)
+    stamp = (_stamp(file), _stamp(gd / "logs" / "HEAD"), _stamp(gd / "HEAD"), _stamp(gd / "packed-refs"), owner)
+    hit = _SNAP_CACHE.get(key)
+    if hit and hit[0] == stamp:
+        return hit[1]
+    try:
+        r = subprocess.run(["git", "-C", str(home), "log", "--no-renames", "--relative",
+                            "--format=%x1e%H%x1f%aI%x1f%an%x1f%ae%x1f%s%x1f%(trailers:key=Co-authored-by,valueonly,separator=%x1d)",
+                            "--name-status", "--", f"tickets/{tid}-*.md", f"tickets/{tid}.md"],
+                           capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=60)
+    except (OSError, subprocess.SubprocessError):
+        return []
+    if r.returncode != 0:
+        return []
+    rows = []
+    for block in r.stdout.split("\x1e"):
+        if not block.strip():
+            continue
+        head, _, files = block.partition("\n")
+        parts = head.split("\x1f")
+        if len(parts) < 5:
+            continue
+        path, gone = "", False
+        for ln in files.splitlines():
+            bits = ln.split("\t")
+            if len(bits) >= 2 and bits[-1].startswith("tickets/"):
+                path, gone = bits[-1], bits[0].startswith("D")
+                if not gone:
+                    break
+        if not path:
+            continue  # a merge commit lists no files: the commits it joins are listed on their own
+        try:
+            ts = dt.datetime.fromisoformat(parts[1]).replace(tzinfo=None).isoformat()
+        except ValueError:
+            continue
+        rows.append((parts, ts, path, gone))
+    rows.reverse()  # git lists newest first
+    want = [f"{p[0]}:./{path}" for p, _ts, path, gone in rows if not gone]
+    texts: dict[str, str] = {}
+    if want:
+        try:
+            c = subprocess.run(["git", "-C", str(home), "cat-file", "--batch"], input=("\n".join(want) + "\n").encode("utf-8"),
+                               capture_output=True, timeout=60)
+            out, i = c.stdout, 0
+            for name in want:
+                nl = out.find(b"\n", i)
+                if nl < 0:
+                    break
+                head = out[i:nl].split()
+                i = nl + 1
+                if len(head) == 3 and head[1] == b"blob":
+                    size = int(head[2])
+                    texts[name] = out[i:i + size].decode("utf-8", "replace")
+                    i += size + 1
+        except (OSError, subprocess.SubprocessError, ValueError):
+            texts = {}
+    snaps = []
+    for n, (parts, ts, path, gone) in enumerate(rows):
+        sha, _when, name, email, subject = parts[:5]
+        actor, kind = _git_actor(name, email, parts[5] if len(parts) > 5 else "", pe, owner)
+        st = "" if gone else front_status(texts.get(f"{sha}:./{path}", ""))
+        snaps.append(Snapshot(sha, ts, actor, kind, name, _val(subject), st, first=n == 0))
+    _SNAP_CACHE[key] = (stamp, snaps)
+    return snaps
+
+
+def events_from_git(ticket_id: str, snaps: list[Snapshot], logged: list[Event]) -> list[Event]:
+    """The events the log is missing that the ticket's git history proves: one `git` save per commit not already in the log (same
+    key as `drew migrate events` writes), and one status change per commit whose file says a different status from the commit before
+    it, unless the log already has that move (a Desk save between the two commits that reached the same status). Not written to
+    the log: the page and `drew history` add them when they read, so a ticket edited and committed outside Desk has its history."""
+    tid = ticket_id.upper()
+    have = {e.key for e in logged if e.key}
+    moves = sorted(((e.ts, e.new) for e in logged if e.change == "field" and e.field == "status"), key=lambda x: x[0])
+    out, prev = [], None
+    for s in snaps:  # the status change first: at the same second, the newest-first rail and Latest change then lead with it
+        if prev is not None and s.status and prev.status and s.status != prev.status and f"gitstatus:{s.sha}" not in have:
+            between = [new for ts, new in moves if prev.ts < ts <= s.ts]
+            if not between or between[-1] != s.status:
+                old = between[-1] if between else prev.status
+                out.append(Event(tid, s.ts, s.actor, s.kind, "git", "field", "status", old, s.status, f"status: {old} → {s.status}", "", False,
+                                 f"gitstatus:{s.sha}"))
+        if f"git:{s.sha}" not in have:
+            out.append(Event(tid, s.ts, s.actor, s.kind, "git", "git", "git", s.author, s.sha[:10], f"Saved in git: {s.subject}", "", False, f"git:{s.sha}"))
+        if s.status:
+            prev = s
+    return out
