@@ -11,6 +11,10 @@ CSS = re.sub(r"/\*.*?\*/", "", (Path(__file__).resolve().parents[1] / "src" / "d
 MAY_BREAK_LONG_TOKENS = {
     ".shot-meta", ".toast a", ".tl-opts label", ".tl-ev .tl-what", ".part-of", ".sub-title", ".cc-sub",
     ".tr-part,.nm-part", ".part-line",
+    # Reviewed 2026-11-17 (DESK-0282): the phone rule for the Latest change line shows the same free text as .tl-ev .tl-what
+    # (shown_what: commit subjects, paths, ids) as a full-row, two-line clamp; tests/test_latest_change_phone.py needs a
+    # 300-character token to stay inside it. Full row width is guarded below, so it never sits in a box narrower than a word.
+    ".tl-latest .tl-what",
 }
 
 
@@ -55,3 +59,13 @@ def test_mid_word_breaks_are_a_reviewed_exception():
         if "overflow-wrap:anywhere" in body or "hyphens:auto" in body:
             found.add(sel.strip().split("}")[-1].strip())
     assert found <= MAY_BREAK_LONG_TOKENS, sorted(found - MAY_BREAK_LONG_TOKENS)
+
+
+def test_the_latest_change_text_breaks_long_tokens_only_on_a_full_row():
+    """Protects the .tl-latest .tl-what exception: on a phone it takes the whole row (flex-basis 100%), so a normal word always fits
+    and only an over-long token (a path, a URL) ever breaks; if it shares a row again, the exception no longer holds."""
+    rules = re.findall(r"\.tl-latest \.tl-what\{([^}]*)\}", CSS)
+    breaking = [r for r in rules if "overflow-wrap:anywhere" in r]
+    assert breaking, rules
+    for r in breaking:
+        assert "flex:1 1 100%" in r and "hyphens" not in r, r
