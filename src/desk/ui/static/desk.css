@@ -44,7 +44,12 @@ label{display:flex;flex-direction:column;gap:6px;font-size:14px}
 @media (max-width:900px){.cols{grid-template-columns:minmax(0,1fr)}}
 .section{margin-bottom:18px}
 .section ul{margin:4px 0;padding-left:20px}
-code{font-family:var(--font-mono);font-size:13px;background:var(--paper);padding:1px 5px;border-radius:5px}
+code{font-family:var(--font-mono);font-size:13px;background:var(--paper);padding:1px 5px;border-radius:5px;overflow-wrap:break-word;min-width:0}
+/* DESK-0303 (DESK-0282 checker F2): a long unbroken token (a link, a path, an id) in free text breaks where a line cannot hold it.
+   break-word, not anywhere: it never splits a word that fits on a line and leaves min-content alone, so no header or label is split
+   (DESK-0302); the boxes around such text are minmax(0,…) tracks or min-width:0 items so the token cannot widen them instead. */
+.md{overflow-wrap:break-word;min-width:0}
+.fields{overflow-wrap:break-word;min-width:0}
 .error{background:var(--card);border:1.5px solid var(--red);border-radius:12px;padding:10px 14px;color:var(--red);margin-bottom:16px}
 .board{display:grid;grid-auto-flow:column;grid-auto-columns:minmax(230px,1fr);gap:12px;overflow-x:auto;padding-bottom:12px}
 .col h3{font-size:14px;margin:0 0 8px;display:flex;justify-content:space-between}
@@ -122,7 +127,7 @@ button:disabled{opacity:.55;cursor:wait}
 .gloss .pop{display:none;position:absolute;left:0;top:1.6em;z-index:5;width:max-content;max-width:320px;padding:8px 10px;border:1px solid var(--ink);border-radius:10px;background:var(--card);color:var(--ink);font-size:13.5px;line-height:1.4;box-shadow:4px 4px 0 var(--ball)}
 .gloss:hover .pop,.gloss:focus .pop,.gloss:focus-within .pop{display:block}
 a.docref{font-family:var(--font-mono);font-size:.92em}a.gloss-link{border-bottom:1.5px dotted var(--ink);text-decoration:none}
-.mentions{margin:6px 0 0;padding-left:18px}.docmeta{display:grid;grid-template-columns:max-content 1fr;gap:2px 14px;font-size:14px;margin:0 0 14px}.docmeta dt{color:var(--muted)}.docmeta dd{margin:0}
+.mentions{margin:6px 0 0;padding-left:18px}.docmeta{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:2px 14px;font-size:14px;margin:0 0 14px}.docmeta dt{color:var(--muted)}.docmeta dd{margin:0;min-width:0;overflow-wrap:break-word}
 a.vsc{font:12px var(--font-mono);color:var(--muted);margin-left:4px;text-decoration:none;border:1px solid var(--line);border-radius:999px;padding:1px 6px}a.vsc:hover{color:var(--ink);border-color:var(--ink)}
 .chip.ty{color:#141414;border-color:transparent;font-weight:500}
 .ty-feature{background:#C8F03C}.ty-upgrade{background:#7FD6C2}.ty-bug{background:#F4A3A6}.ty-task{background:#F2D98B}
@@ -527,7 +532,9 @@ header .search-open kbd{position:absolute;right:10px;top:50%;transform:translate
 .nm-count{min-width:30px;height:28px;padding:0 9px;border-radius:999px;background:#141414;color:#C8F03C;display:inline-grid;place-items:center;font:700 14px/1 var(--font-mono)}
 .nm-count.zero{background:#EEEBE2;color:#6A6963}
 .nm-note{font-size:12.5px;line-height:1.45;color:var(--muted)}
-.nm-tools{margin-left:auto;display:flex;gap:8px;align-items:center}
+/* DESK-0282 checker F1: the tools wrap, and on a phone take their own full line, so decide.js's added link never pushes the row
+   past the card's right edge */
+.nm-tools{margin-left:auto;display:flex;flex-wrap:wrap;gap:8px;align-items:center;min-width:0}
 .nm-tools form{margin:0}
 .nm-row{display:grid;grid-template-columns:112px minmax(0,1fr) auto;gap:12px;align-items:center;padding:10px 0;border-top:1px solid #EEEBE2}
 .nm-ask,.nm-chg,.nm-emerg{display:inline-flex;align-items:center;font:700 12px/1 var(--font-body);padding:5px 7px;border-radius:6px;white-space:nowrap;justify-self:start}
@@ -547,7 +554,7 @@ header .search-open kbd{position:absolute;right:10px;top:50%;transform:translate
 .nm-foot{border-top:1px solid #EEEBE2;padding-top:10px}
 .nm-why.under{margin-top:4px;white-space:normal}
 .views a[aria-current="page"]{color:var(--ink);text-decoration:none}
-@media (max-width:700px){.nm-row{grid-template-columns:1fr}}
+@media (max-width:700px){.nm-row{grid-template-columns:1fr}.nm-tools{margin-left:0;flex-basis:100%}}
 
 /* DESK-0154 / DESK-0155 (Chaz F1 to F5): one flag component for every flagged thing. Red #C21B24, white text, a 3 px rule on the left,
    one 20 px reason line cut with an ellipsis, More opens the rest in place. Marks, words and colours are the same in every style. */

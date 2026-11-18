@@ -288,7 +288,7 @@
       {% endif %}
     </div>
 
-    <div class="card section" style="font-size:14px;display:flex;flex-direction:column;gap:10px">
+    <div class="card section fields" style="font-size:14px;display:flex;flex-direction:column;gap:10px">
       {% if t.meta.get('effort_hours') %}<div><span class="label">Effort</span><div>{{ t.meta.get('effort_hours')[0] }} to {{ t.meta.get('effort_hours')[1] }} hours{% if t.meta.get('confidence') %}, {{ (t.meta.get('confidence')*100)|int }}% sure{% endif %}</div></div>{% endif %}
       <div id="assignee"><span class="label">Assignee</span>
         <form class="post-once assign-form autosubmit" method="post" action="/ticket/{{ t.id }}/assign" data-inplace="refresh" data-progress="Sending,Saving,Done">
