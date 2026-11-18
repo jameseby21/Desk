@@ -46,3 +46,7 @@
 .who-chip b{font-weight:600}
 .who-chip[data-kind=rule]{border-style:dashed}
 .who-log{font-size:13px}
+.who-n{display:none;font-size:13px;color:var(--muted)}
+/* A phone shows the row as one line (Changed by, N fields, Undo log): one chip per row pushed the status strip and the first
+   status change past 1.5 phone screens (DESK-0282, the DESK-0305 phone rule). The chips are on wider screens and in the Undo log. */
+@media (max-width:600px){.who-chips{flex-wrap:nowrap}.who-chips .who-chip{display:none}.who-n,.who-log{display:inline;white-space:nowrap}}

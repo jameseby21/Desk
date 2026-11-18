@@ -4,5 +4,6 @@
 {% if ns.chips %}<div class="who-chips" aria-label="Who changed each field">
   <span class="tl-cap">Changed by</span>
   {% for r in ns.chips[:12] %}<span class="chip who-chip" data-kind="{{ r.dims.kind }}" title="{{ r.what }} · {{ r.actor_name }} ({{ r.kind_label }}) · {{ r.source_label }} · {{ r.when }}"><b>{{ r.event.field }}</b> {{ r.event.new or 'empty' }} <i class="tl-dot" style="background:{{ r.colours.kind }}"></i>{{ r.actor_name }} · {{ r.kind_label }}</span>{% endfor %}
+  <span class="who-n">{{ ns.chips|length }} field{{ 's' if ns.chips|length != 1 else '' }}</span>
   <a class="who-log" href="/undo?ticket={{ tl.ticket_id }}">Undo log</a>
 </div>{% endif %}

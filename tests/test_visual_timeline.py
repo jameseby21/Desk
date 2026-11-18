@@ -429,10 +429,11 @@ def test_route_consecutive_git_saves_are_one_folded_row_and_the_first_12_keep_th
 def test_browser_on_a_phone_the_latest_line_keeps_who_and_what_and_the_first_status_change_is_near_the_top(store, width):
     """Protects the phone (finding 6): at 320 and 390 px the Latest change shows who and at least 20 characters of what changed, the
     first status change or decision is among the first 6 rows of the rail (the 11th unfolded) and within 1.5 phone screens (844 px) of the timeline's top
-    (the page's own header above the title is not the timeline's), and the fold opens its 6 saves in place."""
+    (the page's own header above the title is not the timeline's), and the fold opens its 6 saves in place. undo.css is inlined with
+    desk.css because the real page loads it (through undo.js) and it styles the Changed by row inside the timeline (DESK-0282)."""
     t, _ = _burst(store)
     html = _page(store, t)
-    css = (STATIC / "desk.css").read_text(encoding="utf-8")
+    css = (STATIC / "desk.css").read_text(encoding="utf-8") + (STATIC / "undo.css").read_text(encoding="utf-8")
     js = (STATIC / "timeline.js").read_text(encoding="utf-8")
     measure = """<script>addEventListener('load',function(){setTimeout(function(){
 var lat=document.getElementById('tl-latest'),box=lat.getBoundingClientRect(),who=lat.querySelector('.tl-who'),what=lat.querySelector('.tl-what');
@@ -454,6 +455,39 @@ fetch('/m',{method:'POST',body:JSON.stringify(out)});},300);});</script>"""
     assert 0 <= d["firstRow"] < 6 and 0 < d["firstTop"] < 1.5 * 844, d
     assert d["after"] == d["before"] + 6 and d["exp"] == "true" and d["back"] == d["before"], d
     assert d["over"] == [], d  # nothing in the timeline past the right edge (the page-wide 320 px scroll is DESK-0303)
+
+
+@pytest.mark.skipif(browser() is None, reason="no Edge or Chrome installed")
+@pytest.mark.parametrize("width", [320, 390])
+def test_browser_on_a_phone_the_changed_by_row_is_one_line_whatever_the_number_of_fields(store, width):
+    """Protects the phone after the daily loop put DESK-0284's Changed by row inside the timeline (DESK-0282): with 12 changed fields
+    the row stays one line (Changed by, N fields, Undo log), no chip is drawn, nothing passes the right edge, and the status strip
+    starts within one line of the Latest change box (the first status change near the top is the test above). Before the fix each
+    chip took its own row: 405 px of chips between Latest change and the strip."""
+    t, start = _burst(store)
+    fields = ["priority", "size", "owner", "assignee", "track", "sprint", "project", "company", "review_by", "branch", "type"]
+    activity.append(store.home, [activity.Event(t.id, (start - dt.timedelta(minutes=30 - i)).isoformat(), "main-a", "main", "cli", "field", f,
+                                                "", f"a new {f} value", f"{f}: empty → a new {f} value") for i, f in enumerate(fields)])
+    html = _page(store, t)
+    assert html.count('class="chip who-chip"') == 12 and '<span class="who-n">12 fields</span>' in html
+    css = (STATIC / "desk.css").read_text(encoding="utf-8") + (STATIC / "undo.css").read_text(encoding="utf-8")
+    js = (STATIC / "timeline.js").read_text(encoding="utf-8")
+    measure = """<script>addEventListener('load',function(){setTimeout(function(){
+var w=document.documentElement.clientWidth,row=document.querySelector('.who-chips'),log=row.querySelector('.who-log'),n=row.querySelector('.who-n');
+var over=[];
+row.querySelectorAll('*').forEach(function(e){var r=e.getBoundingClientRect();if(r.width&&r.right>w+1)over.push(e.className);});
+var gap=document.getElementById('tl-strip').getBoundingClientRect().top-document.getElementById('tl-latest').getBoundingClientRect().bottom;
+fetch('/m',{method:'POST',body:JSON.stringify({iw:innerWidth,h:row.getBoundingClientRect().height,lh:parseFloat(getComputedStyle(log).fontSize)*1.5,
+ chips:Array.prototype.filter.call(row.querySelectorAll('.who-chip'),function(c){return c.offsetWidth>0;}).length,
+ logShown:log.offsetWidth>0,n:n.offsetWidth>0?n.textContent:'',over:over,gap:gap})});},300);});</script>"""
+    html = re.sub(r'<link rel="stylesheet" href="/static/desk.css[^"]*">', lambda m: f"<style>{css}</style>", html)
+    html = re.sub(r'<link rel="stylesheet" href="https://fonts[^>]*>|<link rel="preconnect"[^>]*>', "", html)
+    html = re.sub(r'<script src="[^"]*"[^>]*></script>', "", html).replace("</body>", f"<script>{js}</script>" + measure + "</body>")
+    d = run_in_browser(html, width)
+    assert d["iw"] == width, d  # a real client width, not a window that will not shrink
+    assert d["chips"] == 0 and d["logShown"] and d["n"] == "12 fields" and d["over"] == [], d
+    assert d["h"] < 2 * d["lh"] + 8, d  # one line
+    assert 0 < d["gap"] < 2 * d["lh"] + 16, d  # the strip follows Latest change after one line, whatever the count
 
 
 # -- the strip reads without colour or hover (DESK-0305 review, finding 5) --------------------------------------------------------
