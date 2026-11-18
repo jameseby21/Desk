@@ -2,8 +2,8 @@
    Colours come from desk.css tokens only. No width here is fixed above 390 px: a phone (390 px) never scrolls sideways. */
 
 /* Theme: the server writes data-theme on <html> from the device's cookie; no attribute means follow the system (desk.css). */
-:root[data-theme="dark"]{--paper:#141414;--ink:#F5F3EC;--muted:#A8A69D;--line:#33322E;--card:#1D1D1B;--on-ink:#141414;--focus:#C8F03C;color-scheme:dark}
-:root[data-theme="light"]{--paper:#F5F3EC;--ink:#141414;--muted:#6A6963;--line:#E2DFD5;--card:#FFFFFF;--on-ink:#F5F3EC;--focus:#141414;color-scheme:light}
+:root[data-theme="dark"]{--paper:#141414;--ink:#F5F3EC;--muted:#A8A69D;--line:#33322E;--card:#1D1D1B;--on-ink:#141414;--focus:#C8F03C;--st-inbox:#55534D;color-scheme:dark}
+:root[data-theme="light"]{--paper:#F5F3EC;--ink:#141414;--muted:#6A6963;--line:#E2DFD5;--card:#FFFFFF;--on-ink:#F5F3EC;--focus:#141414;--st-inbox:var(--line);color-scheme:light}
 :root[data-theme="dark"] textarea,:root[data-theme="dark"] input,:root[data-theme="dark"] select{color:var(--ink)}
 /* desk.css changes two colours in its own dark-mode blocks, outside the tokens: a chosen theme sets both ways, or a form error and a
    masked word keep the computer's colours on the other theme's page. .mask skips .shown, which desk.css makes transparent. */

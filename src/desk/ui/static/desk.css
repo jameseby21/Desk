@@ -402,7 +402,7 @@ header .search-open kbd{position:absolute;right:10px;top:50%;transform:translate
 
 /* Ticket timeline (DESK-0171 latest change, DESK-0305 the visual timeline). Text never below 12 px; labels never split a word
    (no overflow-wrap:anywhere or hyphens on a label: DESK-0302); only the free text of an event may break inside a long token. */
-:root{--st-triage:#EDC948;--st-ready:#76B7B2;--st-claimed:#A0CBE8;--st-progress:#4E79A7;--st-changes:#F28E2B;--st-approved:#59A14F;--st-rejected:#7A5A48;
+:root{--st-inbox:var(--line);--st-triage:#EDC948;--st-ready:#76B7B2;--st-claimed:#A0CBE8;--st-progress:#4E79A7;--st-changes:#F28E2B;--st-approved:#59A14F;--st-rejected:#7A5A48;
   --ek-comment:#4E79A7;--ek-git:#B07AA1;--ek-attach:#F28E2B}
 .tl{margin:6px 0 16px;min-width:0}
 .tl-latest{display:flex;align-items:center;gap:8px;margin:0;padding:8px 12px;background:var(--card);border:1px solid var(--line);border-radius:10px;font-size:14px;white-space:nowrap;overflow:hidden;min-width:0}
@@ -426,13 +426,13 @@ header .search-open kbd{position:absolute;right:10px;top:50%;transform:translate
 .tl-lab{display:inline-block;padding:0 4px;font:600 12px/1 var(--font-body);white-space:nowrap;word-break:keep-all}
 .tl-now .tl-lab{font-weight:800;font-size:13px}
 .tl-lab.tl-hide{visibility:hidden}
-.st-inbox,.st-other{background:var(--line);color:var(--ink)}
+.st-inbox,.st-other{background:var(--st-inbox);color:var(--ink)}
 .st-unknown{background:var(--card);color:var(--muted);background-image:repeating-linear-gradient(135deg,var(--muted) 0 1.5px,transparent 1.5px 7px);box-shadow:inset 0 0 0 1px var(--muted)}
 .st-unknown .tl-lab{background:var(--card);border-radius:3px}
 .tl-sw{display:inline-block;width:14px;height:14px;border-radius:3px;vertical-align:-2px;margin-right:6px;flex:none}
 .tl-gap{margin:4px 0 0;font-size:13px;color:var(--muted)}
 .st-other{background-image:repeating-linear-gradient(135deg,transparent 0 6px,rgba(127,127,127,.25) 6px 9px)}
-@media (prefers-color-scheme:dark){.st-inbox,.st-other{background-color:#55534D}}  /* the line colour is too close to the card in dark */
+@media (prefers-color-scheme:dark){:root{--st-inbox:#55534D}}  /* the line colour is too close to the card in dark; a token, so keys.css sets it for a chosen theme */
 .st-triage{background:var(--st-triage);color:#141414}
 .st-ready{background:var(--st-ready);color:#141414}
 .st-claimed{background:var(--st-claimed);color:#141414}

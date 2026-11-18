@@ -289,6 +289,20 @@ def test_a_chosen_theme_overrides_every_dark_mode_rule_in_desk_css():
                 assert re.search(pat, keys), (theme, sel, want)
 
 
+def test_a_chosen_theme_sets_every_token_desk_css_changes_in_dark_mode():
+    """Every colour token desk.css redefines in a dark-mode :root block (the timeline's --st-inbox among them, DESK-0282) is also set
+    under :root[data-theme="dark"] and :root[data-theme="light"] in keys.css, or a chosen theme shows the computer's colour."""
+    desk = (STATIC / "desk.css").read_text(encoding="utf-8")
+    keys = re.sub(r"\s+", "", (STATIC / "keys.css").read_text(encoding="utf-8"))
+    tokens = {name for sel, decl in _scheme_rules(desk) if sel == ":root" for name in re.findall(r"(--[\w-]+)\s*:", decl)}
+    assert "--st-inbox" in tokens, tokens
+    for theme in ("dark", "light"):
+        block = re.search(rf':root\[data-theme="{theme}"\]\{{([^}}]*)\}}', keys)
+        assert block, theme
+        missing = sorted(t for t in tokens if f"{t}:" not in block.group(1))
+        assert not missing, (theme, missing)
+
+
 # -- saved views -----------------------------------------------------------------------------------------------------------
 
 def test_saved_views_are_pinned_in_the_header_and_removable(store):
