@@ -1415,14 +1415,67 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
     return app
 
 
-def main() -> None:
+STOP_DEADLINE_SECONDS = 1.8  # DESK-0308: Ctrl+C ends the process within two seconds, whatever is still running
+_said_stopped = threading.Event()  # "Desk stopped." is printed once, by whichever of serve() and the deadline gets there first
+
+
+def _say_stopped() -> None:
+    if not _said_stopped.is_set():
+        _said_stopped.set()
+        print("Desk stopped.", flush=True)
+
+
+def allow_ctrl_c() -> bool:
+    """DESK-0308: a console process started by `drew refresh` (its script runs in a new process group and opens drew-ui with `start`)
+    or from an agent's shell inherits Windows' "ignore Ctrl+C" flag, and Ctrl+C in its window then never reaches Python. Clear the
+    flag for this process. True when it was cleared; False off Windows."""
+    if os.name != "nt":
+        return False
+    import ctypes
+
+    return bool(ctypes.windll.kernel32.SetConsoleCtrlHandler(None, False))
+
+
+def stop_deadline(seconds: float = STOP_DEADLINE_SECONDS, end=os._exit) -> threading.Thread:
+    """The last resort after Ctrl+C: a request stuck in a worker thread (those are not daemons) would hold the process after the
+    server returns, so `seconds` later print one plain line and end the process. The thread is a daemon and never holds exit itself."""
+    import time
+
+    def go():
+        time.sleep(seconds)
+        _say_stopped()
+        end(0)
+
+    t = threading.Thread(target=go, name="desk-stop-deadline", daemon=True)
+    t.start()
+    return t
+
+
+def serve(app: FastAPI, port: int) -> None:
+    """Run the server until Ctrl+C. timeout_graceful_shutdown: open connections (event streams) get at most one second (DESK-0169);
+    the first Ctrl+C also arms stop_deadline, a second one cuts the wait at once (uvicorn's force exit)."""
     import uvicorn
 
+    class _Server(uvicorn.Server):
+        def handle_exit(self, sig, frame):
+            if not self.should_exit:
+                stop_deadline()
+            super().handle_exit(sig, frame)
+
+    server = _Server(uvicorn.Config(app, host="127.0.0.1", port=port, log_level="warning", timeout_graceful_shutdown=1))
+    try:
+        server.run()
+    except KeyboardInterrupt:  # uvicorn re-raises the Ctrl+C it captured once the server has stopped
+        pass
+    _say_stopped()
+
+
+def main() -> None:
+    allow_ctrl_c()
     home = find_home(os.environ.get("DESK_HOME"))
     port = int(os.environ.get("DESK_UI_PORT", "8765"))
-    print(f"Desk UI on http://127.0.0.1:{port}  (store: {home})")
+    print(f"Desk UI on http://127.0.0.1:{port}  (store: {home})  Ctrl+C stops it")
     Store.background_flush = True  # commit on a timer after the idle time, and now if something was left pending
     Store(home).flush()
     Store(home).schedule_flush()
-    # timeout_graceful_shutdown: Ctrl+C waits at most this long for open connections (event streams) before it cuts them (DESK-0169)
-    uvicorn.run(create_app(home), host="127.0.0.1", port=port, log_level="warning", timeout_graceful_shutdown=1)
+    serve(create_app(home), port)
