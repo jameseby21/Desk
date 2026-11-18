@@ -1,0 +1,22 @@
+{# DESK-0283: the lane chip on the ticket page. It opens a small panel: pick a lane, park with a reason, or snooze. Works without script. #}
+{% set li = lane_info(t) %}
+<details class="lane-pick" id="lane">
+  <summary>{{ lane_chip(t, False) }}{% if li.snoozed %}<span class="lane-back zz">Snoozed until {{ li.until }}</span>{% elif li.back %}<span class="lane-back">Back from snooze</span>{% endif %}</summary>
+  <div class="lane-menu">
+    <form class="post-once" method="post" action="/ticket/{{ t.id }}/lane" data-progress="Sending,Saving,Done">
+      <input type="hidden" name="token" value="{{ token() }}"><input type="hidden" name="next" value="/ticket/{{ t.id }}">
+      <span class="label">Lane</span>
+      <div class="lane-opts">{% for k, label in lane_names.items() if k != 'parked' %}<button type="submit" name="lane" value="{{ k }}" class="lane-opt lane-{{ k }}"{% if li.set and li.lane == k %} aria-pressed="true"{% endif %}>{{ label }}</button>{% endfor %}{% if li.set %}<button type="submit" name="lane" value="auto" class="lane-opt">Usual lane</button>{% endif %}</div>
+    </form>
+    <form class="post-once lane-parkf" method="post" action="/ticket/{{ t.id }}/lane" data-progress="Sending,Saving,Done">
+      <input type="hidden" name="token" value="{{ token() }}"><input type="hidden" name="next" value="/ticket/{{ t.id }}"><input type="hidden" name="lane" value="parked">
+      <label class="lane-reason">Park it: why not now? <input type="text" name="reason" maxlength="200" required value="{{ li.reason }}" placeholder="One line, for example: not this quarter"></label>
+      <button type="submit" class="lane-opt lane-parked">Park</button>
+    </form>
+    <form class="post-once" method="post" action="/ticket/{{ t.id }}/lane" data-progress="Sending,Saving,Done">
+      <input type="hidden" name="token" value="{{ token() }}"><input type="hidden" name="next" value="/ticket/{{ t.id }}">
+      <span class="label">Snooze</span>
+      <div class="lane-opts">{% for v, label in snooze_choices %}<button type="submit" name="snooze" value="{{ v }}" class="lane-opt">{{ label }}</button>{% endfor %}{% if li.snoozed %}<button type="submit" name="snooze" value="clear" class="lane-opt">Wake it now</button>{% endif %}</div>
+    </form>
+  </div>
+</details>

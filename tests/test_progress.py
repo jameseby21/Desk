@@ -31,7 +31,7 @@ def test_every_page_with_a_form_loads_the_component(store):
     t = ops.new(store, "Pages", "jre")
     c = TestClient(create_app(store.home))
     for path in ("/settings", f"/ticket/{t.id}", "/board", "/"):
-        assert '<script src="/static/progress.js">' in c.get(path).text, path
+        assert '<script src="/static/progress.js?v=' in c.get(path).text, path
 
 
 def test_the_component_has_steps_a_count_mode_elapsed_time_and_a_result_sentence():

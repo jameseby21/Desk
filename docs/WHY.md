@@ -20,7 +20,9 @@ Ticket tools grew up making managers feel in control. These are the habits that 
 | Approval by emoji | A thumbs-up is not a decision. | Approval is your words on the record. "Looks good" doesn't count. |
 | Decisions buried in comment threads | Forty replies later, who decided what? | Talk and decisions live apart. A decision is one line, with a name and a date. |
 | Close the bug, forget the bug | So it comes back in March. | Every fix buries a lesson: the rule and the test that keep it from happening twice. |
-| Plans that assume a perfect week | No week is. | Tell Desk how the week is going. On a rough one it shows each ticket's smallest step, and that still counts. |
+| Plans that assume a perfect week | No week is. | Tell Desk how the week is going. On a rough one it shows only the Now lane, each with its smallest step, and that still counts. |
+| A list where everything shouts at once | So nothing gets done. | Every ticket has a lane: Now, Planned, Later or Parked. Snooze what can wait. Park what is not now, with a reason. Nothing is deleted, and a hard deadline is never hidden. |
+| A click you cannot take back | So every button feels like a risk. | Every change says what it did, with Undo for ten seconds. One Undo takes back a whole batch, and the Undo log keeps the week. |
 | Your tickets locked in their database | Export is a premium feature, apparently. | Tickets are Markdown files in your own repo. Desk reads them; it never owns them. |
 
 ## How a ticket moves
@@ -29,17 +31,19 @@ Ticket tools grew up making managers feel in control. These are the habits that 
 | --- | --- | --- |
 | `inbox` | Inbox | Captured: the problem and the evidence for it |
 | `ready` | Ready | Committed: done-means, a range of hours, a review date |
-| `in_progress` | In progress | Someone is holding it. One each |
-| `review` | Review | At the owner's feet, with proof attached |
+| `in_progress` | In progress | Someone is working on it. One each |
+| `review` | Sent for review | Waiting for the owner, with proof attached |
 | `done` | Done | Approved in words, merged, and a lesson buried |
 | `blocked` | Blocked | Says what it is waiting on and who |
-| `rejected` | Let go | Always says why |
+| `rejected` | Rejected | Always says why |
 
 Plain words are the default. If you want a Scottish Terrier named Drew fetching your tickets, or a cat named Soot, that is a per-person setting; the files and the command line never change.
 
 ## Every ticket says what it needs from you
 
 One field, `ask`, tells you what a ticket wants before you read it: approve this, choose one, set a direction, answer a question, provide something, give feedback, do a step, just so you know, or nothing. The reply box matches the ask. You never have to work out what a ticket is asking.
+
+You do not have to open tickets to answer them. Press `D` on any page and Decide brings the questions to you one at a time, each with the worker's recommendation and why, and what each button does next. `Y` agrees, `N` sends it back with your reason, `S` snoozes it for a week. On Today you can tick several and approve them together after a dry run. Sort the inbox puts new tickets in Now, Planned, Later or Park with one key. Desk never writes an answer you did not give: with no recommendation, your own words are needed.
 
 ## Work and life on one board
 
@@ -51,7 +55,7 @@ The UI is for the owner. The command line is for agents: `drew next` prints the 
 
 ## Free, and paid
 
-**Free, forever (this repo, MIT):** tickets as Markdown in your own git repo; the `drew` command line for you and for agents; the local web app (Today, the queue, tickets, decisions, stats); the lesson library for one repo; proof from the commands you run.
+**Free, forever (this repo, MIT):** tickets as Markdown in your own git repo; the `drew` command line for you and for agents; the local web app (Today, the daily brief, the queue, tickets, decisions, stats); the lesson library for one repo; proof from the commands you run.
 
 **Paid, hosted by JA Insights (when it exists):** sync across your machines without running a server; one lesson library across all your projects; proof captured from your CI without copy and paste; approvals from your phone with a full record; seats for AI agents next to your people. What you keep if you leave: everything, because it was always in your repo.
 

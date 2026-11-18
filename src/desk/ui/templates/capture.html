@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Desk · Capture{% endblock %}
+{% block body %}
+<link rel="stylesheet" href="{{ asset('capture.css') }}">
+<div class="cap-wrap">
+<h1>Capture</h1>
+<p class="muted cap-lead">One sentence becomes an inbox ticket. Desk guesses the project and the type. It lands in Later unless you write urgent, now, today or asap.</p>
+{% if error %}<div class="error" role="alert" id="cap-error">{{ error }}</div>{% endif %}
+<form id="cap-form" class="card cap-form" method="post" action="/capture" enctype="multipart/form-data" data-progress="Sending,Saving,Done">
+  <input type="hidden" name="token" value="{{ token() }}">
+  <input type="hidden" name="how" value="capture box">
+  <label>What do you want done?
+    <input type="text" name="text" id="cap-text" value="{{ text }}" placeholder="Fix the brief page on the phone #desk" autocomplete="off" autofocus maxlength="1000" required></label>
+  <label>MVP slice? <span class="muted">The smallest version worth shipping. Optional.</span>
+    <input type="text" name="mvp" id="cap-mvp" value="{{ mvp }}" placeholder="Leave empty to skip" autocomplete="off" maxlength="200"></label>
+  <label>A file <span class="muted">Optional, up to {{ '%g' % limit_mb }} MB. Programs and scripts are refused.</span>
+    <input type="file" name="file" id="cap-file"></label>
+  <div class="row"><button class="btn ball" type="submit">Create ticket</button><span class="muted">Enter creates it.</span></div>
+  <span class="dp-slot"></span>
+</form>
+{% if guess %}<p class="muted" id="cap-guess">Desk would put this in {{ guess.project_title }} as a {{ guess.type }}, in {{ 'Now' if guess.lane == 'now' else 'Later' }}.</p>{% endif %}
+<p class="cap-more"><a href="/capture/paste">Paste a chat or an email</a> to make one ticket per ask. Press Ctrl K on any page and start with <code>new:</code> to capture from there.</p>
+</div>
+{% endblock %}

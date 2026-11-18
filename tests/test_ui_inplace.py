@@ -93,7 +93,7 @@ def test_attach_in_json_returns_the_attachment_list(store):
 def test_every_page_loads_the_progress_component_and_keeps_its_anchors(store):
     t = ops.new(store, "Anchors", "jre")
     page = _client(store).get(f"/ticket/{t.id}").text
-    assert '<script src="/static/progress.js">' in page
+    assert '<script src="/static/progress.js?v=' in page
     for anchor in ("comments", "acceptance", "validate", "decision", "attachments"):
         assert f'id="{anchor}"' in page
 

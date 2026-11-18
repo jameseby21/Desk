@@ -1,0 +1,18 @@
+{# DESK-0282: the lane choices of the lane bar (DESK-0283), on Settings too. Same route, same cookies; nothing in the store changes. #}
+{% set lp = lane_prefs(request) %}
+<form method="post" action="/lanes/view" class="radios" id="lanes" data-progress="none">
+  <input type="hidden" name="next" value="/settings?lanes=saved#lanes">
+  <fieldset style="border:1px solid var(--line);border-radius:14px;max-width:70ch;margin-top:18px">
+    <legend class="label">Lanes (how soon: Now, Planned, Later, Parked) on this device</legend>
+    {% if request.query_params.get('lanes') == 'saved' %}<p role="status" class="chip ball">Saved for this device</p>{% endif %}
+    <span style="display:block;margin:12px 0 2px;font-weight:600">Show on Today and the board</span>
+    <label><input type="radio" name="lane" value=""{% if not lp.lane %} checked{% endif %}>All of them</label>
+    {% for k, label in lane_names.items() %}<label><input type="radio" name="lane" value="{{ k }}"{% if lp.lane == k %} checked{% endif %}>{{ label }}{% if k == 'now' %} only{% endif %}</label>
+    {% endfor %}
+    <span style="display:block;margin:12px 0 2px;font-weight:600">Subtickets and work only agents hold, on Today</span>
+    <label><input type="radio" name="show" value=""{% if not lp.show_all %} checked{% endif %}>Hidden unless they ask you something</label>
+    <label><input type="radio" name="show" value="all"{% if lp.show_all %} checked{% endif %}>Shown</label>
+    <p class="muted" style="margin:6px 0 0">Snoozed tickets stay off Today, Needs me, the brief, Decide and Sort the inbox until their date, whatever you pick here.</p>
+  </fieldset>
+  <p><button class="btn ball" type="submit">Save for this device</button></p>
+</form>

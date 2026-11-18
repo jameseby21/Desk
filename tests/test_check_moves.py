@@ -102,8 +102,8 @@ def test_keyboard_d_n_esc_in_a_real_browser(store):
     html = TestClient(create_app(store.home)).get(f"/ticket/{t.id}").text
     css = (STATIC / "desk.css").read_text(encoding="utf-8")
     js = (STATIC / "checks.js").read_text(encoding="utf-8")
-    html = re.sub(r'<link rel="stylesheet" href="/static/desk.css">', lambda m: f"<style>{css}</style>", html)
+    html = re.sub(r'<link rel="stylesheet" href="/static/desk.css[^"]*">', lambda m: f"<style>{css}</style>", html)
     html = re.sub(r'<link rel="stylesheet" href="https://fonts[^>]*>|<link rel="preconnect"[^>]*>', "", html)
-    html = html.replace('<script src="/static/checks.js" defer></script>', f"<script>window.__f=window.fetch;window.fetch=undefined</script><script>{js}</script>").replace("</body>", KEYS + "</body>")  # no fetch: the form post runs and the test records it
+    html = re.sub(r'<script src="/static/checks.js[^"]*" defer></script>', lambda m: f"<script>window.__f=window.fetch;window.fetch=undefined</script><script>{js}</script>", html).replace("</body>", KEYS + "</body>")  # no fetch: the form post runs and the test records it
     got = run_in_browser(html, 1280)
     assert got and all(got.values()), {k: v for k, v in got.items() if not v}

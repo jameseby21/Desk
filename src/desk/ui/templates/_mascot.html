@@ -6,5 +6,5 @@
 {%- endif -%}
 {%- endmacro %}
 {% macro empty(style, text) -%}<div class="empty">{{ mascot(style) }}<p>{{ text }}</p></div>{%- endmacro %}
-{% macro loading(style, text="Fetching...") -%}<div class="loading" role="status">{{ mascot(style, 48) }}<span>{{ text }}</span></div>{%- endmacro %}
+{% macro loading(style, text="Loading...") -%}<div class="loading" role="status">{{ mascot(style, 48) }}<span>{{ text }}</span></div>{%- endmacro %}
 {% macro lesson(style, text) -%}<aside class="callout">{{ mascot(style, 48) }}<p style="margin:0">{{ text }}</p></aside>{%- endmacro %}

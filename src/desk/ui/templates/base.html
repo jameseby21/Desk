@@ -1,29 +1,47 @@
 <!doctype html>
-<html lang="en">
+<html lang="en"{{ display_attrs(request) }}>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{% block title %}Desk{% endblock %}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:wght@600;800&family=Geist+Mono:wght@400;500&family=Instrument+Sans:wght@400;600;700&display=swap">
-<link rel="stylesheet" href="/static/desk.css">
+<link rel="stylesheet" href="{{ asset('desk.css') }}">
+<link rel="stylesheet" href="{{ asset('lanes.css') }}">
+<link rel="stylesheet" href="{{ asset('decide.css') }}">
+<link rel="stylesheet" href="{{ asset('keys.css') }}">
+<link rel="stylesheet" href="{{ asset('preview.css') }}">
 <link rel="icon" href="data:image/svg+xml,{{ favicon }}">
 </head>
 <body>
 {% if build_stale %}<div class="stale-bar" role="status">{{ stale_text }}</div>
 {% endif %}<header>
   <a class="mark" href="/"><i></i>Desk</a>
-  <nav><a href="/">Today</a><a href="/board">Board</a><a href="/projects">Projects</a><a href="/about">About</a><a href="/settings">Settings</a></nav>
-  <span class="home">{{ home }} · owner {{ owner }}</span>
+  <nav><a href="/">Today</a><a href="/board">Board</a><a href="/projects">Projects</a><a href="/changes">Changes</a></nav>
+  {% include "_saved_views.html" %}
+  <form class="search-open" action="/search" method="get" role="search" data-progress="none"><input type="search" name="q" id="search-open" placeholder="Find a ticket or project" aria-label="Find a ticket or project" autocomplete="off"><kbd title="Press / to search from any page">/</kbd></form>
+  <span class="notify-ctl" role="group" aria-label="Popup notifications"><button type="button" class="btn small" id="notify-allow" aria-pressed="false">Notify me</button><button type="button" class="btn small" id="notify-mute" aria-pressed="false">Mute</button></span>
+  {% include "_motivation_head.html" %}
+  <a class="user" href="/settings" title="You are {{ me.display() }}. Settings, and the store this Desk reads."><span class="uinit">{{ (me.name or '?')[0]|upper }}</span>{{ me.display() }}</a>
 </header>
+{% if unnamed %}<div class="notice" role="status">Desk does not know who you are on this machine yet, so it records you as {{ owner }} (claimed). <a href="/whoami">Say who you are, once</a>.</div>{% endif %}
 <div id="reload-bar" class="reload-bar" role="status" hidden>Changes available. <a href="" onclick="location.reload();return false">Reload</a></div>
 <main>
 {% if notice %}<div class="notice" role="status">{{ notice }}</div>{% endif %}
 {% block body %}{% endblock %}
 </main>
-<footer><a href="/about">About Desk: why it counts proof</a> · <span class="build">{{ build }}</span></footer>
-<script src="/static/progress.js"></script>
-<script src="/static/hovercard.js" defer></script>
+<footer><a href="/about">About Desk: why it counts proof</a> · <a href="/automations">Automations</a> · <span class="build">{{ build }}</span></footer>
+<script src="{{ asset('progress.js') }}"></script>
+<script src="{{ asset('hovercard.js') }}" defer></script>
+<script src="{{ asset('preview.js') }}" defer></script>
+<script src="{{ asset('search.js') }}" defer></script>
+<script src="{{ asset('keys.js') }}" defer></script>
+<script src="{{ asset('notify.js') }}" defer></script>
+<script src="{{ asset('flags.js') }}" defer></script>
+<script src="{{ asset('lanes.js') }}" defer></script>
+<script src="{{ asset('undo.js') }}" defer></script>
+<script src="{{ asset('decide.js') }}" defer></script>
+<script src="{{ asset('capture.js') }}" defer></script>
 <script>
 /* A page that saves in place (check boxes, comments) tells the auto-refresh the file stamp of its own write, so it does not reload itself. */
 window.DeskLive = { own: "0", mine: function (stamp) { if (stamp && BigInt(stamp) > BigInt(this.own)) this.own = String(stamp); } };

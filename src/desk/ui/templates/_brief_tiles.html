@@ -1,0 +1,20 @@
+{# DESK-0288: the two Today tiles, shared by Today and /brief. Numbers are always written out beside the bar, so colour is never the only key. #}
+{% macro balance_bar(b) -%}
+<div class="card bt-tile" id="work-balance" aria-label="Where the open work sits">
+  <span class="label">Where the work sits</span>
+  <p class="bt-big"><b>{{ b.counts.now }}</b> now{% if b.now_oldest %} <span class="muted">· oldest <a class="tid" href="/ticket/{{ b.now_oldest[0] }}" title="{{ b.now_oldest[2] }}">{{ b.now_oldest[0] }}</a>, {{ b.now_oldest[1] }} day{{ 's' if b.now_oldest[1] != 1 }}</span>{% endif %}</p>
+  <div class="bt-bar" role="img" aria-label="Open tickets: {% for g in b.segments %}{{ g.lane }} {{ g.count }}{{ ', ' if not loop.last }}{% endfor %}">
+    {% for g in b.segments if g.count %}<span class="bt-seg bt-{{ g.lane }}" style="flex-grow:{{ g.count }}" title="{{ g.lane|capitalize }}: {{ g.count }} open ({{ g.pct }}%)"></span>{% endfor %}
+  </div>
+  <ul class="bt-keys">{% for g in b.segments %}<li><i class="bt-dot bt-{{ g.lane }}"></i>{{ g.lane|capitalize }} <b>{{ g.count }}</b></li>{% endfor %}</ul>
+  <p class="bt-line">{{ b.planned_week }} planned for this week · {{ b.later_week }} saved for later this week · last 7 days: {{ b.created }} new, {{ b.closed }} closed{% if b.net > 0 %} <span class="bt-up">(+{{ b.net }} open)</span>{% elif b.net < 0 %} <span class="bt-down">({{ b.net }} open)</span>{% endif %}</p>
+</div>
+{%- endmacro %}
+{% macro debt_meter(d) -%}
+<div class="card bt-tile bt-debt bt-{{ d.level }}" id="review-debt" aria-label="Waiting for your review">
+  <span class="label">Waiting for your review</span>
+  <p class="bt-big"><b>{{ d.count }}</b> in review{% if d.count %} <span class="muted">· oldest <a class="tid" href="/ticket/{{ d.oldest_id }}" title="{{ d.oldest_title }}">{{ d.oldest_id }}</a>, {{ d.oldest_days }} day{{ 's' if d.oldest_days != 1 }}</span>{% endif %}</p>
+  <div class="bt-meter" role="meter" aria-valuemin="0" aria-valuemax="14" aria-valuenow="{{ [d.oldest_days, 14]|min }}" aria-label="Oldest review age in days, out of 14"><i style="width:{{ ([d.oldest_days, 14]|min) * 100 / 14 }}%"></i></div>
+  <p class="bt-line">{% if not d.count %}Nothing is waiting for your review.{% elif d.level == 'high' %}The oldest has waited a week or more. Review it first.{% elif d.level == 'mid' %}The oldest has waited a few days.{% else %}Everything in review is fresh.{% endif %} <a href="/search?q=status%3Areview">See them</a></p>
+</div>
+{%- endmacro %}

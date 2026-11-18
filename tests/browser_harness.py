@@ -168,7 +168,7 @@ def live_app(asgi_app):
         th.join(15)
 
 
-def drive(store, script: str, path: str, *, intercept=None, timeout: float = 30, app=None) -> dict:
+def drive(store, script: str, path: str, *, intercept=None, timeout: float = 30, app=None, width: int = 1400) -> dict:
     """Open `path` of a real Desk app (on `store`, with `script` added to its pages) in a headless browser and return what the
     page's script POSTed to /m. The server and the browser are stopped before this returns."""
     import threading
@@ -177,5 +177,17 @@ def drive(store, script: str, path: str, *, intercept=None, timeout: float = 30,
 
     got, ev = {}, threading.Event()
     with live_app(Inject(app or create_app(store.home), script, got, ev, intercept)) as base:
-        _browse(base + path, ev, timeout)
+        _browse(base + path, ev, timeout, width)
     return got
+
+
+def inline_assets(html: str, static_dir: Path) -> str:
+    """A Desk page made self-contained for `run_in_browser`: desk.css and timeline.js from `static_dir` inlined, web fonts and other
+    script tags dropped (the page is served alone, with no /static route)."""
+    import re
+
+    css = (static_dir / "desk.css").read_text(encoding="utf-8")
+    js = (static_dir / "timeline.js").read_text(encoding="utf-8")
+    html = re.sub(r'<link rel="stylesheet" href="/static/desk.css[^"]*">', lambda m: f"<style>{css}</style>", html)
+    html = re.sub(r'<link rel="stylesheet" href="https://fonts[^>]*>|<link rel="preconnect"[^>]*>', "", html)
+    return re.sub(r'<script src="[^"]*"[^>]*></script>', "", html).replace("</body>", f"<script>{js}</script></body>", 1)

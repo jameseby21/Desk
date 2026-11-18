@@ -44,8 +44,8 @@ def test_ui_pages_and_decide(store):
     ops.claim(store, t, "jre")
     ops.report(store, t, "Ran the build. 17 files.")
     client = TestClient(create_app(store.home))
-    assert "Dropped at your feet" in client.get("/").text
-    assert "Ship it" in client.get("/board").text
+    assert "Waiting for review" in client.get("/").text  # DESK-0040: Today is rows, plain headings
+    assert "Ship it" in client.get("/board?company=unsorted").text  # DESK-0183: the top ticket shows one level below companies
     assert "jRE" in client.get("/projects").text
     page = client.get(f"/ticket/{t.id}").text
     assert "Approve" in page and "Ran the build" in page

@@ -1,0 +1,61 @@
+/* DESK-0290: theme and type size per device, saved views in the header, the shortcut sheet, palette actions and recent tickets.
+   Colours come from desk.css tokens only. No width here is fixed above 390 px: a phone (390 px) never scrolls sideways. */
+
+/* Theme: the server writes data-theme on <html> from the device's cookie; no attribute means follow the system (desk.css). */
+:root[data-theme="dark"]{--paper:#141414;--ink:#F5F3EC;--muted:#A8A69D;--line:#33322E;--card:#1D1D1B;--on-ink:#141414;--focus:#C8F03C;--st-inbox:#55534D;color-scheme:dark}
+:root[data-theme="light"]{--paper:#F5F3EC;--ink:#141414;--muted:#6A6963;--line:#E2DFD5;--card:#FFFFFF;--on-ink:#F5F3EC;--focus:#141414;--st-inbox:var(--line);color-scheme:light}
+:root[data-theme="dark"] textarea,:root[data-theme="dark"] input,:root[data-theme="dark"] select{color:var(--ink)}
+/* desk.css changes two colours in its own dark-mode blocks, outside the tokens: a chosen theme sets both ways, or a form error and a
+   masked word keep the computer's colours on the other theme's page. .mask skips .shown, which desk.css makes transparent. */
+:root[data-theme="dark"] .ferr{color:#FF8C92}
+:root[data-theme="light"] .ferr{color:#8E1218}
+:root[data-theme="dark"] .mask:not(.shown){background:#5A2A2D}
+:root[data-theme="light"] .mask:not(.shown){background:#F3C9CC}
+/* Type size: the whole page scales, so every px size in desk.css follows. */
+:root[data-size="small"] body{zoom:.9}
+:root[data-size="large"] body{zoom:1.15}
+
+/* Saved views in the header */
+.sv{display:flex;flex-wrap:wrap;align-items:center;gap:6px;min-width:0;max-width:100%}
+header .sv a.sv-chip{display:inline-flex;align-items:center;min-height:36px;margin:0;padding:0 12px;border:1px solid var(--line);border-radius:999px;background:var(--paper);font-size:13px;font-weight:600;text-decoration:none;max-width:22ch;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+header .sv a.sv-chip.on{background:var(--ball);border-color:var(--ink);color:#141414}
+header .sv a.sv-edit{font-size:13px;margin:0;min-height:36px}
+.sv-save>summary{cursor:pointer;list-style:none;padding:5px 11px;border:1.5px dashed var(--muted);border-radius:999px;font-size:13px;font-weight:600}
+.sv-save>summary::-webkit-details-marker{display:none}
+.sv-save[open]>summary{border-style:solid;border-color:var(--ink)}
+.sv-form{display:flex;flex-wrap:wrap;align-items:flex-end;gap:6px;margin-top:6px}
+.sv-form label{font-size:13px}
+.sv-form input[type=text]{width:16em;max-width:100%;padding:6px 8px;color:var(--ink)}
+.sv-list{list-style:none;padding:0;margin:12px 0;display:flex;flex-direction:column;gap:8px;max-width:70ch}
+.sv-list li{display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;padding:10px 14px}
+.sv-name{font-weight:700;flex:1 1 12ch}
+.sv-url{overflow-wrap:anywhere;min-width:0}
+.sv-lead{max-width:70ch}
+.sv-gone .sv-name,.sv-gone .sv-url{text-decoration:line-through;opacity:.6}
+.sv-undo{margin-left:8px}
+.chip.fpath{white-space:normal;overflow-wrap:anywhere;max-width:100%}
+
+/* Display settings */
+.disp-form{margin-top:14px}
+.disp-set{border:1px solid var(--line);border-radius:14px;max-width:70ch;margin-top:14px}
+
+/* The shortcut sheet (?) */
+.ks{position:fixed;inset:0;z-index:60;background:rgba(20,20,20,.45);display:flex;align-items:flex-start;justify-content:center;padding:8vh 12px 0}
+.ks[hidden]{display:none}
+.ks-box{width:min(560px,100%);max-height:84vh;overflow:auto;background:var(--card);color:var(--ink);border:2px solid var(--ink);border-radius:14px;box-shadow:6px 6px 0 var(--ball);padding:14px 16px}
+.ks-box h2{margin:0 0 8px;font-size:20px}
+.ks-box dl{display:grid;grid-template-columns:max-content 1fr;gap:6px 14px;margin:0;font-size:14.5px}
+.ks-box dt{white-space:nowrap}
+.ks-box dd{margin:0}
+.ks-box h3{font:500 12px/1.3 var(--font-mono);letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin:14px 0 6px}
+kbd.k{display:inline-block;min-width:1.6em;text-align:center;padding:1px 6px;border:1px solid var(--ink);border-bottom-width:2px;border-radius:6px;font:500 12.5px/1.5 var(--font-mono);background:var(--paper)}
+.ks-chord{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:61;padding:6px 12px;border:1.5px solid var(--ink);border-radius:999px;background:var(--card);font-size:13px;box-shadow:0 2px 8px rgba(0,0,0,.18)}
+.ks-chord[hidden]{display:none}
+
+/* Palette: actions on the open ticket, recent tickets, the words box */
+.pal-item.pal-act .pal-title::before{content:"\2192\00a0";color:var(--muted)}
+.pal-hint{flex-basis:100%;font-size:12.5px}
+.pal-item.sel .pal-hint{color:#141414}
+.pal-words{display:flex;flex-direction:column;gap:6px;padding:8px 4px}
+.pal-words b{font-size:14px}
+.pal-run{min-height:1.4em;padding:2px 4px}

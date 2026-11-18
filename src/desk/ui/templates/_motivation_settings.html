@@ -1,0 +1,21 @@
+{# DESK-0293: every Motivation switch in one group. Saved to .desk/motivation.toml, per person. #}
+{% set mo = motivation() %}<form method="post" action="/settings/motivation" class="radios post-once" id="motivation" data-inplace="stay" data-progress="Sending,Saving,Done">
+  <fieldset style="border:1px solid var(--line);border-radius:14px;max-width:70ch;margin-top:18px">
+    <legend class="label">Motivation</legend>
+    <p class="muted" style="margin:0 0 6px">Small rewards for deciding. Each one can be off.</p>
+    <span class="mot-set">Focus timer on Now tickets</span>
+    <label><input type="radio" name="focus" value="on"{% if mo.focus %} checked{% endif %}>On: a Start focus button on each Now ticket</label>
+    <label><input type="radio" name="focus" value="off"{% if not mo.focus %} checked{% endif %}>Off</label>
+    <label class="mot-num">Minutes per focus <input type="number" name="focus_minutes" min="5" max="120" value="{{ mo.focus_minutes }}" inputmode="numeric"></label>
+    <span class="mot-set">Daily goal</span>
+    <label class="mot-num">Decisions a day <input type="number" name="goal" min="0" max="50" value="{{ mo.goal }}" inputmode="numeric"></label>
+    <span class="muted">0 turns the goal and the streak off.</span>
+    <span class="mot-set">Decided today count in the header</span>
+    <label><input type="radio" name="count" value="on"{% if mo.count %} checked{% endif %}>On</label>
+    <label><input type="radio" name="count" value="off"{% if not mo.count %} checked{% endif %}>Off</label>
+    <span class="mot-set">Celebration when you decide or close a ticket</span>
+    <label><input type="radio" name="celebrate" value="on"{% if mo.celebrate %} checked{% endif %}>On: a short burst by the count (none if your system asks for less motion)</label>
+    <label><input type="radio" name="celebrate" value="off"{% if not mo.celebrate %} checked{% endif %}>Off</label>
+  </fieldset>
+  <p><button class="btn ball" type="submit">Save Motivation</button><span class="dp-slot"></span></p>
+</form>

@@ -92,13 +92,13 @@
     host.setAttribute("aria-busy", "true"); say(host, "");
     function done() { f.removeAttribute("data-busy"); host.removeAttribute("aria-busy"); }
     var prog = P.start(P.floater(), { steps: P.stepsOf(f), floating: true });  // a pill at the bottom of the window: it never moves the page
-    P.post(f.action, fd, { progress: prog, timeoutMs: 30000 })
+    P.post(f.getAttribute("action"), fd, { progress: prog, timeoutMs: 30000 })
       .then(function (x) {
         if (!x.ok) {
           btns.forEach(function (b) { b.disabled = false; });
           var err = f.querySelector(".nr-err"), msg = x.j.error || "Desk could not save that. Nothing was changed.";
           if (err) { err.textContent = msg; } else { say(host, msg); }
-          prog.fail(msg);
+          prog.fail(msg, P.failDetail(x));
           return done();
         }
         prog.done("Saved.");
@@ -112,7 +112,7 @@
       .catch(function (err) {
         btns.forEach(function (b) { b.disabled = false; });
         var msg = P.failText(null, err);
-        say(host, msg); prog.fail(msg);
+        say(host, msg); prog.fail(msg, P.failDetail(null, err));
         done();
       });
   }, true);

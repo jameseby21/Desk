@@ -20,7 +20,7 @@ def test_optional_handoff_fields_validate_when_present(store):
     b.meta.update({"blocks": [a.id], "related": [a.id], "cloned_from": a.id, "done_at": "2026-11-08", "evidence": "commit abc123, 3 tests"})
     store.save(b)
     errors, warnings = validate_store(store)
-    assert errors == [] and [w for w in warnings if "no brand block" not in w] == []
+    assert errors == [] and [w for w in warnings if "no brand block" not in w and "no assignee" not in w] == []
     text = b.path.read_text(encoding="utf-8")
     assert "assignee: codex" in text and "blocks: [JRE-0001]" in text and "done_at: 2026-11-08" in text
 
@@ -41,7 +41,7 @@ def test_cli_new_accepts_assignee(store, capsys):
 
 
 def test_prompt_and_evidence_sections_and_unknown_sections_survive_a_write(store):
-    assert SECTIONS.index("Prompt") == SECTIONS.index("Acceptance") + 3  # How to validate, then Tests (DESK-0143), then Prompt
+    assert SECTIONS.index("Prompt") == SECTIONS.index("Acceptance") + 4  # How to validate, Commands (DESK-0177), Tests (DESK-0143), then Prompt
     assert SECTIONS.index("How to validate") == SECTIONS.index("Acceptance") + 1
     assert SECTIONS.index("Evidence") == SECTIONS.index("Report") + 1
     t = ops.new(store, "Hand-off", "jre")

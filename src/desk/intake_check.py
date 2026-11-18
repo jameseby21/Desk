@@ -37,6 +37,13 @@ _SPLIT = re.compile(r"(?<!\\)\|")
 _IDREF = re.compile(r"[A-Za-z0-9][A-Za-z0-9-]*")
 
 
+_ENTRY = re.compile(r"^\s*Date:\s*\S.*\bFrom:\s*\S", re.M)
+_TICKETS = re.compile(r"^\s*Tickets:[ \t]*(.*)$", re.M | re.I)
+_DELIVERS = re.compile(r"^\s*(?:#+\s*)?[*_]*Deliverables?\b", re.M | re.I)
+_TICKET_ID = re.compile(r"\b[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)*-\d{4}\b")
+RULE_25 = "Rule 25 (Every item has a ticket)"
+
+
 @dataclass
 class Problem:
     row: str
@@ -89,11 +96,39 @@ def _column_map(header: list[str]) -> dict[str, int]:
     return out
 
 
+def entry_problems(text: str, has_rows: bool) -> list[Problem]:
+    """DESK-0165: an entry (the rule 25 header: Date, From, To ... then `Tickets:`) that proposes work (a ticket table) or delivers it (a
+    Deliverables line) must name the real ticket ids on its Tickets line. Empty, `none` and `TBD` (even inside a sentence) are refused;
+    an entry that only answers a question may say none."""
+    if not _ENTRY.search(text):
+        return []
+    m = _TICKETS.search(text)
+    value = m.group(1).strip() if m else ""
+    delivers = _DELIVERS.search(text) is not None
+    if not (has_rows or delivers):
+        return []  # a question-only entry
+    what = "a ticket table" if has_rows else "a Deliverables line"
+    if not m or not value:
+        why = "is empty" if m else "is missing"
+    elif re.search(r"\btbd\b", value, re.I):
+        why = f"says TBD (`{value[:60]}`)"
+    elif value.lower().strip(" .") in NONE_WORDS:
+        why = "says none"
+    elif not _TICKET_ID.search(value):
+        why = f"names no ticket id (`{value[:60]}`)"
+    else:
+        return []
+    return [Problem("Tickets", "Tickets:", f"the Tickets line {why}, but the entry has {what}. {RULE_25}: ask Patch for the ticket id first, put the real ids on the Tickets line, then send the entry again")]
+
+
 def check_text(text: str, store: Store) -> tuple[int, list[Problem]]:
     """(row count, problems) for the ticket-ready tables in `text`, against the projects and tickets of `store`."""
     problems: list[Problem] = []
     tables = parse_tables(text)
+    problems += entry_problems(text, any(rows for _, rows in tables))
     if not tables:
+        if _ENTRY.search(text):
+            return 0, problems  # an entry with no table is checked by its header alone
         return 0, [Problem("-", "table", "no ticket-ready table found (a table whose header has Project and Title)")]
     projects = set(store.projects())
     known_ids = {t.id for t in store.tickets()}

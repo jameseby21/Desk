@@ -25,10 +25,10 @@ def test_edit_shows_on_the_next_request(store):
     (store.projects_dir / "jre.md").write_text("---\nbrand: {accent: \"#111111\"}\n---\n# jRE\n", encoding="utf-8")
     ops.new(store, "A card", "jre")
     c = TestClient(create_app(store.home))
-    first = c.get("/board").text
+    first = c.get("/board?company=unsorted").text  # DESK-0183: project titles show one level below companies
     assert "jRE" in first
     (store.projects_dir / "jre.md").write_text("---\nbrand: {accent: \"#222222\"}\n---\n# Renamed Project Title\n", encoding="utf-8")
-    second = c.get("/board").text
+    second = c.get("/board?company=unsorted").text
     assert "Renamed Project Title" in second and "Renamed Project Title" not in first
 
 

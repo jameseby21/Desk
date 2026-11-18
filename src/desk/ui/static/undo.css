@@ -1,0 +1,52 @@
+/* Undo (DESK-0284): the toast, the count dialog, the /undo page and the "who did this" chips. Colours come from desk.css tokens, so
+   light and dark both work; the toast is ink on paper turned round so it stands out from the page in either theme. */
+.undo-toast{position:fixed;left:50%;bottom:16px;transform:translateX(-50%);z-index:50;display:flex;flex-wrap:wrap;align-items:center;gap:8px 12px;
+  width:max-content;max-width:calc(100vw - 32px);box-sizing:border-box;padding:10px 12px 14px 16px;border-radius:14px;background:var(--ink);color:var(--on-ink);
+  box-shadow:6px 6px 0 var(--ball);font-weight:600;overflow:hidden}
+.undo-toast.err{box-shadow:6px 6px 0 var(--red)}
+.undo-text{flex:1 1 14em;min-width:0}
+.undo-actions{display:inline-flex;align-items:center;gap:8px;margin-left:auto}
+.undo-toast .btn.small{min-height:36px;padding:0 14px;border-color:var(--on-ink)}
+.undo-toast .btn.ball{color:#141414}
+.undo-log{color:var(--on-ink);font-weight:400;font-size:13px}
+.undo-x{min-width:36px;min-height:36px;border:0;background:transparent;color:var(--on-ink);font:inherit;cursor:pointer;border-radius:8px}
+.undo-x:focus-visible,.undo-toast .btn:focus-visible{outline:3px solid var(--ball);outline-offset:2px}
+.undo-bar{position:absolute;left:0;right:0;bottom:0;height:4px;background:transparent}
+.undo-bar i{display:block;height:100%;background:var(--ball);transform-origin:left;animation:undo-time linear forwards}
+.undo-toast.held .undo-bar i{animation-play-state:paused}
+.undo-bar.busy i{animation:undo-busy 1s ease-in-out infinite alternate}
+@keyframes undo-time{from{transform:scaleX(1)}to{transform:scaleX(0)}}
+@keyframes undo-busy{from{transform:scaleX(.15)}to{transform:scaleX(.85)}}
+@media (prefers-reduced-motion:reduce){.undo-bar i{animation:none}}
+.undo-confirm{border:2px solid var(--ink);border-radius:14px;background:var(--card);color:var(--ink);padding:16px 20px;max-width:min(360px,calc(100vw - 32px));box-shadow:6px 6px 0 var(--ball)}
+.undo-confirm::backdrop{background:rgba(20,20,20,.45)}
+.undo-confirm p{margin:0 0 10px}
+.undo-count{font:800 40px/1 var(--font-head)}
+/* /undo */
+.ul-head h1{margin-bottom:4px}
+.ul-filter{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:12px 0}
+.ul-filter label{display:inline-flex;gap:8px;align-items:center;font-weight:600}
+.ul-filter select{width:auto;max-width:100%}
+.ul-error{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.ul-inline{display:inline}
+.ul-list{list-style:none;margin:0;padding:0;display:grid;gap:10px}
+.ul-group{padding:12px 14px}
+.ul-group.ul-done{opacity:.7}
+.ul-ghead{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center}
+.ul-who{display:inline-flex;gap:6px;align-items:center}
+.ul-all{margin-left:auto}
+.ul-rows{list-style:none;margin:8px 0 0;padding:0}
+.ul-row{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center;padding:6px 0;border-top:1px solid var(--line)}
+.ul-id{font:500 13px var(--font-mono)}
+.ul-what{flex:1 1 12em;min-width:0;overflow-wrap:anywhere}
+.ul-row form{margin-left:auto}
+/* who did this, on the ticket's timeline */
+.who-chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:6px 0}
+.who-chip{max-width:100%;overflow:hidden;text-overflow:ellipsis;color:var(--ink)}
+.who-chip b{font-weight:600}
+.who-chip[data-kind=rule]{border-style:dashed}
+.who-log{font-size:13px}
+.who-n{display:none;font-size:13px;color:var(--muted)}
+/* A phone shows the row as one line (Changed by, N fields, Undo log): one chip per row pushed the status strip and the first
+   status change past 1.5 phone screens (DESK-0282, the DESK-0305 phone rule). The chips are on wider screens and in the Undo log. */
+@media (max-width:600px){.who-chips{flex-wrap:nowrap}.who-chips .who-chip{display:none}.who-n,.who-log{display:inline;white-space:nowrap}}

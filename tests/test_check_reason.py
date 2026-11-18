@@ -92,7 +92,7 @@ def test_api_empty_or_short_reason_returns_422_and_a_good_one_200(store):
 
 
 def _acc(page: str) -> str:
-    return page.split("Acceptance (this")[1].split('id="done-means"')[0]
+    return page.split("Acceptance (what")[1].split('id="done-means"')[0]
 
 
 def test_saved_reason_shows_severity_who_when_evidence_count_and_edit(store):
@@ -155,8 +155,8 @@ def test_reason_panel_in_a_real_browser(store):
     html = TestClient(create_app(store.home)).get(f"/ticket/{t.id}").text
     css = (STATIC / "desk.css").read_text(encoding="utf-8")
     js = (STATIC / "checks.js").read_text(encoding="utf-8")
-    html = re.sub(r'<link rel="stylesheet" href="/static/desk.css">', lambda m: f"<style>{css}</style>", html)
+    html = re.sub(r'<link rel="stylesheet" href="/static/desk.css[^"]*">', lambda m: f"<style>{css}</style>", html)
     html = re.sub(r'<link rel="stylesheet" href="https://fonts[^>]*>|<link rel="preconnect"[^>]*>', "", html)
-    html = html.replace('<script src="/static/checks.js" defer></script>', f"<script>window.__f=window.fetch;window.fetch=undefined</script><script>{js}</script>").replace("</body>", PANEL_JS + "</body>")  # no fetch: the form post runs and the test records it
+    html = re.sub(r'<script src="/static/checks.js[^"]*" defer></script>', lambda m: f"<script>window.__f=window.fetch;window.fetch=undefined</script><script>{js}</script>", html).replace("</body>", PANEL_JS + "</body>")  # no fetch: the form post runs and the test records it
     got = run_in_browser(html, 1280)
     assert got and all(got.values()), {k: v for k, v in got.items() if not v}

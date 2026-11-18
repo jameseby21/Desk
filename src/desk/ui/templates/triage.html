@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Sort the inbox{% endblock %}
+{% block body %}
+{# DESK-0285: inbox tickets one at a time; 1 to 4 place it, M merges it into another ticket. Keys in static/decide.js. #}
+<div class="dm" data-dm="triage"{% if t %} data-prev="{{ prev }}" data-next="{{ next_id }}" data-open="/ticket/{{ t.id }}"{% endif %}>
+  <div class="dm-top">
+    <h1>Sort the inbox</h1>
+    {% if items %}<span class="dm-count" aria-label="Ticket {{ pos + 1 }} of {{ items|length }}">{{ pos + 1 }} of {{ items|length }}</span>{% endif %}
+    <span class="dm-links"><a href="/decide">Decide</a><button type="button" class="ghostb" data-dm-help aria-expanded="false"><kbd>?</kbd> Keys</button></span>
+  </div>
+  {% if msg %}<noscript><div class="dm-msg" role="status">{{ msg }}</div></noscript>{% endif %}{# DESK-0282: the Undo toast says it once #}
+  {% if error %}<div class="dm-err" role="alert">{{ error }}</div>{% endif %}
+  {% if not can %}<div class="dm-ro" role="note">{{ why_not }}</div>{% endif %}
+  <div class="dm-help card" id="dm-help" hidden>
+    <span class="label">Keys</span>
+    <dl><dt><kbd>1</kbd></dt><dd>Now: do it first</dd><dt><kbd>2</kbd></dt><dd>Planned: this round of work</dd><dt><kbd>3</kbd></dt><dd>Later: kept, not built yet</dd>
+    <dt><kbd>4</kbd></dt><dd>Park: not now, the record stays</dd><dt><kbd>M</kbd></dt><dd>Merge into another ticket (type its id, then Enter)</dd>
+    <dt><kbd>E</kbd></dt><dd>Open the ticket</dd><dt><kbd>Space</kbd> or <kbd>J</kbd></dt><dd>Skip to the next one</dd><dt><kbd>K</kbd></dt><dd>Previous one</dd>
+    <dt><kbd>Esc</kbd></dt><dd>Close this, or leave the text box</dd></dl>
+  </div>
+  {% if not t %}
+  <section class="card dm-empty"><h2>The inbox is empty</h2><p class="muted">Every new ticket has a place. New ones land here first.</p><p><a class="rowb" href="/decide">Go to Decide</a></p></section>
+  {% else %}
+  <section class="card dm-ask" aria-labelledby="dm-title">
+    <div class="dm-meta"><a class="tid" href="/ticket/{{ t.id }}">{{ t.id }}</a><span class="muted">{{ titles.get(t.project, t.project) }} · {{ t.meta.get('type') }} · {{ t.meta.get('priority') }} · from {{ person(t.meta.get('creator') or t.meta.get('owner')) }} · {{ t.meta.get('created') }}</span></div>
+    <h2 class="dm-title" id="dm-title">{{ t.meta.get('title') }}</h2>
+    {% if about %}<p class="dm-about">{{ about }}</p>{% endif %}
+    {% if outcome %}<p class="dm-about"><b>Goal:</b> {{ outcome }}</p>{% endif %}
+    <form class="post-once dm-form" id="dm-form" method="post" action="/triage/place" data-progress="Sending,Saving,Done">
+      <input type="hidden" name="token" value="{{ token() }}"><input type="hidden" name="id" value="{{ t.id }}"><input type="hidden" name="next" value="{{ next_id }}">
+      <div class="dm-actions dm-lanes">
+        {% for key, label, k in choices %}<div class="dm-act"><button class="btn{% if key == lane_now %} ball{% endif %}" type="submit" name="lane" value="{{ key }}" data-dm-key="{{ k }}"{% if not can %} disabled{% endif %}><kbd>{{ k }}</kbd> {{ label }}</button><small>{{ {'now': 'Do it first: it is urgent.', 'planned': 'This round of work.', 'later': 'Kept on record, not built yet.', 'parked': 'Not now. The record stays.'}[key] }}</small></div>{% endfor %}
+      </div>
+      <label class="dm-words">Why park it (only for Park)<input type="text" name="reason" maxlength="300" autocomplete="off"{% if not can %} disabled{% endif %} placeholder="Parked from inbox triage."></label>
+      <div class="dm-merge">
+        <label>Merge into<input type="text" name="into" id="dm-into" maxlength="20" autocomplete="off" placeholder="DESK-0101"{% if not can %} disabled{% endif %}></label>
+        <button class="btn" type="submit" name="lane" value="merge" data-dm-key="m"{% if not can %} disabled{% endif %}><kbd>M</kbd> Merge</button>
+        <small>Closes this one as a copy and links the two.</small>
+      </div>
+      <span class="dp-slot"></span>
+    </form>
+  </section>
+  <nav class="dm-nav" aria-label="Inbox">
+    {% if prev %}<a class="rowb" href="/triage?at={{ prev }}" data-dm-key="k"><kbd>K</kbd> Previous</a>{% else %}<span class="muted">This is the first one.</span>{% endif %}
+    {% if next_id %}<a class="rowb" href="/triage?at={{ next_id }}" data-dm-key="j"><kbd>J</kbd> Skip</a>{% else %}<span class="muted">This is the last one.</span>{% endif %}
+  </nav>
+  {% endif %}
+</div>
+{% endblock %}

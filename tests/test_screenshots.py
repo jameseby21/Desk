@@ -104,7 +104,7 @@ def test_evidence_for_line_is_written_into_the_comment_and_the_line(store):
     assert f"](assets/{t.id}/{name})" in comment and "(Evidence for line 2)" in comment and "Look at this" in comment
     acc = store.get(t.id).sections["Acceptance"].split("\n")
     assert acc[:2] == ["- [ ] one", "- [ ] two"] and acc[2] == f"  > Evidence: assets/{t.id}/{name}" and acc[3] == "- [ ] three"
-    page = c.get(f"/ticket/{t.id}").text.split("Acceptance (this")[1].split('id="done-means"')[0]
+    page = c.get(f"/ticket/{t.id}").text.split("Acceptance (what")[1].split('id="done-means"')[0]
     assert page.count("1 screenshot<") == 1
     assert "1 screenshot" in r.json()["check_html"] and "0 of 3 done" in r.json()["summary_html"]
 

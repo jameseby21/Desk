@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Desk · Asked twice{% endblock %}
+{% block body %}
+<link rel="stylesheet" href="{{ asset('brief.css') }}">
+{% set total = groups|sum(attribute='rows', start=[])|length %}
+<div class="brief">
+<div class="br-head">
+  <p class="label">Last {{ weeks }} weeks</p>
+  <h1>{% if total %}You asked for the same thing twice {{ total }} time{{ 's' if total != 1 }}{% else %}Nothing was asked twice{% endif %}</h1>
+  <p class="br-sub">A repeat is two comments of yours on one ticket, within seven days, that ask for the same outcome. Each one is a cause to fix. The command <code>drew repeats</code> lists the open ones and can raise them to an emergency.</p>
+</div>
+{% for g in groups %}
+<section class="br-sec" aria-labelledby="rw-{{ loop.index }}"><h2 id="rw-{{ loop.index }}">Week of {{ g.monday.strftime('%b') }} {{ g.monday.day }} <small>{{ g.rows|length }}</small></h2>
+  <ul class="br-list">{% for r in g.rows %}<li><a class="tid" href="/ticket/{{ r.id }}#comments">{{ r.id }}</a> {{ r.title }} <span class="muted">· asked {{ r.first.strftime('%b') }} {{ r.first.day }} and again {{ r.second.strftime('%b') }} {{ r.second.day }} · {{ screen(r.status) }}</span><br><q>{{ r.text[:160] }}{% if r.text|length > 160 %}…{% endif %}</q></li>{% endfor %}</ul>
+</section>
+{% else %}<p class="muted">Every ask got done the first time in these weeks.</p>{% endfor %}
+<p class="br-foot"><a href="/repeats?weeks={{ [weeks * 2, 52]|min }}">Look further back</a></p>
+</div>
+{% endblock %}

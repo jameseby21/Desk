@@ -32,6 +32,7 @@ A store is any directory with a `desk.toml`. Desk finds it in this order: the `-
   desk.toml              # owner, delegation, git sync, stale window, combos
   tickets/               # one file per ticket: KEY-0001-slug.md
   tickets/assets/<ID>/   # attachments and screen snaps for one ticket
+  events/<ID>.jsonl      # the ticket's activity log: one event per change, append-only, committed (DESK-0162)
   projects/<key>.md      # one profile per project; a ticket's project must exist here
   intake/<date>-<topic>/ # research hand-offs, copied in by `desk intake`
   tracks/<project>/<slug>.md  # optional track descriptions (title, kind sprint|milestone|epic|theme, starts, ends, goal)
@@ -39,6 +40,7 @@ A store is any directory with a `desk.toml`. Desk finds it in this order: the `-
   glossary.md            # one `## Term` per entry; drives popovers and [[Term]] links
   DECISIONS.md           # process decisions, dated, append-only
   .desk/index.sqlite     # derived search index, gitignored, never the source of truth
+  .desk/motivation.toml  # per-person Motivation switches: focus timer, daily goal, count, celebration (DESK-0293)
 ```
 
 Create one with `desk init [path] [--owner name]`.
@@ -87,6 +89,8 @@ assignee: codex              # optional: who executes it (main, james, codex, a 
 blocks: [JRE-0043]           # optional: ids this ticket holds up (must exist)
 related: [JRE-0040]          # optional: ids worth reading (a missing one is a warning)
 cloned_from: JRE-0031        # optional: set by `desk clone`
+also_projects: [channel]     # optional: projects a merged ticket also belongs to, set by `drew merge`; each project's board lists it
+merged_into: JRE-0043        # optional: set by `drew merge` on a ticket folded into another (rejected, file kept); `duplicate_of:` for kind duplicate
 evidence: "commit e125efb, 36 tests"   # optional one-liner; the Evidence section holds the long form
 effort_hours: [1, 2]         # optional [low, high]
 confidence: 0.8              # optional, 0..1
@@ -142,7 +146,7 @@ The old `slice` (now `feature`) and `chore` (now `task`) still read and validate
 
 ### How to validate
 
-`## How to validate` sits right after Acceptance. It is written before the work starts, as part of planning: the steps a person or agent runs to confirm the Outcome once the work is claimed done (commands with expected output, URLs with what to look for, files with what they must contain). It is not Acceptance (what must be true) and not Evidence (what was observed). `desk new` writes the heading with a one-line hint comment fitted to the type; the hint does not count as steps. `desk report` and the UI hand-over refuse to move a ticket to `review` while the section is empty ("Write How to validate first"); `desk validate` warns about tickets already in review without one. The ticket page shows it beside Acceptance, and the review-week lines end with ` · validate: <first line>`.
+`## How to validate` sits right after Acceptance. It is written before the work starts, as part of planning: the steps a person or agent runs to confirm the Outcome once the work is claimed done (commands with expected output, URLs with what to look for, files with what they must contain). It is not Acceptance (what must be true) and not Evidence (what was observed). Right after it sits `## Commands` (DESK-0177): the exact commands that check the ticket, one bullet in backticks each, which the ticket page shows with a copy button; `drew migrate commands` adds it to older tickets and `drew validate` warns when a ready ticket has none and when a ui ticket in review has no screenshot. `desk new` writes the heading with a one-line hint comment fitted to the type; the hint does not count as steps. `desk report` and the UI hand-over refuse to move a ticket to `review` while the section is empty ("Write How to validate first"); `desk validate` warns about tickets already in review without one. The ticket page shows it beside Acceptance, and the review-week lines end with ` · validate: <first line>`.
 
 ## Projects, prefixes and renames
 
@@ -184,7 +188,7 @@ any open status → blocked (then `desk unblock` restores the previous status)
 any open status → rejected (with a reason)
 ```
 
-On screen the statuses wear Drew's words: Sniffed (inbox), Thrown (ready), Fetching (in_progress), Dropped (review), Fetched (done), Stuck (blocked), Let go (rejected), Chewed back (stale). The files and the command line use the plain words.
+On screen each status has a plain label, chosen by the style in Settings (DESK-0253: a mascot word may only sit beside the plain label, never replace it): Plain, the default, says Inbox, To sort, Ready, Claimed, In progress, Sent for review, Changes requested, Approved, Done, Blocked, Rejected, Stale; Dogs (Drew or Fuzz) adds a dog word in brackets after the plain label, for example Ready (thrown), In progress (fetching), Done (fetched), Blocked (stuck), Stale (chewed back); Cat says the plain labels. The files and the command line always use the plain words. The tables are `src/desk/words.py`.
 
 Rules the CLI and the UI both enforce, and `desk validate` checks in the files:
 
@@ -194,7 +198,7 @@ Rules the CLI and the UI both enforce, and `desk validate` checks in the files:
 - A ticket cannot be `done` while any `depends_on` ticket is not `done`. `desk done` stamps `done_at` with the local time.
 - `blocked` needs `blocked_on` (a ticket or a person) and a reason.
 - Decisions need words: approve, send back and reject all take a reason of at least four characters.
-- Dangling `depends_on` or `blocks`, unknown projects, bad enum values, a `tags` value that is not a list of strings, a bad `done_at` and missing required fields are errors. A size `l` outside triage, a `related` or `cloned_from` id that does not exist, are warnings.
+- Dangling `depends_on` or `blocks`, unknown projects, bad enum values, a `tags` value that is not a list of strings, a bad `done_at` and missing required fields are errors, and so is an `also_projects` entry that is not a project. A size `l` outside triage, a `related`, `cloned_from`, `merged_into` or `duplicate_of` id that does not exist, are warnings.
 - Hygiene warnings (never errors): a title longer than 70 characters; a ticket that has sat in `review` for more than 7 days (measured from its `updated` date).
 - Stale is computed, not stored: any open ticket whose `updated` is older than `[stale].days`.
 
@@ -204,10 +208,13 @@ Rules the CLI and the UI both enforce, and `desk validate` checks in the files:
 | --- | --- | --- |
 | `desk init [path] [--owner]` | owner | Create a store |
 | `desk new --project jre --type slice [--priority p1 --size s --owner main --assignee codex --dod core,code --source path#sec] "title"` | main | Next id for the project, from the template; prints the path |
+| `drew merge SURVIVOR SOURCE... --kind duplicate\|linked\|family --reason "..." --signed "..." [--dry-run]` | main / coworker | Merge tickets without losing anything: see docs/COMMANDS.md |
 | `desk clone ID [--project key] "new title"` | main | New ticket with the source's Context, Outcome, Acceptance (boxes cleared) and Prompt; sets `cloned_from` |
+| `desk capture hotkey [--dry-run \| --install \| --uninstall]` | owner | A Start-menu shortcut with Ctrl+Alt+J that opens the one-sentence capture box (`/capture`); the dry run, the default, prints the path, key and PowerShell and changes nothing. In the UI, `Ctrl K` then a sentence creates an inbox ticket, `/capture/paste` turns pasted asks into tickets, and a file dropped on a page becomes a ticket (on a ticket, an attachment). See docs/COMMANDS.md |
 | `desk stats [--since YYYY-MM-DD] [--project key] [--json]` | anyone | Total, done, in review (built but not proven), open; counts by status, project and type; created and done per week; a Decisions-per-week table (last 8 weeks) and `Review weeks: N created, M closed` |
 | `desk review new [--week YYYY-MM-DD] [--project management] [--owner james]` | owner / main | Create the week's **Ticket review** ticket (one per ISO week; task, ready, p1, `review_by` Friday, tags `management, review-week`). Acceptance is generated: one checkbox per ticket waiting on the owner, grouped by ask (Approve, Choose, Answer, Provide, Do, Review). Refuses a second one for the same week, or a store without a `management` profile |
 | `desk review sync [ID]` | owner / main | Regenerate the list between `<!-- review:start -->` and `<!-- review:end -->` (hand-written lines outside survive): decided tickets become `[x]`, new ones are added, vanished ones are kept as `(resolved)`. Writes the weekly KPI between `<!-- kpi:start -->` and `<!-- kpi:end -->` in Report: waiting at creation, added, decided this week, still waiting, median days in review, oldest waiting. Idempotent. The Today page links this week's review with "N waiting" |
+| `desk auto init\|list\|explain RULE\|dry-run\|run\|undo BATCH` | owner / main | Automation rules from `automations.yaml`, run as the actor `automation` and undoable as one batch; every rule cites its source ([docs/AUTOMATIONS.md](docs/AUTOMATIONS.md)) |
 | `desk list [--project] [--status] [--owner] [--stale] [--all]` | anyone | Table of tickets (open ones by default), grouped by project |
 | `desk next --project jre [--json]` | project session | Highest-priority, oldest ready ticket, in full. `--json` is the SessionStart hook shape (`hookSpecificOutput.additionalContext`) |
 | `desk show ID` | anyone | Print the ticket (with a `(formerly OLD)` header line when the project's prefix has changed) |
@@ -232,6 +239,7 @@ Rules the CLI and the UI both enforce, and `desk validate` checks in the files:
 | `desk doctor [--repo PATH]` | anyone | Installed version and commit, repo path and HEAD, tool and store paths, anything on the UI port. Exit 1 when the installed code is older than the repo |
 | `desk upgrade [--repo PATH]` | owner | Refuses while the UI port is in use (names the PID), else `uv tool install --force <repo>` |
 | `desk home` | anyone | Print the resolved store |
+| `desk notify pair\|test\|brief\|drain\|status\|schedule --print` | owner | Phone push (ntfy) and email (your own SMTP) for the morning brief and alerts; paid adapters ready but off; see [docs/NOTIFICATIONS.md](docs/NOTIFICATIONS.md) |
 
 Refusals print a plain reason and exit 1, so an agent sees exactly why. Output is UTF-8 on every platform, including Windows consoles.
 
@@ -243,10 +251,25 @@ DESK_HOME=/path/to/store desk-ui      # http://127.0.0.1:8765  (DESK_UI_PORT to 
 
 Plain HTML forms over FastAPI and Jinja2; no build step. The only JavaScript is the vendored Mermaid, loaded on ticket pages that contain a diagram.
 
-- **Today**: In your mouth (claimed and in progress), Dropped at your feet (review, and open decisions), Other balls in play, Chewed back (stale), Decided this week. A Good / Normal / Rough switch hides the chewed-back pile on a rough week and shows each ticket's smallest step. With `[life] combos = true`, a **Combos** card lists any two tagged tickets finished within 30 minutes of each other today: `"Dishes" and "Laundry" completed together, +100 for efficiency!` It is computed from `done_at`; nothing new is stored.
+**The daily loop** (DESK-0282): Desk brings each decision to you with a recommended answer and an Undo, so you rarely open a ticket to act on it. What changed, the keys and what to try first are on one page: [docs/DAILY-LOOP.md](docs/DAILY-LOOP.md).
+
+- **Today**: Claimed tickets (claimed and in progress), Waiting on you (review, and open decisions), Waiting for review, Stale (not touched for a long time), Decided this week. The Dogs style adds its dog words in brackets beside these labels. A Good / Normal / Rough switch hides the stale pile on a rough week and shows only the Now lane, each ticket with its smallest step. Lanes (DESK-0283): every ticket is in a lane (now, planned, later, parked), shown as a chip that changes it; **Only my lane** and a lane filter narrow Today and the board on this device; snoozed tickets stay off Today and Needs me until their date and come back marked **Back from snooze**; subtickets and agent-only work stay off Today unless they ask you something or you hold them (**Show all** brings them back); a hard deadline and an overdue ask always show. `drew lane`, `drew snooze` and `drew park` do the same from the terminal. With `[life] combos = true`, a **Combos** card lists any two tagged tickets finished within 30 minutes of each other today: `"Dishes" and "Laundry" completed together, +100 for efficiency!` It is computed from `done_at`; nothing new is stored.
 - **Board**: one column per status, filter by project.
+- **Reading mode** (DESK-0287): a ticket opens on Latest change, Next action and the answer box, with Context folded and a diff since your last visit; a Report shows its summary and the one ask first; agent comments fold to one line unless they ask you something; `/changes` lists what others changed since you last looked, by company and project; rows on Today say why they are there. See docs/COMMANDS.md.
 - **Ticket**: every section rendered as Markdown (see Rich bodies), acceptance checkboxes with a count, the Report beside them with a red **Not run** tag when it is empty, Attachments with inline images, Approve and Send back forms (both require words, acting as the configured owner), a guarded Move form, comments.
 - **Projects**: one row per `projects/*.md` with its prefix and aliases, counts by status and last activity.
+- **Undo** (DESK-0284): every save shows a ten-second toast with Undo (`Z`); `/undo` lists the week's changes by anyone with Undo per change and per action; the ticket page shows who changed each field. `drew undo` is the same from the command line. An undo is new events, never an edit of the log.
+- **Decide** (`/decide`, key `D` from any page; DESK-0285): one question at a time from Needs me, with the worker's recommendation and why (or "No recommendation recorded"), the options as buttons with what each one does next, the recommended one picked. `Y` agrees (the Decision line says "Agree with the recommendation", so no typing; with no recommendation, your words are needed), `N` sends back with a reason, `S` snoozes a week, `E` opens the ticket, `Space`/`J` and `K` move. An earlier answer of yours that looks like the question is linked above it. Only the store owner decides; anyone else sees it read-only.
+- **Approve together** (Today's Needs me): tick ask rows, then **Approve N together** shows a dry run (what will be approved, what is left for you and why) before one batch with one batch id, which one Undo reverses. Only tickets with a recommendation to approve are approved together; the rest are left for your own words.
+- **Sort the inbox** (`/triage`): inbox tickets one at a time; `1` Now, `2` Planned, `3` Later, `4` Park, `M` merges into another id. A snoozed one waits for its date.
+- **Capture** (DESK-0286): `Ctrl K` then `new: <sentence>` and Enter makes an inbox ticket with a guessed project and type; `/capture` (Ctrl+Alt+J after `drew capture hotkey --install`) is the same at phone width; `/capture/paste` turns a pasted chat or email into one ticket per ask; drop a file on a ticket to attach it.
+- **Keys and search** (DESK-0290): `?` lists every key; `g` then `t`, `b`, `n`, `d`, `i`, `r`, `c` or `u` goes to Today, Board, Needs me, Decide, Sort the inbox, the brief, Changes or the Undo log; on a ticket, `Ctrl K` lists what you can do to it; search reads every word of every ticket and the docs; saved views sit in the header; theme and type size per device.
+- **File preview** (DESK-0291): an attachment or a local file link opens in a side panel (the whole screen on a phone) instead of a new tab.
+- **Automations** (`/automations`, `drew auto`; DESK-0292): rules found in the record, such as a hard deadline two days out going to Now with an urgent alert; each run is one batch with one Undo, written as the actor `automation`, never as you. Rules run when you press **Run now** or run `drew auto run`.
+- **Phone and email** (`drew notify`; DESK-0289): the morning brief and the automations' alerts reach your phone (ntfy) or email through one sender with a private-term filter, a daily limit and quiet hours; `/settings` shows what is set.
+- **Motivation** (DESK-0293): a decided-today count with a daily goal and streak, a focus timer on Now tickets, and, when nothing needs you, what the agents are doing meanwhile. Each one can be switched off on `/settings`.
+- **Settings** (`/settings`): every switch once on one page: style, theme and type size, lanes on this device, Motivation, phone and email, and what others may approve for you.
+- **Daily brief** (`/brief`, `drew brief`): what to decide today with answers in your own words, hard deadlines this week, what shipped yesterday; `/brief/week` writes the weekly review by itself and prints on one page. Also `/flow` (where time goes), `/repeats` (asked twice), `/company/<slug>` (one page per company) and `/deadlines.ics` (a calendar feed). See docs/COMMANDS.md.
 
 The UI calls the same operations as the CLI, so the same rules apply.
 
@@ -271,6 +294,7 @@ MIT, copyright JA Insights LLC.
 
 - Ticket ids that exist in the store (`ABC-0001`) render as links with the ticket's title on hover; files are never changed.
 - Acceptance, How to validate, Prompt and Evidence checkboxes are clickable in the UI (`POST /ticket/<ID>/check`, `ops.toggle_check`). On a review-week ticket each line also gets Open, Approve and Send back.
+- Attachments and local files open in a side panel (DESK-0291): PDF, Markdown, text, CSV, pictures, video, and Word, Excel and PowerPoint as text. A ticket may name a file on this computer by its full path; Desk serves it read-only only inside the folders `desk.toml` `[files] allowed_roots` allows (the store, Documents and Downloads by default), never a key or private folder, and only to its own pages on this computer. Details in docs/COMMANDS.md, In the UI.
 - A project profile may carry `brand: {mark: "assets/brand/<key>/mark.svg", accent: "#B3121A", family: "JA Insights"}`. `assets/brand/` is served at `/brand/<path>`. `drew brand-check [--create] [--assignee chaz]` lists projects with no usable brand and can open one ticket each in project `brand`; `drew validate` warns for projects without a brand block.
 
 ## Doc links, glossary and backlinks

@@ -24,7 +24,7 @@ def _ticket(store):
 
 
 def _acc(page: str) -> str:
-    return page.split("Acceptance (this")[1].split('id="done-means"')[0]
+    return page.split("Acceptance (what")[1].split('id="done-means"')[0]
 
 
 def test_headers_and_two_hit_areas_per_line(store):
@@ -53,16 +53,16 @@ def test_boxes_are_buttons_labelled_with_the_line_and_pressed_state(store):
 def test_page_loads_the_check_script_and_serves_it(store):
     t = _ticket(store)
     c = TestClient(create_app(store.home))
-    assert '<script src="/static/checks.js" defer>' in c.get(f"/ticket/{t.id}").text
+    assert '<script src="/static/checks.js?v=' in c.get(f"/ticket/{t.id}").text
     assert c.get("/static/checks.js").status_code == 200
 
 
 def test_stylesheet_fixes_the_column_and_never_moves_it_on_a_phone():
-    """Protects: one 52 px track per box (44 px click area inside), 28 px visible box, and no media query that re-positions .chk2."""
+    """Protects: a 52 px Done track and an 84 px Not accepted track (wide enough that ACCEPTED never splits, DESK-0302), 44 px click area inside, 28 px visible box, and no media query that re-positions .chk2."""
     css = (STATIC / "desk.css").read_text(encoding="utf-8")
     assert re.search(r"\.hit\{[^}]*width:44px;[^}]*height:44px", css)
     assert re.search(r"\.box\{[^}]*width:28px;[^}]*height:28px", css)
-    assert re.search(r"\.chk-head\{[^}]*grid-template-columns:minmax\(0,1fr\) 52px 52px", css)
+    assert re.search(r"\.chk-head\{[^}]*grid-template-columns:minmax\(0,1fr\) 52px 84px", css)
     assert re.search(r"\.chk2\{[^}]*position:absolute;[^}]*right:0", css)
     assert "var(--ball)" in css.split(".box.on-done{", 1)[1].split("}", 1)[0]  # Done fills lime
     assert "var(--red)" in css.split(".box.on-no{", 1)[1].split("}", 1)[0]  # Not accepted fills red
@@ -75,19 +75,20 @@ def test_stylesheet_fixes_the_column_and_never_moves_it_on_a_phone():
 MEASURE = """<script>addEventListener('load',function(){var o=[];
 function r(e){var x=e.getBoundingClientRect();return [Math.round(x.left*10)/10,Math.round(x.width),Math.round(x.height)];}
 document.querySelectorAll('.chk2').forEach(function(c){var b=c.querySelectorAll('.hit');o.push([r(b[0]),r(b[1])]);});
-var hs=[];document.querySelectorAll('.chk-head span').forEach(function(s){hs.push(r(s)[0]);});
-fetch('/m',{method:'POST',body:JSON.stringify({boxes:o,heads:hs,scroll:document.documentElement.scrollWidth,inner:innerWidth})});});</script>"""
+var hs=[];document.querySelectorAll('.chk-head span').forEach(function(s){var x=s.getBoundingClientRect();hs.push(x.left+x.width/2);});
+var split=0;document.querySelectorAll('.chk-head span').forEach(function(s){var t=s.firstChild;if(!t||t.nodeType!==3)return;var re=/\\S+/g,m;while((m=re.exec(t.textContent))){var g=document.createRange();g.setStart(t,m.index);g.setEnd(t,m.index+m[0].length);if(g.getClientRects().length>1)split++;}});
+fetch('/m',{method:'POST',body:JSON.stringify({boxes:o,heads:hs,split:split,scroll:document.documentElement.scrollWidth,inner:innerWidth})});});</script>"""
 
 
 @pytest.mark.skipif(browser() is None, reason="no Edge or Chrome installed")
-@pytest.mark.parametrize("width", [1280, 390])
+@pytest.mark.parametrize("width", [1280, 390, 320])  # 320: the smallest phone still sold (DESK-0302 edge case)
 def test_check_column_alignment(store, width):
     """Protects: at 1280 px and 390 px both boxes of every line share one x position (+-1 px), a 200 character line wraps without
     moving them, the hit areas are 44 px, and the headers sit over the column. Measured in headless Edge or Chrome."""
     t = _ticket(store)
     html = TestClient(create_app(store.home)).get(f"/ticket/{t.id}").text
     css = (STATIC / "desk.css").read_text(encoding="utf-8")
-    html = re.sub(r'<link rel="stylesheet" href="/static/desk.css">', lambda m: f"<style>{css}</style>", html)
+    html = re.sub(r'<link rel="stylesheet" href="/static/desk.css[^"]*">', lambda m: f"<style>{css}</style>", html)
     html = re.sub(r'<link rel="stylesheet" href="https://fonts[^>]*>|<link rel="preconnect"[^>]*>', "", html)
     html = html.replace("</body>", MEASURE + "</body>")
     data = run_in_browser(html, width)
@@ -97,5 +98,9 @@ def test_check_column_alignment(store, width):
         xs = [b[k][0] for b in boxes]
         assert max(xs) - min(xs) <= 1, f"box {k} moves between lines: {xs}"
         assert all(b[k][1] >= 44 and b[k][2] >= 44 for b in boxes), "click area under 44 px"
-    assert abs(data["heads"][1] - boxes[0][0][0]) <= 8 and abs(data["heads"][2] - boxes[0][1][0]) <= 8  # header cells sit over the column
+    centre = lambda b: b[0] + b[1] / 2
+    assert abs(data["heads"][1] - centre(boxes[0][0])) <= 2 and abs(data["heads"][2] - centre(boxes[0][1])) <= 2  # each header is centred over its box
+    assert data["split"] == 0, "a header word is broken across two lines (DESK-0302)"
+    if width == 320 and data["scroll"] > data["inner"] + 1:
+        pytest.xfail("DESK-0303: the page is 334 px wide at 320 px, before and after DESK-0302 (measured 2026-11-15)")
     assert data["scroll"] <= data["inner"] + 1, "the page scrolls sideways"

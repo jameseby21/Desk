@@ -1,0 +1,36 @@
+{# DESK-0283: the lane bar on Today and the board. The choices are kept on this device (cookies); nothing in the store changes. #}
+{% set lv = lane_view(request) %}
+{% if lv %}
+{% set keep_show = 'all' if lv.show_all else '' %}{% set keep_lane = request.cookies.get('desk_lane') or '' %}
+<div class="lane-bar" id="lane-bar">
+  {% if lv.forced %}
+  <span class="lane-note">Rough week: only the <b>Now</b> lane, with each smallest step.</span>
+  {% else %}
+  <form method="post" action="/lanes/view" data-progress="none" class="lane-inline">
+    <input type="hidden" name="next" value="{{ lv.here }}"><input type="hidden" name="show" value="{{ keep_show }}">
+    <button type="submit" name="lane" value="{{ '' if lv.lane == 'now' else 'now' }}" class="lane-switch" role="switch" aria-checked="{{ 'true' if lv.lane == 'now' else 'false' }}" title="Show only the Now lane on this device"><i aria-hidden="true"></i>Only my lane</button>
+  </form>
+  <form method="post" action="/lanes/view" data-progress="none" class="lane-inline">
+    <input type="hidden" name="next" value="{{ lv.here }}"><input type="hidden" name="show" value="{{ keep_show }}">
+    <label class="lane-pickl">Lane <select name="lane" aria-label="Lane" onchange="this.form.submit()">
+      <option value=""{% if not lv.lane %} selected{% endif %}>All</option>
+      {% for k, label in lane_names.items() %}<option value="{{ k }}"{% if lv.lane == k %} selected{% endif %}>{{ label }}</option>{% endfor %}
+    </select></label>
+    <noscript><button class="btn small" type="submit">Go</button></noscript>
+  </form>
+  {% endif %}
+  {% if lv.lane and lv.other_lanes %}<span class="lane-count">{{ lv.other_lanes }} in other lanes hidden</span>{% endif %}
+  {% if lv.page == 'today' and (lv.show_all or lv.hidden) %}
+  <form method="post" action="/lanes/view" data-progress="none" class="lane-inline">
+    <input type="hidden" name="next" value="{{ lv.here }}"><input type="hidden" name="lane" value="{{ keep_lane }}">
+    {% if lv.show_all %}<button type="submit" name="show" value="" class="linkb">Hide subtickets and agent-only work</button>
+    {% else %}<span class="lane-count">{{ lv.hidden }} subticket{{ 's' if lv.hidden != 1 }} or agent-only ticket{{ 's' if lv.hidden != 1 }} hidden</span> <button type="submit" name="show" value="all" class="linkb">Show all</button>{% endif %}
+  </form>
+  {% endif %}
+  {% if lv.snoozed %}
+  <details class="lane-snoozed"><summary>{{ lv.snoozed|length }} snoozed · <b>Show</b></summary>
+    <ul>{% for t in lv.snoozed[:20] %}{% set li = lane_info(t) %}<li><a href="/ticket/{{ t.id }}"><code>{{ t.id }}</code> {{ t.meta.get('title') }}</a> <span class="muted">until {{ li.until }}</span></li>{% endfor %}{% if lv.snoozed|length > 20 %}<li class="muted">and {{ lv.snoozed|length - 20 }} more</li>{% endif %}</ul>
+  </details>
+  {% endif %}
+</div>
+{% endif %}

@@ -18,6 +18,7 @@ TAG = "review-week"
 
 ACC_START, ACC_END = "<!-- review:start -->", "<!-- review:end -->"
 KPI_START, KPI_END = "<!-- kpi:start -->", "<!-- kpi:end -->"
+WEEK_START, WEEK_END = "<!-- week:start -->", "<!-- week:end -->"  # DESK-0288: the block the review writes by itself
 _ITEM = re.compile(r"^- \[( |x|X)\] ([A-Za-z0-9-]+-\d{4,}) · (.*)$")
 _INITIAL = re.compile(r"<!-- initial: ([^>]*?) -->")
 _DECISION_DATE = re.compile(r"^\s*-\s*(\d{4}-\d{2}-\d{2})\b", re.M)
@@ -222,8 +223,16 @@ def compute(store: Store, review: Ticket, today: dt.date | None = None) -> dict:
         "comments_open": len(cm.query(store, author=owner, unanswered=True)),
         "seeded": sorted(t.id for t in tickets.values() if t.is_open and t.id != review.id and is_seed(t)),
         "comments_owner": owner,
+        "splits": sorted(t.id for t in tickets.values() if t.meta.get("split_from") and monday <= _created(t) < monday + dt.timedelta(days=7)),
     }
     return {"items": items, "initial": initial, "kpi": kpi, "added": added, "checked": newly_checked, "resolved": resolved}
+
+
+def _created(t: Ticket) -> dt.date:
+    try:
+        return dt.date.fromisoformat(str(t.meta.get("created"))[:10])
+    except ValueError:
+        return dt.date.min
 
 
 def kpi_text(k: dict) -> str:
@@ -237,6 +246,7 @@ def kpi_text(k: dict) -> str:
         f"- Median days in review: {med}",
         f"- Oldest waiting: {old}",
         *([f"- Comments still open: {k['comments_open']} ({k['comments_owner']})"] if "comments_open" in k else []),
+        *([f"- Splits made this week: {len(k['splits'])} ({', '.join(k['splits'])})"] if k.get("splits") else []),
         *([f"- Tests still the seed (open tickets): {len(k['seeded'])}" + (": " + ", ".join(k["seeded"][:15]) + (f" and {len(k['seeded']) - 15} more" if len(k["seeded"]) > 15 else "") if k["seeded"] else "")] if "seeded" in k else []),
     ])
 
@@ -249,6 +259,8 @@ def apply(store: Store, review: Ticket, today: dt.date | None = None) -> dict:
     res = compute(store, review, today)
     review.set_section("Acceptance", _replace_block(review.section("Acceptance"), ACC_START, ACC_END, render_block(res["items"], res["initial"], {t.id: ops_assignee(t) for t in store.tickets()})))
     review.set_section("Report", _replace_block(review.section("Report"), KPI_START, KPI_END, kpi_text(res["kpi"])))
+    from . import brief  # DESK-0288: decided, shipped, slipped, balance and the first-version pick, written by itself
+    review.set_section("Report", _replace_block(review.section("Report"), WEEK_START, WEEK_END, brief.week_text(brief.weekly(store, week_of(review), today or dt.date.today()))))
     store.save(review)
     return res
 

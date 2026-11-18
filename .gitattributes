@@ -1,0 +1,6 @@
+# Every text file is LF in the repository (DESK-0211: twelve files had flipped to CRLF on Windows checkouts).
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.ico binary
+*.woff2 binary

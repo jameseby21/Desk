@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}Decide{% endblock %}
+{% block body %}
+{# DESK-0285: one ask per screen. Keys live in static/decide.js; every button also works with a mouse and without script. #}
+<div class="dm" data-dm="decide"{% if v %} data-prev="{{ v.prev }}" data-next="{{ v.next }}" data-open="/ticket/{{ v.t.id }}"{% endif %}>
+  <div class="dm-top">
+    <h1>Decide</h1>
+    {% if items %}<span class="dm-count" aria-label="Question {{ pos + 1 }} of {{ items|length }}">{{ pos + 1 }} of {{ items|length }}</span>{% endif %}
+    <span class="dm-links"><a href="/triage">Sort the inbox</a><button type="button" class="ghostb" data-dm-help aria-expanded="false"><kbd>?</kbd> Keys</button></span>
+  </div>
+  {% if msg %}<noscript><div class="dm-msg" role="status">{{ msg }}</div></noscript>{% endif %}{# DESK-0282: the Undo toast says it once #}
+  {% if error %}<div class="dm-err" role="alert">{{ error }}</div>{% endif %}
+  {% if not can %}<div class="dm-ro" role="note">{{ why_not }}</div>{% endif %}
+  <div class="dm-help card" id="dm-help" hidden>
+    <span class="label">Keys</span>
+    <dl><dt><kbd>Y</kbd></dt><dd>Agree: send the picked answer</dd><dt><kbd>N</kbd></dt><dd>Send back (type why, then Enter)</dd>
+    <dt><kbd>1</kbd>-<kbd>9</kbd></dt><dd>Pick an option</dd><dt><kbd>S</kbd></dt><dd>Snooze for a week</dd><dt><kbd>E</kbd></dt><dd>Open the ticket</dd>
+    <dt><kbd>Space</kbd> or <kbd>J</kbd></dt><dd>Next question</dd><dt><kbd>K</kbd></dt><dd>Previous question</dd><dt><kbd>D</kbd></dt><dd>Come here from any page</dd>
+    <dt><kbd>Esc</kbd></dt><dd>Close this, or leave the text box</dd></dl>
+  </div>
+  {% if not v %}
+  <section class="card dm-empty"><h2>Nothing waits on you</h2><p class="muted">Every question has an answer. New ones show up here and in Needs me.</p><p><a class="rowb" href="/">Back to Today</a></p></section>
+  {% else %}{% set t = v.t %}{% set ask = v.ask %}{% set rec = v.rec %}
+  <section class="card dm-ask" aria-labelledby="dm-title">
+    <div class="dm-meta"><span class="nm-ask">{{ v.item.chip }}</span>{% if v.item.emergency %}<span class="nm-emerg">Emergency</span>{% endif %}<a class="tid" href="/ticket/{{ t.id }}">{{ t.id }}</a><span class="muted">{{ v.item.why }}</span></div>
+    <h2 class="dm-title" id="dm-title">{{ t.meta.get('title') }}</h2>
+    {% if v.about %}<p class="dm-about">{{ v.about }}</p>{% endif %}
+    <div class="dm-rec{% if not rec %} none{% endif %}">
+      {% if rec %}<span class="label">Recommended{% if rec.by %} by {{ person(rec.by) }}{% endif %}</span><b class="dm-rec-text">{{ rec.text }}</b>{% if rec.why %}<span class="dm-why">Why: {{ rec.why }}</span>{% endif %}
+      {% else %}<span class="label">Recommendation</span><span class="dm-rec-text">{{ no_rec }}.</span><span class="dm-why">Decide from what is here, or send it back and ask for one.</span>{% endif %}
+    </div>
+    {% if v.earlier %}<div class="dm-earlier" role="note"><b>You answered something like this.</b> On {{ v.earlier.date }}, <a href="/ticket/{{ v.earlier.ticket.id }}#decision">{{ v.earlier.ticket.id }} · {{ v.earlier.ticket.meta.get('title') }}</a>: “{{ v.earlier.quote }}”</div>{% endif %}
+    <form class="post-once dm-form" id="dm-form" method="post" action="/decide/answer" data-progress="Sending,Saving,Done" data-kind="{{ ask.kind }}">
+      <input type="hidden" name="token" value="{{ token() }}"><input type="hidden" name="id" value="{{ t.id }}"><input type="hidden" name="next" value="{{ v.next }}">
+      {% if ask.kind == 'choose' %}
+      <fieldset class="dm-opts"{% if not can %} disabled{% endif %}><legend class="label">Pick one</legend>
+        {% for label, text in ask.options %}<label class="dm-opt"><input type="radio" name="option" value="{{ loop.index0 }}"{% if rec and rec.option == loop.index0 %} checked{% endif %}><kbd>{{ loop.index }}</kbd><span class="dm-opt-body"><span>{% if label != text %}<b>{{ label }}</b> {% endif %}{{ text }}{% if rec and rec.option == loop.index0 %} <span class="dm-tag">Recommended</span>{% endif %}</span><small>{{ v.steps.option }}</small></span></label>
+        {% endfor %}
+      </fieldset>
+      {% endif %}
+      <label class="dm-words"><span data-dm-label>{% if ask.kind in ('answer', 'provide') and not rec %}Your answer (needed){% elif ask.kind == 'approve' and not rec %}Why you approve (needed to approve){% elif rec and rec.action == 'changes' %}Your words, if you want to add any. Type why to approve anyway.{% else %}Your words, if you want to add any{% endif %}</span>
+        <input type="text" name="words" maxlength="1000" autocomplete="off"{% if not can %} disabled{% endif %} placeholder="{% if ask.kind == 'provide' %}What you are providing (never a password or key){% elif rec %}Empty means: {{ agree }}{% else %}Your words{% endif %}"></label>
+      <div class="dm-actions">
+        <div class="dm-act">{% if ask.kind == 'approve' and rec and rec.action == 'changes' %}<button class="btn ball" type="submit" name="action" value="changes" data-dm-key="y"{% if not can %} disabled{% endif %}><kbd>Y</kbd> Agree: send back</button><small>{{ v.steps.no }}</small></div>
+        <div class="dm-act"><button class="btn" type="submit" name="action" value="approve"{% if not can %} disabled{% endif %}>Approve anyway</button><small>Needs your words above.</small></div>{% else %}<button class="btn ball" type="submit" name="action" value="approve" data-dm-key="y"{% if not can %} disabled{% endif %}><kbd>Y</kbd> {% if ask.kind == 'choose' %}Send this choice{% elif ask.kind == 'provide' %}Send it{% elif ask.kind == 'answer' %}{{ 'Agree' if rec else 'Send answer' }}{% else %}Approve{% endif %}</button><small>{{ v.steps.yes }}</small></div>{% endif %}
+        <div class="dm-act"><button class="btn" type="submit" name="action" value="changes" data-dm-key="n"{% if not can %} disabled{% endif %}><kbd>N</kbd> Send back</button><small>{{ v.steps.no }}</small></div>
+        <div class="dm-act"><button class="btn" type="submit" name="action" value="snooze" data-dm-key="s"{% if not can %} disabled{% endif %}><kbd>S</kbd> Snooze a week</button><small>{{ v.steps.snooze }}</small></div>
+        <div class="dm-act"><a class="btn" href="/ticket/{{ t.id }}" data-dm-key="e"><kbd>E</kbd> Open the ticket</a><small>Read it all, comment or edit.</small></div>
+      </div>
+      <span class="dp-slot"></span>
+    </form>
+    {% if can %}<details class="dm-deleg"><summary>Approve things like this for me</summary>
+      <form class="post-once" method="post" action="/decide/delegate" data-progress="Sending,Saving,Done">
+        <input type="hidden" name="token" value="{{ token() }}"><input type="hidden" name="id" value="{{ t.id }}">
+        <label>Who may approve them<select name="who">{% for key, name in v.delegates %}<option value="{{ key }}"{% if key == 'main' %} selected{% endif %}>{{ name }}</option>{% endfor %}</select></label>
+        <label>Asks like this one<input type="text" name="pattern" maxlength="200" value="{{ v.pattern }}" required></label>
+        <p class="muted">This writes one line to delegations.yaml in the store, for {{ t.project }}. You can remove it on Settings. Nothing is approved on its own yet; it is your word on record.</p>
+        <button class="btn" type="submit">Save this</button><span class="dp-slot"></span>
+      </form></details>{% endif %}
+  </section>
+  <nav class="dm-nav" aria-label="Questions">
+    {% if v.prev %}<a class="rowb" href="/decide?at={{ v.prev }}" data-dm-key="k"><kbd>K</kbd> Previous</a>{% else %}<span class="muted">This is the first one.</span>{% endif %}
+    {% if v.next %}<a class="rowb" href="/decide?at={{ v.next }}" data-dm-key="j"><kbd>J</kbd> Next</a>{% else %}<span class="muted">This is the last one.</span>{% endif %}
+  </nav>
+  {% endif %}
+</div>
+{% endblock %}

@@ -28,7 +28,7 @@ def _old_ticket(store, title="Old", status="ready", tests=None):
 
 
 def test_schema_puts_tests_right_after_how_to_validate():
-    assert SECTIONS.index("Tests") == SECTIONS.index("How to validate") + 1
+    assert SECTIONS.index("Tests") == SECTIONS.index("Commands") + 1 and SECTIONS.index("Commands") == SECTIONS.index("How to validate") + 1  # Commands sits between (DESK-0177)
 
 
 def test_a_new_ticket_has_the_section_with_a_hint(store):

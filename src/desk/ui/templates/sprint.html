@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}Desk · {{ title }}{% endblock %}
+{% block body %}
+<p style="font-size:14px"><a href="/sprint">Sprints</a> › <b>{{ title }}</b></p>
+<h1>{{ title }}</h1>
+<p class="muted" style="margin-top:0">Sprints run in parallel and cut across projects and tracks. Tickets are in score order: p0 first, then the sooner review-by date. <a href="/board?sprint={{ slug }}">Open these tickets on the board</a>.</p>
+{% for g in groups %}
+<div class="card section" style="margin-bottom:16px">
+  <div class="row" style="justify-content:space-between"><h2 style="margin:0">{{ g.name }}</h2>
+    <span class="muted">{% if g.sprint and g.sprint.start %}{{ g.sprint.start }} to {{ g.sprint.end }}{% else %}no dates{% endif %}{% if g.sprint and g.sprint.owner %} · owner {{ who(g.sprint.owner) }}{% endif %}</span></div>
+  {% if g.sprint and g.sprint.note %}<p class="muted">{{ g.sprint.note }}</p>{% endif %}
+  <p><b>{{ g.total }}</b> ticket{{ 's' if g.total != 1 }} · <b>{{ g.done }}</b> done · <b>{{ g.remaining }}</b> remaining{% if g.days_left is not none %} · <b>{{ g.days_left }}</b> of {{ g.days_total }} days left · ideal remaining today {{ g.ideal_now }}{% endif %}</p>
+  <p class="muted" style="font-size:13px">{% for st, n in g.by_status.items() %}{{ screen(st) }} {{ n }}{% if not loop.last %} · {% endif %}{% endfor %}</p>
+  {% if g.series %}<details><summary>Burn-down numbers</summary>
+    <table class="burn"><thead><tr><th>Day</th><th>Remaining</th><th>Ideal</th></tr></thead><tbody>
+    {% for day, rem, ideal in g.series %}<tr><td>{{ day }}</td><td>{{ rem }}</td><td>{{ ideal }}</td></tr>{% endfor %}</tbody></table></details>{% endif %}
+  <ol class="sprint-tickets" style="padding-left:20px">
+  {% for t in g.tickets %}<li><a class="tid" href="/ticket/{{ t.id }}" data-status="{{ t.status }}">{{ t.id }}</a> <span class="chip">{{ t.meta.get('priority') }}</span> <span class="chip {% if t.status == 'review' %}ball{% elif t.status == 'blocked' %}red{% endif %}">{{ screen(t.status) }}</span> {{ t.meta.get('title') }} <span class="muted">{{ t.project }} · {{ who(t.meta.get('assignee')) }}</span></li>
+  {% else %}<li class="muted">No tickets yet. Put one in with <code>drew move &lt;ID&gt; --sprint '{{ g.sprint.name if g.sprint else title }}'</code>.</li>{% endfor %}
+  </ol>
+</div>
+{% endfor %}
+{% endblock %}

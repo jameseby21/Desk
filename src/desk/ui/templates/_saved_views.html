@@ -1,0 +1,10 @@
+{# DESK-0290: saved views pinned in the header (views.yaml in the store), and Save view on a filtered board or search page. #}
+{% set sv = saved_views() %}{% set here = save_view_url(request) %}
+{% if sv or here %}<nav class="sv" aria-label="Saved views">
+  {% for v in sv %}<a class="sv-chip{% if v.url == here %} on{% endif %}" href="{{ v.url }}"{% if v.url == here %} aria-current="page"{% endif %}>{{ v.name }}</a>{% endfor %}
+  {% if here %}<details class="sv-save"><summary>Save view</summary>
+    <form method="post" action="/views" class="post-once sv-form" data-progress="none"><input type="hidden" name="token" value="{{ token() }}"><input type="hidden" name="url" value="{{ here }}">
+      <label>Name this view<input type="text" name="name" maxlength="40" required placeholder="Desk review"></label><button class="btn small ball" type="submit">Save</button></form>
+  </details>{% endif %}
+  {% if sv %}<a class="sv-edit muted" href="/views" title="Rename or remove saved views">Edit</a>{% endif %}
+</nav>{% endif %}

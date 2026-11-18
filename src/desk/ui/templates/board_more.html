@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block title %}Desk · {{ label }} in {{ project }}{% endblock %}
+{% block body %}
+<p style="font-size:14px"><a href="/board">Board</a> › <a href="/board?project={{ project }}">{{ titles.get(project, project) }}</a> › {{ group }}</p>
+<h1 style="margin:0">{{ label }} <span class="muted" style="font-size:18px">{{ items|length }} more, after the first {{ offset }}</span></h1>
+<div class="grid" style="margin-top:12px">{% include "_bmore.html" %}</div>
+{% endblock %}

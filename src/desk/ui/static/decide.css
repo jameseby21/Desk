@@ -1,0 +1,61 @@
+/* Decide mode, inbox triage, batch approve and delegations (DESK-0285). Colours come from desk.css tokens, so light and dark both work. */
+.dm{max-width:760px;margin:0 auto}
+.dm-top{display:flex;flex-wrap:wrap;align-items:baseline;gap:10px 14px;margin:4px 0 12px}
+.dm-top h1{margin:0}
+.dm-count{font:500 13px var(--font-mono);color:var(--muted)}
+.dm-links{margin-left:auto;display:flex;gap:10px;align-items:center}
+.dm kbd{display:inline-block;min-width:1.5em;padding:1px 5px;margin-right:6px;border:1px solid var(--line);border-radius:5px;font:500 12px var(--font-mono);text-align:center;background:var(--paper);color:var(--ink)}
+.dm-msg,.dm-err,.dm-ro{border-radius:12px;padding:10px 14px;margin:0 0 12px;border:1px solid var(--line);background:var(--card)}
+.dm-msg{border-color:var(--ball);box-shadow:inset 4px 0 0 var(--ball)}
+.dm-err{border-color:var(--red);box-shadow:inset 4px 0 0 var(--red)}
+.dm-ro{box-shadow:inset 4px 0 0 var(--muted)}
+.dm-help dl{display:grid;grid-template-columns:max-content 1fr;gap:6px 14px;margin:8px 0 0}
+.dm-help dd{margin:0}
+.dm-help{margin-bottom:12px}
+.dm-ask{display:flex;flex-direction:column;gap:12px;margin-bottom:12px}
+.dm-meta{display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;font-size:13px}
+.dm-title{margin:0;font:800 clamp(20px,4.5vw,28px)/1.2 var(--font-head);overflow-wrap:anywhere}
+.dm-about{margin:0;color:var(--ink);line-height:1.5;overflow-wrap:anywhere}
+.dm-rec{display:flex;flex-direction:column;gap:4px;padding:12px 14px;border-radius:12px;background:var(--paper);border:1px solid var(--line);box-shadow:inset 4px 0 0 var(--ball)}
+.dm-rec.none{box-shadow:inset 4px 0 0 var(--line)}
+.dm-rec-text{font-size:17px}
+.dm-why{color:var(--muted)}
+.dm-earlier{padding:10px 14px;border-radius:12px;border:1px dashed var(--muted);overflow-wrap:anywhere}
+.dm-form{display:flex;flex-direction:column;gap:12px}
+.dm-opts{border:0;padding:0;margin:0;display:flex;flex-direction:column;gap:8px}
+.dm .dm-opt{display:flex;flex-direction:row;gap:10px;align-items:flex-start;padding:10px 12px;border:1.5px solid var(--line);border-radius:12px;cursor:pointer;background:var(--card)}
+.dm-opt:has(input:checked){border-color:var(--ink);box-shadow:inset 4px 0 0 var(--ball)}
+.dm-opt input{margin-top:3px}
+.dm-opt-body{display:flex;flex-direction:column;gap:3px;min-width:0;overflow-wrap:anywhere}
+.dm-opt small,.dm-act small,.dm-merge small,.dm-list small{color:var(--muted);font-size:12.5px;line-height:1.35}
+.dm-tag{font:500 11px var(--font-mono);text-transform:uppercase;letter-spacing:.08em;background:var(--ball);color:#141414;border-radius:6px;padding:1px 6px}
+.dm-words{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted)}
+.dm-words input,.dm-merge input,.dm-deleg input,.dm-deleg select{min-height:40px;padding:6px 10px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--ink);font:15px var(--font-body);width:100%;box-sizing:border-box}
+.dm-actions{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px}
+.dm-act{display:flex;flex-direction:column;gap:4px}
+.dm-act .btn,.dm-merge .btn{width:100%;min-height:44px;font:600 14px/1.2 var(--font-body);padding:6px 12px;white-space:normal}
+.dm-merge .btn{width:auto}
+.dm-merge{display:flex;flex-wrap:wrap;gap:8px;align-items:flex-end}
+.dm-merge label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted);flex:1 1 160px}
+.dm-deleg summary{cursor:pointer;color:var(--muted);font-size:14px}
+.dm-deleg form{display:flex;flex-direction:column;gap:8px;margin-top:8px}
+.dm-deleg label{display:flex;flex-direction:column;gap:4px;font-size:13px;color:var(--muted)}
+.dm-nav{display:flex;justify-content:space-between;gap:10px;margin:0 0 24px}
+.dm-empty h2{margin-top:0}
+.dm-list{list-style:none;margin:8px 0 12px;padding:0;display:flex;flex-direction:column;gap:8px}
+.dm-list li{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center;justify-content:space-between;border-top:1px solid var(--line);padding-top:8px;overflow-wrap:anywhere}
+.dm-list li small{flex-basis:100%}
+.dm-list li>span{display:flex;flex-direction:column;gap:2px;min-width:0}
+/* Today's Needs me: the tick box and the bar that appears once something is ticked */
+.nm-row.dm-tickrow{grid-template-columns:28px 112px minmax(0,1fr) auto}
+.dm .dm-tickwrap,.dm-tickwrap{display:flex;flex-direction:row;align-items:center;justify-content:center;min-height:36px;cursor:pointer}
+.dm-tick{width:18px;height:18px;accent-color:var(--ink)}
+.dm-batchbar{position:sticky;bottom:12px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:10px;padding:10px 12px;border-radius:12px;background:var(--card);border:1.5px solid var(--ink);box-shadow:0 6px 18px rgba(0,0,0,.12)}
+@media (max-width:700px){
+  .nm-row.dm-tickrow{grid-template-columns:28px minmax(0,1fr)}
+  .nm-row.dm-tickrow>*:not(.dm-tickwrap){grid-column:1 / -1}  /* the title and its reason keep the full width they had */
+  .nm-row.dm-tickrow>.dm-tickwrap+*{grid-column:2}  /* the chip sits beside the tick box */
+  .nm-row.dm-tickrow>.dm-tickwrap{justify-content:flex-start}
+  .dm-actions{grid-template-columns:1fr 1fr}
+  .dm-links{margin-left:0}
+}

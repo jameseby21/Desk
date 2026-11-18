@@ -50,7 +50,7 @@ def test_two_boxes_right_aligned_done_and_not_accepted_with_reason(store):
     first = store.get(t.id).sections["Acceptance"].split("\n")[:2]  # DESK-0120: byline comment, then the quoted reason
     assert re.fullmatch(r"- \[!\] one  <!-- by james \d{4}-\d\d-\d\dT\d\d:\d\d -->", first[0]) and first[1] == "  > Not accepted (must fix): Wrong colour"
     page = c.get(f"/ticket/{t.id}").text
-    acc = page.split("Acceptance (this")[1].split("Done means")[0]
+    acc = page.split("Acceptance (what")[1].split("What done means")[0]
     assert re.search(r'<div class="nr-reason".*?<span class="why">Wrong colour</span>', acc, re.S) and "— not accepted" not in acc and "> Not accepted" not in acc
     # unchecking returns to [ ] and removes the suffix
     assert "error" not in _post(c, t, index=0, state=" ").headers["location"]

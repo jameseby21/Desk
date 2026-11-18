@@ -49,6 +49,7 @@ def make_filter(home: Path | None = None):
     def censor(text: str) -> str:
         return rx.sub(lambda m: censor_word(m.group(0)), text) if text else text
 
+    censor.rx = rx  # the markdown renderer finds the words itself, to draw each as a mask of the word's own width (DESK-0155)
     return censor
 
 
