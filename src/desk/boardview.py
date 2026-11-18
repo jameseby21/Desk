@@ -129,7 +129,7 @@ def build(store: Store, tickets: list[Ticket], by: str = "track", open_spec: str
         projects, groups = {WIDE}, {WIDE}
     rows = []
     for key in store.projects():
-        mine = [t for t in tickets if t.project == key]
+        mine = [t for t in tickets if t.in_project(key)]  # also_projects: a merged ticket shows on every project it came from (DESK-0263)
         meta, _ = store.project_profile(key)
         by_group: dict[str, list[Ticket]] = {}
         for t in mine:

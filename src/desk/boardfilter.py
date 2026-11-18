@@ -54,7 +54,7 @@ def _track_slug(t: Ticket) -> str:
 
 
 def keep(t: Ticket, sel: dict, skip: str = "") -> bool:
-    if skip != "project" and sel["project"] and t.project not in sel["project"]:
+    if skip != "project" and sel["project"] and not set(t.projects) & set(sel["project"]):
         return False
     if skip != "assignee" and sel["assignee"] and ops.assignee_of(t).lower() not in {a.lower() for a in sel["assignee"]}:
         return False
@@ -88,7 +88,8 @@ def options(store: Store, tickets: list[Ticket], sel: dict, people) -> dict:
     mine = [t for t in tickets if keep(t, sel, "project")]
     counts: dict = {}
     for t in mine:
-        counts[t.project] = counts.get(t.project, 0) + 1
+        for key in t.projects:
+            counts[key] = counts.get(key, 0) + 1
     by_area: dict[str, list[Opt]] = {}
     for key in store.projects():
         n = counts.get(key, 0)
