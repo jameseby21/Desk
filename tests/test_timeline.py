@@ -187,7 +187,10 @@ fetch('/m',{method:'POST',body:JSON.stringify({scroll:document.documentElement.s
 @pytest.mark.parametrize("width", [1280, 390])
 def test_timeline_in_a_real_browser_no_sideways_scroll_one_line_latest_and_filters_work(store, width):
     """Protects: at 1280 px and 390 px the timeline with its filters open never makes the page scroll sideways, the latest change
-    stays one line, no text in it is under 12 px, and ticking a person narrows the list."""
+    stays one line on a wide screen and at most three on a phone, no text in it is under 12 px, and ticking a person narrows the list.
+    Three on a phone since DESK-0305 (a3a8c21, its checker's finding F1): at 600 px and under, who, the date and '+N git saves since'
+    sit whole on the first line and what changed has a two-line clamp of its own, so the one-line rule of DESK-0171 holds only on
+    wide screens (DESK-0282; the clamp's own geometry is tests/test_latest_change_phone.py)."""
     t = _life(store)
     with acting("patch", "session"):
         ops.comment(store, store.get(t.id), "A very long comment " + "that goes on and on without a break " * 12)
@@ -199,7 +202,8 @@ def test_timeline_in_a_real_browser_no_sideways_scroll_one_line_latest_and_filte
     html = re.sub(r'<script src="[^"]*"[^>]*></script>', "", html).replace("</body>", f"<script>{js}</script>" + MEASURE + "</body>")
     data = run_in_browser(html, width)
     assert data["events"] == 6 and data["over"] == [] and data["scroll"] <= data["inner"], data
-    assert data["latestH"] < 2.2 * data["lh"] + 20, data  # one line, padding included
+    most = 2.2 if data["inner"] > 600 else 3.5  # a phone: a first line, then a two-line clamp (DESK-0305); a fourth line fails
+    assert data["latestH"] < most * data["lh"] + 20, data  # padding and the row gap included
     assert data["small"] == [], data
     assert data["vis"] == 1 and data["shown"] == "Showing the one matching event.", data
 
