@@ -35,6 +35,12 @@ PALETTE = ["#4E79A7", "#F28E2B", "#E15759", "#76B7B2", "#59A14F", "#EDC948", "#B
 KIND_COLOURS = {"owner": "#C8F03C", "main": "#4E79A7", "coworker": "#F28E2B", "code": "#76B7B2", "subagent": "#B07AA1", "person": "#9C755F",
                 "rule": "#E15759"}
 NONE = "(none)"
+def clock() -> dt.datetime:
+    """The timeline's only reading of the computer clock: the page, the strip and the dates all ask here, so a test can pin one
+    moment for the whole render (DESK-0282: a route test drew today's strip against dates fixed on 15 Nov)."""
+    return dt.datetime.now()
+
+
 TRACKED = ("project", "track", "sprint")  # the ticket's own fields that a dimension follows over time
 
 # DESK-0305: what kind of thing happened, for the rail's dot and the filter chips. Decisions and status changes are drawn stronger.
@@ -173,7 +179,7 @@ class Period:
         now = " (now)" if self.current else ""
         if self.since_unknown and self.seconds < 60:
             return {"pre": "now; when it started is not recorded", "wd": "", "dm": "", "tm": "", "post": "", "note": ""}
-        d, today = self.start, self.today or dt.date.today()
+        d, today = self.start, self.today or clock().date()
         tm = f" {d:%H:%M}" if (d.hour, d.minute, d.second) != (0, 0, 0) else ""
         dm = f"{d.day} {d:%b}" + ("" if d.year == today.year else f" {d.year}")
         how = f"for at least {duration_text(self.seconds)}" if self.since_unknown else f"for {duration_text(self.seconds)}"
@@ -255,7 +261,7 @@ def _ts(ts) -> dt.datetime | None:
 
 def day_text(d: dt.datetime, today: dt.date | None = None, with_time: bool = False) -> str:
     """`Fri 13 Nov`, with the year when it is not this year, and `10:00` after it when asked and known."""
-    today = today or dt.date.today()
+    today = today or clock().date()
     out = f"{d:%a} {d.day} {d:%b}" + ("" if d.year == today.year else f" {d.year}")
     return out + (f" {d:%H:%M}" if with_time and (d.hour, d.minute, d.second) != (0, 0, 0) else "")
 
@@ -301,7 +307,7 @@ def periods(created, events, status: str, now: dt.datetime | None = None, snapsh
     else just before it, the change happened at a time nobody recorded, and that span is Not recorded. Before the first record
     is Not recorded too, unless that record is the ticket's creation on its created day. A status the file has that no record
     reached starts when the file was last written (`saved_at`), or now."""
-    now = (now or dt.datetime.now()).replace(microsecond=0)
+    now = (now or clock()).replace(microsecond=0)
     anchors: list[_Anchor] = []
     for e in events:
         d = _ts(e.ts)
@@ -569,7 +575,7 @@ def events_of(store, t, pe) -> tuple[list, list, dt.datetime | None]:
 
 def view(store, t, filters: dict[str, set[str]] | None = None, now: dt.datetime | None = None) -> View:
     # to the minute: the strip says minutes at the finest, and two renders a moment apart draw the same page (test_flags compares three)
-    now = now or dt.datetime.now().replace(second=0, microsecond=0)
+    now = now or clock().replace(second=0, microsecond=0)
     pe = peoplemod.load(store.home)
     evs, snaps, saved = events_of(store, t, pe)
     rs = rows(store, t, pe, evs)

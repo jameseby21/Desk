@@ -21,6 +21,22 @@ from desk.ui.app import create_app
 NOW = dt.datetime(2026, 11, 15, 12, 0, 0)
 
 
+@pytest.fixture(autouse=True)
+def _page_clock_at_now(monkeypatch):
+    """Every route test here renders the page at NOW, the moment its fixed November dates were written for. Before DESK-0282 the
+    page read the computer clock: on 17 Nov the current 'Changes requested' segment (from 15 Nov 02:38) outgrew 'Ready' (2 days 7 h)
+    and the three-segment test failed although the strip was right. The strip grows with time by design; the dates are fixed."""
+    monkeypatch.setattr(timeline, "clock", lambda: NOW)
+
+
+def test_the_timeline_reads_the_clock_only_through_clock():
+    """Protects the seam the fixture above pins: a direct datetime.now() or date.today() in timeline.py would draw part of a page at
+    the computer's time and part at the pinned one."""
+    src = open(timeline.__file__, encoding="utf-8").read()
+    reads = re.findall(r"dt\.(?:datetime\.now|date\.today)\(", src)
+    assert len(reads) == 1 and "def clock() -> dt.datetime:" in src, reads
+
+
 def _env(date=None):
     env = dict(os.environ, GIT_AUTHOR_NAME="Owner A", GIT_AUTHOR_EMAIL="owner-a@example.invalid", GIT_COMMITTER_NAME="Owner A",
                GIT_COMMITTER_EMAIL="owner-a@example.invalid", GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull)
