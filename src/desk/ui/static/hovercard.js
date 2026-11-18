@@ -52,5 +52,7 @@
   document.addEventListener("mouseout", function (e) { var a = target(e); if (a && !(card && card.contains(e.relatedTarget))) { clearTimeout(timer); timer = setTimeout(hide, 120); } });
   document.addEventListener("focusout", function (e) { if (target(e)) hide(); });
   document.addEventListener("keydown", function (e) { if (e.key === "Escape") hide(); });
-  document.addEventListener("scroll", hide, true);
+  /* A scroll hides a card that is showing, never one waiting to show: focusing a link below the fold (Tab, or Esc giving focus back
+     from the preview panel) scrolls the page first, and cancelling then meant no card at all (DESK-0282). */
+  document.addEventListener("scroll", function () { if (card && !card.hidden) hide(); }, true);
 })();

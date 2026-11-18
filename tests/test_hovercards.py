@@ -99,3 +99,27 @@ def test_hovering_an_id_and_a_document_link_shows_a_card_in_a_real_browser(store
     got = drive(store, HOVER, f"/ticket/{t.id}")
     assert got["shown"] and dep.id in got["text"] and "The dependency" in got["text"] and "Inbox" in got["text"]  # the style's one word for the state (DESK-0037) and got["described"] == "hcard", got
     assert got["hidden"] and "Editions" in got["docText"] and "Edit in VS Code" in got["docText"] and got["escaped"], got
+
+
+FOCUS_BELOW = """<script>addEventListener('load',function(){
+var out={},sleep=function(ms){return new Promise(function(r){setTimeout(r,ms);});};
+(async function(){
+ document.querySelector('main').insertAdjacentHTML('afterbegin','<div style="height:3000px"></div>');
+ var a=Array.prototype.filter.call(document.querySelectorAll('a.tid'),function(x){return x.offsetWidth>0&&!x.closest('details:not([open])');})[0];
+ out.below=a.getBoundingClientRect().top>innerHeight;
+ a.focus();out.focused=document.activeElement===a;
+ for(var i=0;i<20&&!(document.getElementById('hcard')&&!document.getElementById('hcard').hidden);i++){await sleep(100);}
+ var c=document.getElementById('hcard');out.scrolled=scrollY>0;out.shown=!!c&&!c.hidden;out.text=c?c.textContent:'';
+ if(out.shown){window.scrollBy(0,-200);for(var j=0;j<10&&!c.hidden;j++){await sleep(50);}out.hiddenOnScroll=c.hidden;}
+ fetch('/m',{method:'POST',body:JSON.stringify(out)});})();});</script>"""
+
+
+@pytest.mark.skipif(browser() is None, reason="no Edge or Chrome installed")
+def test_focusing_a_link_below_the_fold_still_shows_its_card(store, linked):
+    """Protects keyboard users and the preview's Esc (DESK-0282): focusing a link below the fold scrolls the page, and that scroll
+    used to cancel the card waiting to show, so no card appeared. A scroll now hides only a card already showing."""
+    t, dep = linked
+    got = drive(store, FOCUS_BELOW, f"/ticket/{t.id}")
+    assert got["below"] and got["focused"] and got["scrolled"], got  # the focus did scroll the page
+    assert got["shown"] and dep.id in got["text"], got
+    assert got["hiddenOnScroll"], got  # a card that is showing still goes away when the page scrolls
