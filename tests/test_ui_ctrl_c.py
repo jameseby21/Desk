@@ -156,7 +156,9 @@ def test_console_ctrl_c_stops_the_real_server_within_three_seconds(store, window
     si.dwFlags |= subprocess.STARTF_USESHOWWINDOW
     si.wShowWindow = 0  # hidden: never a window on the owner's screen
     cmd = [sys.executable, "-I", "-c", _WRAP, window, sys.executable, "-X", "utf8", "-c", "from desk.ui.app import main; main()"]
-    proc = subprocess.Popen(cmd, env=_env(store, port), creationflags=subprocess.CREATE_NEW_CONSOLE, startupinfo=si)
+    err_path = store.home.parent / f"stderr-{window}-{client}-{presses}.txt"
+    err = open(err_path, "w+", encoding="utf-8")  # DESK-0282 F3: what the owner's window would show after "Desk stopped."
+    proc = subprocess.Popen(cmd, env=_env(store, port), creationflags=subprocess.CREATE_NEW_CONSOLE, startupinfo=si, stderr=err)
     try:
         _wait_listening(port, proc)
         if client:
@@ -169,8 +171,11 @@ def test_console_ctrl_c_stops_the_real_server_within_three_seconds(store, window
             time.sleep(0.3)
         start = None
         for i in range(presses):
+            if i and proc.poll() is not None:
+                break  # the first press already stopped it (since DESK-0282 F3 an open stream no longer holds the 1 s graceful wait)
             h = subprocess.run([sys.executable, "-I", "-c", _CTRL_C, str(proc.pid)], creationflags=subprocess.DETACHED_PROCESS, timeout=20)
-            assert h.returncode == 0, f"could not send Ctrl+C (helper exit {h.returncode})"
+            # a later press may find the console already closing (exit 2: nothing to attach to), because the first one stopped it
+            assert h.returncode == 0 or (i and h.returncode == 2), f"could not send Ctrl+C (helper exit {h.returncode})"
             start = start or time.monotonic()
             if i + 1 < presses:
                 time.sleep(0.3)
@@ -181,8 +186,12 @@ def test_console_ctrl_c_stops_the_real_server_within_three_seconds(store, window
         took = time.monotonic() - start
         assert code == 0, f"exit code {code}"
         assert took < 3, f"took {took:.2f}s"
+        err.seek(0)
+        text = err.read()
+        assert "Traceback" not in text and "CancelledError" not in text and "Exception in ASGI" not in text, text[:2000]
     finally:
         _kill(proc)
+        err.close()
 
 
 # --- 3. in-process SIGINT while a request never finishes: the deadline ends the process --------------------------------------------
@@ -255,3 +264,83 @@ def test_sigint_with_a_stuck_request_still_stops_within_three_seconds(store):
         assert lines and lines[-1] == "Desk stopped.", lines
     finally:
         _kill(proc)
+
+
+# --- 4. DESK-0282 checker F3: Ctrl+C with a page's live stream open ends the stream cleanly, never with a 178-line trace -----------
+# Cause: app.state.stopping (which the event stream checks) was set by the lifespan's shutdown, and uvicorn runs that only after it has
+# waited timeout_graceful_shutdown (1 s) for open connections and then cancelled them; so the stream never saw the flag in time and was
+# cancelled mid-sleep ("Cancel 1 running task(s) ... Exception in ASGI application ... CancelledError").
+
+def test_ctrl_c_raises_the_stopping_flag_before_the_server_waits_for_connections(store, monkeypatch):
+    """Protects the cause (unit): the moment serve()'s server receives Ctrl+C, app.state.stopping is true, so an open event stream ends
+    at its next look, inside the one-second graceful window, instead of after it."""
+    import signal
+
+    import uvicorn
+
+    app = appmod.create_app(store.home)
+    seen = []
+
+    def fake_run(self, sockets=None):
+        assert app.state.stopping is False
+        self.handle_exit(signal.SIGINT, None)
+        seen.append(app.state.stopping)
+
+    monkeypatch.setattr(uvicorn.Server, "run", fake_run)
+    monkeypatch.setattr(appmod, "stop_deadline", lambda *a, **k: None)
+    appmod._said_stopped.clear()
+    appmod.serve(app, _free_port())
+    assert seen == [True]
+
+
+_SSE = """import signal, sys, threading, time, http.client, socket
+from pathlib import Path
+from desk.ui import app as appmod
+port, path = int(sys.argv[2]), sys.argv[3]
+app = appmod.create_app(Path(sys.argv[1]))
+ended = []
+
+def hold():
+    while True:
+        try:
+            socket.create_connection(("127.0.0.1", port), 0.3).close(); break
+        except OSError:
+            time.sleep(0.1)
+    c = http.client.HTTPConnection("127.0.0.1", port, timeout=30); c.request("GET", path); r = c.getresponse()
+    print("OPEN", r.status, flush=True)
+    try:
+        while r.read1(100):
+            pass
+        ended.append("eof")
+    except Exception as e:
+        ended.append(type(e).__name__)
+    print("STREAM", ended[-1], flush=True)
+
+def poke():
+    time.sleep(1.5)
+    print("SIGINT", flush=True)
+    signal.raise_signal(signal.SIGINT)
+
+threading.Thread(target=hold, daemon=True).start()
+threading.Thread(target=poke, daemon=True).start()
+appmod.serve(app, port)
+"""
+
+
+@pytest.mark.parametrize("path", ["/events", "/events?since=1", "/events/DESK-0001"])
+def test_sigint_with_an_open_event_stream_ends_it_cleanly_and_prints_no_trace(store, path):
+    """Protects the owner's console (in-process SIGINT, any event stream): the stream ends with a clean end of file inside the graceful
+    window, and the output after Ctrl+C is only "Desk stopped.": no Traceback, no CancelledError, no "Exception in ASGI application"."""
+    ops.new(store, "Ticket", "desk")
+    port = _free_port()
+    proc = subprocess.Popen([sys.executable, "-X", "utf8", "-c", _SSE, str(store.home), str(port), path], env=_env(store, port),
+                            stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    try:
+        out, _ = proc.communicate(timeout=30)
+    finally:
+        _kill(proc)
+    lines = out.splitlines()
+    assert "OPEN 200" in lines and "SIGINT" in lines, lines
+    assert "STREAM eof" in lines, lines  # the server ended the stream itself, not by cutting the connection
+    assert "Traceback" not in out and "CancelledError" not in out and "Exception in ASGI" not in out, out[:2000]
+    assert lines[-1] == "Desk stopped.", lines

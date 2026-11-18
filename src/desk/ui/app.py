@@ -1470,6 +1470,9 @@ def serve(app: FastAPI, port: int) -> None:
 
     class _Server(uvicorn.Server):
         def handle_exit(self, sig, frame):
+            # DESK-0282 F3: raise the flag the event streams check now, not in the lifespan's shutdown: uvicorn runs that only after it
+            # has waited timeout_graceful_shutdown for open connections and cancelled them, which printed a CancelledError trace.
+            app.state.stopping = True
             if not self.should_exit:
                 stop_deadline()
             super().handle_exit(sig, frame)
