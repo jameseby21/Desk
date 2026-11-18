@@ -40,7 +40,9 @@ def plain(text: str, limit: int = 280) -> str:
     """A short plain excerpt of a section for a tile: markdown marks, comments and links dropped, cut at a word."""
     text = re.sub(r"<!--.*?-->", " ", text or "", flags=re.S)
     text = re.sub(r"\[([^\]]*)\]\([^)]*\)", r"\1", text)
-    text = re.sub(r"^\s*(?:[-*+]|\d+[.)]|>|#+)\s*", "", text, flags=re.M)
+    # a list mark needs the space after it, so the first `*` of a `**Bold.**` lead at a line start is not taken for a bullet (DESK-0282)
+    text = re.sub(r"^\s*(?:[-*+]\s+|\d+[.)]\s+|>\s*|#+\s+)", "", text, flags=re.M)
+    text = re.sub(r"(\*{1,3}|__)(?=\S)(.+?)(?<=\S)\1", r"\2", text)  # bold, italic, bold italic; a lone `2 * 3` stays
     text = " ".join(text.replace("**", "").replace("`", "").split())
     return text if len(text) <= limit else text[:limit].rsplit(" ", 1)[0] + "…"
 
