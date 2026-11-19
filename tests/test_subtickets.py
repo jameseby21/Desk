@@ -21,6 +21,13 @@ from desk.ui.app import create_app
 MAIN = "Company rows on the board"
 ICON = "Icon for the company rows"
 INPUT = "Provide the company names"
+
+
+def unlinked(html: str) -> str:
+    """The page with each ticket-id link (a.tid, or span.tid inside a whole-row link; DESK-0334) reduced to its words, so a label such as
+    'part of DESK-0001: Company rows' is compared as it reads."""
+    return re.sub(r'<(a|span) [^>]*class="tid"[^>]*>([^<]*)</\1>', r'\2', html)
+
 TODAY = dt.date.today().isoformat()
 
 
@@ -162,7 +169,7 @@ def test_today_counts_leave_subtickets_out_but_its_rows_list_them_labelled(store
     hand = page.split('id="in-hand"')[1].split("</section>")[0]
     assert m.id in hand and INPUT not in hand  # In hand lists the main ticket; the subticket James holds is drawn once, under Needs me (2026-11-10 verifier)
     nm = page.split('id="needs-me"')[1].split("</section>")[0]
-    assert INPUT in nm and f'<span class="nm-part">{label}</span>' in nm  # Needs me: James's own input is an ask
+    assert INPUT in nm and f'<span class="nm-part">{label}</span>' in unlinked(nm)  # Needs me: James's own input is an ask
 
 
 # -- the people's own views -----------------------------------------------------------------------------------------------------------
@@ -179,7 +186,7 @@ def test_assignee_views_list_subtickets_with_their_main_ticket(store, capsys):
     hits = [h for g in c.get("/search.json?q=icon").json()["groups"] for h in g["hits"]]
     assert [h["part_of"] for h in hits if h["id"] == icon.id] == [label]
     found = c.get(f"/search?q=parent:{m.id}").text
-    assert icon.id in found and ask.id in found and f'<div class="part-line">{label}</div>' in found and "Plain ready ticket" not in found
+    assert icon.id in found and ask.id in found and f'<div class="part-line">{label}</div>' in unlinked(found) and "Plain ready ticket" not in found
     ops.assign(store, store.get(icon.id), "chaz", actor="main")  # handed to Chaz: the coworker entry names it
     lines = outbox.collect(store, "chaz", dt.datetime.now() - dt.timedelta(days=1))
     mine = [ln for ln in lines if ln.ticket.id == icon.id]
@@ -251,7 +258,7 @@ def test_new_ticket_form_has_part_of_and_the_button_fills_it(store):
     form = c.get(f"/new?parent={m.id.lower()}").text
     assert re.search(rf'name="parent" id="f-parent" value="{m.id}"', form)
     assert re.search(r'<option value="desk" selected>', form) and re.search(r'<option value="task" selected>', form)
-    assert f"Part of {m.id}: {MAIN}." in form
+    assert f"Part of {m.id}: {MAIN}." in unlinked(form)
     tok = re.search(r'name="token" value="([^"]+)"', form).group(1)
     base = {"title": "Sketch the empty state", "project": "desk", "type": "task", "priority": "p1", "size": "s", "owner": "main", "assignee": "chaz",
             "acceptance": "The sketch is attached"}

@@ -423,6 +423,9 @@ def next_action(store, t: Ticket, viewer: str, report: ReportView | None = None,
     pe = peoplemod.load(store.home)
     step = str(t.meta.get("smallest_step") or "").strip() if t.is_open else ""
     item = nmod.ask_of(store, t, viewer.lower(), now)
+    holder = str(t.meta.get("assignee") or t.meta.get("owner") or "").strip()
+    if item is not None and item.kind == "do" and str(t.meta.get("assignee") or "").strip() and pe.resolve(str(t.meta["assignee"])).lower() != viewer.lower():
+        item = None  # DESK-0334: Needs me lists a `do` for the owner of a ready ticket, but the step is the assignee's; the card names the assignee
     if item is not None:
         a = asks.ask_of(t)
         href = "#reply" if a and t.status in ("ready", "review") else ("#decision" if item.kind != "do" else "#acceptance")
@@ -432,7 +435,6 @@ def next_action(store, t: Ticket, viewer: str, report: ReportView | None = None,
         if report and report.ask:
             text = f"The report asks: {report.ask}"
         return NextAction("you", f"{item.chip}. {text}", step, item.act, href, True)
-    holder = str(t.meta.get("assignee") or t.meta.get("owner") or "").strip()
     who = "you" if holder and pe.resolve(holder).lower() == viewer.lower() else (pe.display(holder) if holder else "")
     text = (STATUS_NEXT_YOU.get(t.status) if who == "you" else None) or STATUS_NEXT.get(t.status, "Look at the status and decide the next step.")
     text = text.format(who=who or "Whoever takes it",

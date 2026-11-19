@@ -258,10 +258,10 @@ class _CDP:
         self.sock.close()
 
 
-def cdp_measure(base: str, paths: list[str], widths: list[int], expression: str, settle: float = 0.8, dark: bool = False) -> dict:
+def cdp_measure(base: str, paths: list[str], widths: list[int], expression: str, settle: float = 0.8, dark: bool = False, shots: dict | None = None) -> dict:
     """Open each of `paths` on the server at `base` in a headless browser whose window is set to exactly `width` px by Chrome DevTools
     Protocol device metrics (a headless --window-size below 500 px is not a phone), run `expression` in the page and return
-    {"path@width": its JSON-able value}. `dark` asks the page for prefers-color-scheme: dark. The browser (by the PID this call started) and its throw-away profile are gone on return."""
+    {"path@width": its JSON-able value}. `dark` asks the page for prefers-color-scheme: dark. `shots` ({"path@width": a file path}) also saves a PNG of the viewport once the expression has run (DESK-0334). The browser (by the PID this call started) and its throw-away profile are gone on return."""
     import socket
     import urllib.request
 
@@ -303,6 +303,10 @@ def cdp_measure(base: str, paths: list[str], widths: list[int], expression: str,
                     time.sleep(settle)
                     res = cdp.call("Runtime.evaluate", expression=expression, returnByValue=True, awaitPromise=True)
                     out[f"{p}@{w}"] = res["result"].get("value")
+                    if shots and f"{p}@{w}" in shots:
+                        import base64
+
+                        Path(shots[f"{p}@{w}"]).write_bytes(base64.b64decode(cdp.call("Page.captureScreenshot", format="png")["data"]))
         finally:
             cdp.close()
         return out
