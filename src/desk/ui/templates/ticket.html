@@ -57,6 +57,7 @@
     <ol class="tl-strip" aria-label="Status over time, oldest first">
       {% for p in tl.periods %}<li class="tl-seg st-{{ p.css }}{% if p.current %} tl-now{% endif %}" style="flex-grow:{{ p.share }}" tabindex="0" title="{{ p.text }}" data-text="{{ p.text }}"><span class="tl-lab{% if p.share < 18 %} tl-hide{% endif %}" aria-hidden="true">{{ p.label }}</span><span class="vh">{{ p.text }}</span></li>{% endfor %}
     </ol>
+    {% include "_activity.html" %}{# DESK-0329: every event a mark on the strip's own time axis, open by default #}
     {% if tl.axis %}<div class="tl-axis" id="tl-axis" aria-hidden="true">{% for pct, lab, cls in tl.axis %}<span class="tl-tick {{ cls }}" style="left:{{ pct }}%">{{ lab }}</span>{% endfor %}</div>{% endif %}
     <div class="tl-ends"><span class="tl-end">Created {{ tl.created_text }}</span><span class="tl-end">Now</span></div>
     {% set C = tl.periods[-1] %}<p class="tl-st-info" id="tl-st-info" data-now="{{ C.text }}">{{ C.text }}</p>

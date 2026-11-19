@@ -1,0 +1,23 @@
+{# DESK-0329: the activity chart, inside the status strip's box, between the strip and its date marks, so both read against one time axis.
+   The server writes the frame (the axis ends, a row for each kind that has events, with its count, and the kinds with none named in
+   the head line, so a short life stays short: DESK-0305's 700 px timeline budget); activity.js draws one mark per event from the rail's
+   own rows (data-i, data-group, data-kind, time), so the chart and the list below can never disagree. #}
+<link rel="stylesheet" href="{{ asset('activity.css') }}">
+<div class="ac" id="activity" data-start="{{ tl.periods[0].start.isoformat() }}" data-end="{{ tl.periods[-1].end.isoformat() }}" data-total="{{ tl.rows|length }}">
+  {% set idle = [] %}{% for k, lab in tl.chips if k != 'all' and not tl.counts[k] %}{% set _ = idle.append(lab) %}{% endfor %}
+  <div class="ac-head"><span class="tl-cap">Activity</span><span class="ac-sum">{% if tl.rows %}{{ tl.rows|length }} event{{ 's' if tl.rows|length != 1 else '' }}, each a mark at its time. Point at or tap one to read it.{% else %}No events recorded yet.{% endif %}</span>
+    {% if tl.rows %}<ul class="ac-legend" aria-label="Who did it: each colour and shape"></ul>{% if idle %}<span class="ac-none" id="ac-none">None yet: {{ idle|join(', ') }}</span>{% endif %}{% endif %}
+  </div>
+  {% if tl.rows %}
+  <div class="ac-plot">
+    <div class="ac-grid" aria-hidden="true"></div>
+    <ol class="ac-lanes" aria-label="Events by kind, from the created date on the left to now on the right">
+      {% for k, lab in tl.chips if k != 'all' and tl.counts[k] %}<li class="ac-lane" data-group="{{ k }}"><span class="ac-lab"><span class="ac-name">{{ lab }}</span> <span class="ac-n">{{ tl.counts[k] }}</span></span><div class="ac-track" role="group" aria-label="{{ lab }}: {{ tl.counts[k] }} event{{ 's' if tl.counts[k] != 1 else '' }}"></div></li>
+      {% endfor %}
+    </ol>
+  </div>
+  <div class="ac-tip" hidden aria-hidden="true"></div>
+  <p class="ac-say vh" aria-live="polite"></p>
+  {% endif %}
+</div>
+<script src="{{ asset('activity.js') }}" defer></script>

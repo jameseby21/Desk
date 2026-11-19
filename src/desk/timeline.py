@@ -32,8 +32,15 @@ KIND_LABELS = {"owner": "Owner", "main": "Main session", "coworker": "Coworker",
 FIELD_LABELS = {"comment": "Comment", "created": "Created", "git": "Saved in git"}
 # A fixed palette for every dimension but people (people.yaml colours) and kinds (fixed below). Tableau 10: readable on light and dark.
 PALETTE = ["#4E79A7", "#F28E2B", "#E15759", "#76B7B2", "#59A14F", "#EDC948", "#B07AA1", "#FF9DA7", "#9C755F", "#BAB0AC"]
-KIND_COLOURS = {"owner": "#C8F03C", "main": "#4E79A7", "coworker": "#F28E2B", "code": "#76B7B2", "subagent": "#B07AA1", "person": "#9C755F",
-                "rule": "#E15759"}
+# DESK-0329: one colour per kind of actor, the same on the activity chart, the rail's dots, the filters and the Undo page. The three
+# hues (owner amber, Patch teal, coworker violet) pass every dataviz palette check, all pairs, on the card colour of both themes with
+# one value each (lightness band, chroma floor, colour-blind and normal-vision separation, 3:1 contrast); a fourth hue fails the
+# all-pairs floors, so agents, rules and other people share a warm sand and the chart tells them apart by shape. None is a status
+# colour (DESK-0306): each is at least 10 OKLab units from every status. The main session and code sessions are both Patch's.
+# Before: owner #C8F03C (the lime of Sent for review), main #4E79A7 (the blue of In progress), coworker #F28E2B, code #76B7B2,
+# subagent #B07AA1, person #9C755F, rule #E15759.
+KIND_COLOURS = {"owner": "#C76A00", "main": "#12968C", "coworker": "#8A5FD9", "code": "#12968C", "subagent": "#A08C70", "person": "#A08C70",
+                "rule": "#A08C70"}
 NONE = "(none)"
 # The key a Claude Code session or Desk itself is recorded under when no person in people.yaml owns it. A person reads "Code session", not the key.
 RAW_SESSION_KEYS = identity.RAW_SESSION_KEYS
