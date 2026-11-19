@@ -21,7 +21,7 @@
 .rd-ctx>summary .rd-goal{color:var(--ink);margin:0 6px}
 .rd-ctx>summary .label{display:inline}
 .rd-report .rd-findings ul{margin:6px 0 0;padding-left:20px}
-.rd-report .rd-findings,.rd-report .rd-ask{margin:4px 0 10px}
+.rd-report .rd-findings,.rd-report .rd-ask{margin:4px 0 10px}.rd-report,.rd-findings,.rd-ask{overflow-wrap:break-word;min-width:0}  /* DESK-0303: the In short list and the ask of a Report wrap a long address or path (CONS-0049 was 327 px, DESK-0155 380 px and PLANT-0014 366 px wide at 320 px) */
 .rd-report .rd-ask{padding:8px 12px;border:2px solid var(--ink);border-radius:10px;background:color-mix(in srgb,var(--ball) 22%,var(--card))}
 .rd-report .rd-ask .md>p:first-child{margin-top:4px}
 .rd-nosum{margin:4px 0 8px;font-size:13.5px}

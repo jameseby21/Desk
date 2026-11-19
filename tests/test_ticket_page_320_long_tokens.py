@@ -21,6 +21,7 @@ from desk.ui.app import STATIC, create_app
 
 PATH = "C:\\Users\\someone\\Documents\\jeby_Industries\\desk\\src\\desk\\ui\\templates\\a_very_long_unbroken_template_name_that_never_breaks_anywhere.html"
 URL = "https://example.com/some/very/long/path/that/never/breaks/" + "segment-" * 12 + "end?query=" + "x" * 60
+SHORT_URL = "https://github.com/example-org/example-repo/pull/5/files?diff=split&w=" + "a1" * 30
 WIDTH = 320
 
 # Every section of a ticket page that shows free text, each with its own long token, so a missing rule in any one box shows up by name.
@@ -32,6 +33,8 @@ SECTIONS = {
     "Commands": f"- `uv run --no-sync pytest -q`\n- Get-ChildItem -Recurse {PATH}\n- Open {URL}",
     "Report": f"Ran {PATH} and then {URL}.",
     "Comments": f"- 2026-11-18 11:00 · james · {URL} {PATH}",
+    # the "In short" list on top of a Report (up to three short findings): CONS-0049, DESK-0155 and PLANT-0014 were 327, 380 and 366 px wide at 320
+    "Report list": f"- Pull request {SHORT_URL}, branch desk/DESK-0149-needs-me-and-flags.\n- Commit 2d2c8a4 on consulting/CONS-0048-free-report-round-2, pushed.\n\nThe rest of the report.",
 }
 
 # What the page runs: its scroll width against the window, and the elements that end past the right edge (outside a scrolling or clipping box).
@@ -51,14 +54,14 @@ def stress(store):
         if name == "Comments":
             t.append_line("Comments", text)
         else:
-            t.set_section(name, text)
+            t.set_section("Report" if name == "Report list" else name, text)
         store.save(t)
         ids[name] = t.id
     every = ops.new(store, "Long token in every section", "desk")
     for name, text in SECTIONS.items():
         if name == "Comments":
             every.append_line("Comments", text)
-        else:
+        elif name != "Report list":  # one Report per ticket
             every.set_section(name, text)
     store.save(every)
     ids["every"] = every.id
@@ -70,15 +73,22 @@ def test_fixture_puts_a_long_token_in_every_section_the_page_shows(store, stress
     c = TestClient(create_app(store.home))
     for name, tid in stress.items():
         page = c.get(f"/ticket/{tid}").text
-        assert "a_very_long_unbroken_template_name" in page or "segment-segment" in page, name
+        assert "a_very_long_unbroken_template_name" in page or "segment-segment" in page or "a1a1a1a1" in page, name
     commands = c.get(f"/ticket/{stress['Commands']}").text
     assert 'class="mentions"' in commands and "Get-ChildItem" in commands.split('class="mentions"')[1]  # the plain-text line that was 360 px wide
     outcome = c.get(f"/ticket/{stress['Outcome']}").text
     assert 'class="rd-goal"' in outcome and "segment-segment" in outcome.split('class="rd-goal"')[1].split("</span>")[0]  # the folded Context summary that was 339 px wide
 
 
+def test_fixture_report_list_is_the_in_short_list_of_the_reading_summary(store, stress):
+    """Protects the Report-list case: the page draws the list as .rd-findings > ul > li, the box that had no wrapping rule."""
+    page = TestClient(create_app(store.home)).get(f"/ticket/{stress['Report list']}").text
+    assert 'class="rd-findings"' in page and "<ul><li>" in page.split('class="rd-findings"')[1] and "a1a1a1a1" in page
+
+
 def _rules():
-    css = re.sub(r"/\*.*?\*/", "", (STATIC / "desk.css").read_text(encoding="utf-8"), flags=re.S)
+    text = "\n".join((STATIC / n).read_text(encoding="utf-8") for n in ("desk.css", "reading.css"))
+    css = re.sub(r"/\*.*?\*/", "", text, flags=re.S)
     return [(sel.strip(), body) for sel, body in re.findall(r"([^{}@]+)\{([^{}]*)\}", css)]
 
 
@@ -87,10 +97,10 @@ def _breaks(selector_part: str) -> bool:
     return any(selector_part in [x.strip() for x in sel.split(",")] and re.search(r"overflow-wrap:\s*(anywhere|break-word)", body) for sel, body in _rules())
 
 
-@pytest.mark.parametrize("selector", [".mentions li", ".rd-goal"])
-def test_static_the_stylesheet_breaks_a_long_token_in_the_two_boxes_that_overflowed(selector):
-    """Method 0, a read of the stylesheet: the plain-text Commands lines (`.mentions li`) and the folded Context summary (`.rd-goal`)
-    each carry overflow-wrap, so an unbroken path or address wraps inside them."""
+@pytest.mark.parametrize("selector", [".mentions li", ".rd-goal", ".rd-findings"])
+def test_static_the_stylesheet_breaks_a_long_token_in_the_boxes_that_overflowed(selector):
+    """Method 0, a read of the stylesheet: the plain-text Commands lines (`.mentions li`), the folded Context summary (`.rd-goal`) and the
+    Report's In short list (`.rd-findings`) each carry overflow-wrap, so an unbroken path or address wraps inside them."""
     assert _breaks(selector), f"no overflow-wrap rule names {selector}"
 
 
@@ -127,6 +137,8 @@ def test_browser_sweep_every_ticket_of_a_store_copy_at_320(tmp_path):
         long_run = re.compile(r"\S{60,}")
         ids = [t.id for t in s.tickets() if long_run.search(t.path.read_text(encoding="utf-8", errors="ignore"))]
         ids.sort()
+    if os.environ.get("DESK_SWEEP_IDS"):  # an exact list, comma separated
+        ids = [i for i in os.environ["DESK_SWEEP_IDS"].split(",") if i]
     if os.environ.get("DESK_SWEEP_LIMIT"):
         ids = ids[: int(os.environ["DESK_SWEEP_LIMIT"])]
     with live_app(create_app(dst)) as base:
