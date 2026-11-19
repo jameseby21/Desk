@@ -74,6 +74,9 @@ th{font:500 12px/1.3 var(--font-mono);letter-spacing:.1em;text-transform:upperca
 img[width="24"]{object-fit:contain}
 .md form.chk{display:inline;margin:0}.md li.task-list-item{margin:4px 0}
 .md a.tid{font-family:var(--font-mono);font-size:13px}
+/* DESK-0334: a ticket id is a link wherever Desk shows text. In a whole-row link it is a role=link span (an anchor cannot hold an anchor); one that does not exist is plain, with a dotted line and the title "No such ticket". */
+span.tid[role=link]{cursor:pointer;text-decoration:underline;text-underline-offset:2px}span.tid[role=link]:hover{color:var(--red)}span.tid[role=link]:focus-visible{outline:2px solid var(--ink);outline-offset:1px}
+.tid-missing{text-decoration:underline dotted;text-underline-offset:2px;cursor:help}
 .rv-open{font-size:12.5px;margin-left:8px}
 .rv-form{display:inline-flex;gap:4px;margin-left:8px;vertical-align:middle}
 .rv-form input[type=text]{width:150px;padding:3px 6px;font-size:12.5px}

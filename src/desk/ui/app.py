@@ -26,6 +26,7 @@ from ..rules import RuleError
 from ..store import Store, id_parts, split_profile
 from ..ticket import SECTIONS, STATUSES, check_states, parse_checks
 from .. import words
+from .. import idlinks
 from .. import decidemode
 from .. import timeline as tlmod
 from .. import reading as rdmod
@@ -237,6 +238,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
 
     app = FastAPI(title="Desk", lifespan=lifespan)
     app.state.stopping = False
+    app.add_middleware(idlinks.ResponsePass, find_store=lambda: Store(home or find_home()), find_censor=lambda st: censor_for(st))  # DESK-0334: every page links the ids it shows (innermost, so the page is final)
     app.add_middleware(timing.TimingMiddleware)
     app.add_middleware(IdentityMiddleware, find_store=lambda: Store(home or find_home()))
     tokens = Tokens()
@@ -262,6 +264,15 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
     templates.env.finalize = finalize
     templates.env.globals["page_mask"] = lambda: shown["censor"]  # DESK-0305: HTML built outside Jinja (the timeline rail) masks the same words
     templates.env.filters["urlencode_path"] = lambda v: quote(str(v), safe="/#")
+
+    def tid_filter(v):
+        """DESK-0334: plain text in, escaped HTML out with every ticket id that exists linked (desk.idlinks is the one rule)."""
+        fn = shown["censor"]
+        text = "" if v is None else str(v)
+        return Markup(idlinks.link_text(fn(text) if fn else text, idlinks.current(Store(home or find_home())), censor=fn))
+
+    templates.env.filters["tid"] = tid_filter
+    app.state.templates_env = templates.env
     if STATIC.exists():
         app.mount("/static", RevalidatingStaticFiles(directory=str(STATIC)), name="static")
 
@@ -469,6 +480,15 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
             ix = search_ix[str(s.home)] = srch.open_index(s)
         ix.refresh(s, every=1.0)  # a stat of each ticket file at most once a second
         return ix.search(text, limit=limit)
+
+    @app.get("/ids")
+    def ids_that_exist(q: str = ""):
+        """DESK-0334: which of the ids in `q` (comma separated, at most 200) exist: {id: [title, status]}. static/idlinks.js asks this for text
+        a script draws (toasts, messages), so the page links an id by the same rule as the server."""
+        known = idlinks.current(store())
+        want = [x for x in re.split(r"[\s,]+", q.upper())[:200] if x]
+        fn = censor_for(store())
+        return JSONResponse({x: [fn(known[x][0]) if fn else known[x][0], known[x][1]] for x in want if x in known})
 
     @app.get("/search.json")
     def search_json(q: str = "", limit: int = srch.PER_GROUP):
