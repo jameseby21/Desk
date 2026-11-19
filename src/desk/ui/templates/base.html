@@ -17,7 +17,7 @@
 {% if build_stale %}<div class="stale-bar" role="status">{{ stale_text }}</div>
 {% endif %}<header>
   <a class="mark" href="/"><i></i>Desk</a>
-  <nav><a href="/">Today</a><a href="/board">Board</a><a href="/projects">Projects</a><a href="/changes">Changes</a></nav>
+  <nav><a href="/">Today</a><a href="/board">Board</a><a href="/projects">Projects</a><a href="/changes">Changes</a><a href="/analytics">Analytics</a></nav>
   {% include "_saved_views.html" %}
   <form class="search-open" action="/search" method="get" role="search" data-progress="none"><input type="search" name="q" id="search-open" placeholder="Find a ticket or project" aria-label="Find a ticket or project" autocomplete="off"><kbd title="Press / to search from any page">/</kbd></form>
   <span class="notify-ctl" role="group" aria-label="Popup notifications"><button type="button" class="btn small" id="notify-allow" aria-pressed="false">Notify me</button><button type="button" class="btn small" id="notify-mute" aria-pressed="false">Mute</button></span>

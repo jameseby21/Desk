@@ -1438,6 +1438,8 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
     app.include_router(routes_capture.router(store, templates, ctx, tokens, acting))  # DESK-0286: capture, paste-to-split, file drop
     from . import routes_brief  # DESK-0288: /brief, /flow, /repeats, /company, /deadlines.ics
     routes_brief.register(app, templates, ctx, store)
+    from . import routes_analytics  # DESK-0336: /analytics and /analytics/live.json
+    routes_analytics.register(app, templates, ctx, store)
     from . import routes_automations; app.include_router(routes_automations.router(templates, ctx, store, tokens))  # DESK-0292
     from .routes_motivation import register as register_motivation  # DESK-0293
     register_motivation(app, templates, store)
