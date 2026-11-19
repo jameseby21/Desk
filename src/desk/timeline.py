@@ -36,7 +36,7 @@ KIND_COLOURS = {"owner": "#C8F03C", "main": "#4E79A7", "coworker": "#F28E2B", "c
                 "rule": "#E15759"}
 NONE = "(none)"
 # The key a Claude Code session or Desk itself is recorded under when no person in people.yaml owns it. A person reads "Code session", not the key.
-RAW_SESSION_KEYS = ("claude-code", "desk")
+RAW_SESSION_KEYS = identity.RAW_SESSION_KEYS
 def clock() -> dt.datetime:
     """The timeline's only reading of the computer clock: the page, the strip and the dates all ask here, so a test can pin one
     moment for the whole render (DESK-0282: a route test drew today's strip against dates fixed on 15 Nov)."""

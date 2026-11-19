@@ -31,6 +31,9 @@ KINDS = ("person", "thread", "session", "subagent")
 SOURCES = ("ui", "cli", "mcp")
 CURRENT: contextvars.ContextVar["Actor | None"] = contextvars.ContextVar("desk_actor", default=None)
 _KIND_OF = {"person": "person", "external": "person", "coworker": "thread", "agent": "session", "code": "session"}
+# The key a Claude Code session, or Desk itself, is recorded under when no person in people.yaml owns it. The record keeps the key; what
+# is drawn for a person reads "Code session" (one list for the timeline and the Comments section).
+RAW_SESSION_KEYS = ("claude-code", "desk")
 PROTECTED = {"patch", "main", "james"}  # a subagent is never recorded as one of these
 RESERVED = {"automation"}  # DESK-0292: Desk's rule runner; no person or session may claim the name, so its events are only ever rules'
 _TAG = re.compile(r"\s*<!-- by ([^>]*?) -->")

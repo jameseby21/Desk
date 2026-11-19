@@ -476,7 +476,10 @@ def comment_blocks(text: str, store) -> list[CommentBlock]:
         words = _TAGS.sub("", body)
         first = activity.comment_words(rest)
         asks_owner = bool(_ASKY.search(words) or _ask_line(store.owner).search(_TAGS.sub("", rest)))
-        out.append(CommentBlock(body, pe.display(actor) if pe.get(actor) else who_raw, m.group(1), kind, first,
+        name = pe.display(actor) if pe.get(actor) else who_raw
+        if not pe.get(actor) and kind == "code" and who_raw.lower() in identity.RAW_SESSION_KEYS:
+            name = "Code session"  # the raw key of a code session is not a name (checker 2026-11-19; the timeline says the same)
+        out.append(CommentBlock(body, name, m.group(1), kind, first,
                                 kind not in QUIET_KINDS and not asks_owner))
         cur, head = None, None
 

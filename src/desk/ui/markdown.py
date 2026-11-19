@@ -11,6 +11,7 @@ from urllib.parse import quote, unquote
 from markdown_it import MarkdownIt
 from markdown_it.token import Token
 
+from ..identity import RAW_SESSION_KEYS
 from ..docs import DOC_FULL, DOC_RE, slug, vscode_url
 from mdit_py_plugins.tasklists import tasklists_plugin
 
@@ -443,13 +444,29 @@ _KINDED = re.compile(r"^(- \d{4}-\d{2}-\d{2} \d{2}:\d{2} · [^·]+? · )(.*?)(?:
 _KIND_MARK = re.compile(r"@@KIND-(Question|Suggestion|Concern|FYI)@@(?:@@BY-([^@]*)@@)?")
 
 
+CODE_SESSION = "Code session"
+
+
+def _author_shown(head: str, by: str) -> str:
+    """`- 2026-11-18 14:05 · claude-code · ` drawn as `... · Code session · `: the raw key of a code session is not a name (DESK-0305 f).
+    `claude-code` is always the session; `desk` only when the identity tag on the line says the writer was a session. The file keeps
+    the key as recorded."""
+    m = re.match(r"^(- \d{4}-\d{2}-\d{2} \d{2}:\d{2} · )([^·]+?)( · )$", head)
+    if not m:
+        return head
+    key = m.group(2).strip().lower()
+    if key == "claude-code" or (key in RAW_SESSION_KEYS and re.search(r"kind=session", by)):
+        return f"{m.group(1)}{CODE_SESSION}{m.group(3)}"
+    return head
+
+
 def prep_comments(text: str) -> str:
     """Before rendering the Comments section: move each line's `<!-- kind: X -->` tail, and the identity tag before it (DESK-0144), to
     markers right after the author. A line written before identities were kept gets the marker `none`."""
     def swap(m):
         by = (m.group(3) or "").strip()
         tag = "@@BY-" + (by.encode("utf-8").hex() if by else "none") + "@@"  # hex: nothing in it can be read as markup
-        return f"{m.group(1)}@@KIND-{m.group(4)}@@{tag} {m.group(2)}"
+        return f"{_author_shown(m.group(1), by)}@@KIND-{m.group(4)}@@{tag} {m.group(2)}"
 
     return _KINDED.sub(swap, text or "")
 

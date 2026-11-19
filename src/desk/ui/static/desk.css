@@ -606,3 +606,5 @@ a.rollup{color:var(--ink);font-weight:600;text-decoration:none}a.rollup:hover{te
 .chip.deadline{white-space:normal;max-width:100%}
 @media (max-width:600px){.chip.deadline{line-height:1.3;border-radius:14px}}
 .failed-checks li{overflow-wrap:break-word;min-width:0}
+/* The Move button is a 44 px target on a phone (rule 28 UI review). The reset above zeroed every .btn, so this one asks for it by name. */
+.mv-go{min-height:44px}
