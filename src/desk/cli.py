@@ -290,7 +290,7 @@ def cmd_comments(args):
         for r in rows:
             mark = "" if r.answered else "  [open]"
             kind = f" {r.kind}" if r.kind else ""
-            print(f"{r.ticket_id}  {r.when.strftime('%Y-%m-%d %H:%M')}  {r.author} [{identity.describe(r.ident or {})}]{kind}{mark}\n    {r.text}")
+            print(f"{r.ticket_id}  {r.stamp}  {r.author} [{identity.describe(r.ident or {})}]{kind}{mark}\n    {r.text}")
         print(f"{len(rows)} comment(s)")
     if args.mark_sweep:
         cm.mark_sweep(s.home)
