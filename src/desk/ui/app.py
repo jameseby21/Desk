@@ -23,6 +23,7 @@ from .. import timing
 from .. import merge as mergemod, deadlines, newform, notify, asks, boardfilter as bf, boardview as bv, commands, companies as compmod, identity as idmod, ladder, priority, readability, sprints as sprintmod, todayview as tv, people as peoplemod, projectfilter as pf, search as srch, nav as navmod, needs_me as nmod, buildstamp as bs, comments as cm, docs as docsmod, ops, profanity, review as rv, style as styles, subtickets as subt, tracks as trk, version as ver
 from ..config import find_home
 from ..rules import RuleError
+from ..secretscan import looks_secret
 from ..store import Store, id_parts, split_profile
 from ..ticket import SECTIONS, STATUSES, check_states, parse_checks
 from .. import words
@@ -1011,9 +1012,10 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         url = f"/ticket/{t_id}"
         if error:
             url += f"?error={quote(error)}"
-            if keep.strip():  # DESK-0324: a refused form gives the typed words back, so the page can fill the box again
+            # Rule 80 item 2: a value that looks like a secret is never put in an address (browser history, access logs); it is not saved either
+            if keep.strip() and not looks_secret(keep):  # DESK-0324: a refused form gives the typed words back, so the page can fill the box again
                 url += f"&reason={quote(keep.strip()[:2000])}"
-            if keep_waiting.strip():  # DESK-0325: the name typed in Waiting on comes back too
+            if keep_waiting.strip() and not looks_secret(keep_waiting):  # DESK-0325: the name typed in Waiting on comes back too
                 url += f"&waiting_on={quote(keep_waiting.strip()[:300])}"
         elif dup:
             url += f"?dup={int(dup)}"

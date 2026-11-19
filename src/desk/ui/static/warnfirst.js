@@ -52,6 +52,12 @@
   }
 
   wire(document);
+  // a page shown again from the back button: the browser may refill the fields, and base.html frees a form that was mid-send, so check again
+  window.addEventListener("pageshow", function () {
+    Array.prototype.forEach.call(document.querySelectorAll('form[data-wf="1"]'), function (form) {
+      if (form.classList.contains("mv-form")) moveState(form); else needsState(form);
+    });
+  });
   // pages swap their content in place after an action (progress.js), so a new form can appear later
   new MutationObserver(function () { wire(document); }).observe(document.body, { childList: true, subtree: true });
 })();

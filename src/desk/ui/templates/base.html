@@ -61,6 +61,7 @@ document.addEventListener("submit", function (e) {
 });
 window.addEventListener("pageshow", function () {
   document.querySelectorAll("form.post-once").forEach(function (f) {
+    if (!f.getAttribute("data-sending")) return;  // never switch on a button this script did not switch off (warnfirst.js greys Move until it is filled)
     f.removeAttribute("data-sending"); f.classList.remove("sending");
     f.querySelectorAll("button[type=submit]").forEach(function (b) { b.disabled = false; if (b.hasAttribute("data-label")) { b.textContent = b.getAttribute("data-label"); } });
   });

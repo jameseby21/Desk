@@ -298,7 +298,7 @@ def check_transition(t: Ticket, new: str, store: "Store", *, actor: str | None =
         raise RuleError(f"{t.id} is {cur}; closed tickets do not move")
     if new in ("blocked", "rejected"):
         if new == "blocked" and not str(t.meta.get("blocked_on") or "").strip():
-            raise RuleError("Blocked needs a name: set blocked_on to the ticket or person it waits on.")
+            raise RuleError("Blocked needs a name: say which ticket or person it waits on.")
         if new == "rejected":
             _words(reason)
         return

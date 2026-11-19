@@ -446,3 +446,168 @@ def test_the_sweep_the_server_really_refuses_what_each_form_warns_about(store):
         assert r.status_code >= 400, (what, r.status_code, r.text[:200])
     assert store.get(t.id).status == "triage" and not store.get(t.id).meta.get("lane")
     assert post(f"/ticket/{t.id}/move", to="parked", reason="not this quarter").status_code == 200
+
+
+# -- the fix round (checker's defects): grey at first paint, not only after the first keystroke -----------------------------------------
+# Protects: base.html's pageshow handler used to switch every post-once submit button back on after load, undoing warnfirst.js, so Move
+# and the Decide buttons were clickable at first paint and the click gave the red 422 box this ticket was filed against.
+
+def _base_html():
+    return (TEMPLATES / "base.html").read_text(encoding="utf-8")
+
+
+def test_the_pageshow_handler_only_restores_a_form_that_was_mid_send():
+    """Method 1, the source: the handler in base.html restores buttons only on a form carrying data-sending, so it can never switch on a
+    button that warnfirst.js greyed."""
+    m = re.search(r'addEventListener\("pageshow", function \(\) \{(.*?)\n\}\);', _base_html(), re.S)
+    assert m, "the pageshow handler is gone from base.html"
+    body = m.group(1)
+    assert 'getAttribute("data-sending")' in body and body.index('getAttribute("data-sending")') < body.index("disabled = false")
+    js = (Path(app_mod.__file__).parent / "static" / "warnfirst.js").read_text(encoding="utf-8")
+    assert 'addEventListener("pageshow"' in js, "warnfirst.js does not run the check again when a page is shown from the back button"
+
+
+@pytest.mark.skipif(browser() is None, reason="no headless browser on this machine")
+def test_in_a_real_browser_move_is_grey_at_first_paint_and_stays_grey_after_the_page_settles(store):
+    """Method 2, a real browser, read 600 ms AFTER load (the earlier test read inside the load event, before pageshow ran): with no
+    destination chosen Move is grey, the form is marked as waiting, and the reason is beside it."""
+    t = _mk(store)
+    script = """<script>window.addEventListener("load", function () { setTimeout(function () {
+      var f = document.querySelector("form.mv-form"), go = f.querySelector(".mv-go");
+      fetch("/m", { method: "POST", body: JSON.stringify({ off: go.disabled, waiting: f.classList.contains("mv-waiting"), why: f.querySelector(".mv-why").textContent }) });
+    }, 600); });</script>"""
+    got = drive(store, script, f"/ticket/{t.id}", width=390)
+    assert got["off"] and got["waiting"] and "Choose where" in got["why"], got
+
+
+@pytest.mark.skipif(browser() is None, reason="no headless browser on this machine")
+def test_in_a_real_browser_decide_buttons_are_grey_at_first_paint_and_stay_grey_after_the_page_settles(store):
+    """Method 3, a real browser on the Decide page, read 600 ms after load: Approve and Send back are grey, Snooze is on, the reason shows."""
+    _decide_page(store)
+    script = """<script>window.addEventListener("load", function () { setTimeout(function () {
+      var f = document.getElementById("dm-form");
+      var d = function (v) { return f.querySelector('button[value="' + v + '"]').disabled; };
+      fetch("/m", { method: "POST", body: JSON.stringify({ a: d("approve"), n: d("changes"), s: d("snooze"), why: f.querySelector("[data-why]").textContent }) });
+    }, 600); });</script>"""
+    got = drive(store, script, "/decide", width=390)
+    assert got["a"] and got["n"] and not got["s"] and "Type your words" in got["why"], got
+
+
+@pytest.mark.skipif(browser() is None, reason="no headless browser on this machine")
+def test_in_a_real_browser_a_page_shown_again_from_the_back_button_keeps_the_grey_and_frees_a_stuck_send(store):
+    """Edge, the back button (a page restored from the browser's cache fires pageshow with persisted true): a grey Move stays grey, and a
+    form that was mid-send gets its button and label back."""
+    t = _mk(store)
+    script = """<script>window.addEventListener("load", function () { setTimeout(function () {
+      var f = document.querySelector("form.mv-form"), go = f.querySelector(".mv-go");
+      window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true }));
+      var grey = go.disabled;
+      var c = document.querySelector("form.chk, form.post-once:not(.mv-form)");
+      var stuck = null;
+      if (c) { var b = c.querySelector("button[type=submit]"); if (b) { c.setAttribute("data-sending", "1"); b.setAttribute("data-label", "Post"); b.textContent = "Sending..."; b.disabled = true;
+        window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true }));
+        stuck = { off: b.disabled, label: b.textContent, sending: c.hasAttribute("data-sending") }; } }
+      fetch("/m", { method: "POST", body: JSON.stringify({ grey: grey, stuck: stuck }) });
+    }, 400); });</script>"""
+    got = drive(store, script, f"/ticket/{t.id}", width=390)
+    assert got["grey"], got
+    if got["stuck"] is not None:
+        assert got["stuck"] == {"off": False, "label": "Post", "sending": False}, got
+
+
+# -- the fix round: a refused move never puts a secret in the address bar (rule 80 item 2) --------------------------------------------
+# Protects: the no-script refusal used to put the typed words and the Waiting on text into the redirect address, so a secret pasted into
+# the box landed in the address bar, the browser history and any access log, although the move itself wrote nothing.
+
+SECRET = "ghp_abcdefghijklmnopqrstuvwxyz0123456789AB"
+
+
+def test_a_refused_form_post_with_a_secret_in_the_reason_keeps_it_out_of_the_address(store):
+    """Method 1, the redirect: the reason is a secret, the refusal is the secret refusal, and the address carries neither the value nor a reason key."""
+    t = _mk(store)
+    r = _post_move(_client(store), t, "blocked", SECRET, "", js=False)
+    loc = r.headers["location"]
+    assert r.status_code == 303 and "error=" in loc and SECRET not in loc and "reason=" not in loc
+
+
+def test_a_refused_form_post_with_a_secret_in_waiting_on_keeps_it_out_of_the_address(store):
+    """Method 2, the other box: a secret typed in Waiting on is not echoed either."""
+    t = _mk(store)
+    r = _post_move(_client(store), t, "blocked", WORDS, "sk-ant-api03-" + "a" * 40, js=False)
+    loc = r.headers["location"]
+    assert r.status_code == 303 and "sk-ant" not in loc and "waiting_on=" not in loc
+
+
+def test_the_page_that_a_secret_refusal_lands_on_never_shows_the_secret(store):
+    """Method 3, the page the redirect lands on: the secret is in no input, anywhere in the page, and the secret's kind is named; the
+    ticket on disk is unchanged."""
+    t = _mk(store)
+    before = _bytes(store, t.id)
+    c = _client(store)
+    r = _post_move(c, t, "blocked", "key is " + SECRET, "DESK-0100", js=False)
+    assert _bytes(store, t.id) == before  # the refused post wrote nothing (read before the page is opened)
+    page = c.get(r.headers["location"]).text
+    assert SECRET not in page and "looks like" in page
+
+
+def test_a_plain_refusal_still_gives_the_typed_words_back(store):
+    """Edge: only a secret is held back; ordinary words (and a commit hash, which is not a secret) still come back so nothing typed is lost."""
+    t = _mk(store)
+    r = _post_move(_client(store), t, "blocked", "see commit 3f2a9c1b7d4e5a60", "", js=False)
+    q = parse_qs(urlparse(r.headers["location"]).query)
+    assert q["reason"] == ["see commit 3f2a9c1b7d4e5a60"]
+
+
+# -- the fix round: the refusal names the way out where the person is, and an unblock writes one line -----------------------------------
+
+def test_the_rule_sentence_for_blocked_is_plain_and_does_not_name_a_file_field(store):
+    """Method 1, the rule: the sentence says which ticket or person, not 'set blocked_on' (a field name nobody types in a box)."""
+    t = _mk(store)
+    with pytest.raises(RuleError) as e:
+        ops.move(store, t, "blocked", actor="james")
+    assert "blocked_on" not in str(e.value) and "which ticket or person" in str(e.value)
+
+
+def test_cli_blocked_refusal_names_the_waiting_on_option(store, capsys):
+    """Method 2, the command line, both the dry run and the real move: the refusal ends with the option that fixes it."""
+    t = _mk(store)
+    with pytest.raises(SystemExit):
+        _drew(store, "move", t.id, "blocked", "--dry-run")
+    assert "--waiting-on" in capsys.readouterr().out
+    with pytest.raises(SystemExit):
+        _drew(store, "move", t.id, "blocked", "--as", "james")
+    assert "--waiting-on" in capsys.readouterr().err
+    assert store.get(t.id).status == "ready"
+
+
+def test_web_blocked_refusal_does_not_mention_the_command_line(store):
+    """Edge: the page's refusal points at its own Waiting on box and never prints a command-line option."""
+    t = _mk(store)
+    r = _post_move(_client(store), t, "blocked", WORDS, "")
+    assert r.status_code == 422 and "--waiting-on" not in r.json()["error"]
+
+
+def test_unblock_with_words_writes_one_comment_line_not_two(store):
+    """Method 1, the file: `drew move ID unblock --reason WORDS` leaves one line under Comments (the words, with where it went)."""
+    t = _mk(store, status="blocked", blocked_on="DESK-0001", blocked_from="ready")
+    _drew(store, "move", t.id, "unblock", "--reason", "The partner sent the file.", "--as", "james")
+    lines = [ln for ln in store.get(t.id).section("Comments").splitlines() if "unblocked" in ln]
+    assert len(lines) == 1 and "The partner sent the file." in lines[0], lines
+
+
+def test_unblock_with_no_words_still_leaves_one_line_saying_where_it_went(store):
+    """Edge: with an empty box nothing the person typed exists, so Desk's own plain line is the one record."""
+    t = _mk(store, status="blocked", blocked_on="DESK-0001", blocked_from="ready")
+    _drew(store, "move", t.id, "unblock", "--as", "james")
+    lines = [ln for ln in store.get(t.id).section("Comments").splitlines() if "unblocked" in ln]
+    assert len(lines) == 1, lines
+    assert store.get(t.id).status == "ready" and not store.get(t.id).meta.get("blocked_on")
+
+
+def test_unblock_through_the_web_box_writes_one_line_too(store):
+    """Method 3, the page's route: the same single line."""
+    t = _mk(store, status="blocked", blocked_on="DESK-0001", blocked_from="ready")
+    r = _post_move(_client(store), t, "unblock", "Got the file.")
+    assert r.status_code == 200
+    lines = [ln for ln in store.get(t.id).section("Comments").splitlines() if "unblocked" in ln]
+    assert len(lines) == 1 and "Got the file." in lines[0], lines

@@ -601,3 +601,8 @@ header .search-open kbd{position:absolute;right:10px;top:50%;transform:translate
 .cc-why{font:400 12px var(--font-body);margin:2px 0 4px;white-space:normal}.cc-why .score{margin-right:4px}
 .card .why{font-size:12.5px}
 a.rollup{color:var(--ink);font-weight:600;text-decoration:none}a.rollup:hover{text-decoration:underline}
+
+/* DESK-0303 fix round: at 320 px a long deadline chip wraps inside its row, and a Failed checks line breaks inside a long web address */
+.chip.deadline{white-space:normal;max-width:100%}
+@media (max-width:600px){.chip.deadline{line-height:1.3;border-radius:14px}}
+.failed-checks li{overflow-wrap:break-word;min-width:0}

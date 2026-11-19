@@ -1,4 +1,4 @@
-"""DESK-0305 and DESK-0306 polish: seven small defects found by the owner and by Chaz on the first build of the visual timeline.
+"""DESK-0305 and DESK-0306 polish: six small defects, (a) to (f), found by the owner and by Chaz on the first build of the visual timeline.
 
 (a) The header's "N of 5 decided today" stayed stale after Undo. (b) The Decide box's grey hint "Empty means: Agree with the
 recommendation" was cut off on a phone. (c) The Undo toast sat on top of the buttons of the page at 375 px. (d) A date on the Undo

@@ -341,6 +341,11 @@ def cmd_reject(args):
     _write_cmd(args, lambda s, t: ops.reject(s, t, args.reason, actor=args.as_), "reject")
 
 
+def _waiting_hint(s, t, to, args) -> str:
+    """The command-line way out of a Blocked move that has no name: the option that supplies it (the page says 'the Waiting on box')."""
+    return " Add --waiting-on NAME (a ticket id or a person)." if ops.move_missing(t, to, reason=args.reason, waiting_on=args.waiting_on) == "waiting_on" else ""
+
+
 def cmd_move(args):
     from . import sprints
 
@@ -357,7 +362,7 @@ def cmd_move(args):
             _die(str(e.args[0]) if e.args else str(e))
         why = ops.move_refusal(s, t, to, actor=args.as_, reason=args.reason, waiting_on=args.waiting_on)
         if why:
-            print(f"Refused: {why}")
+            print(f"Refused: {why}{_waiting_hint(s, t, to, args)}")
             raise SystemExit(1)
         print(f"{t.id}: would move {t.status} -> {to}. Nothing was written.")
         return
@@ -368,7 +373,13 @@ def cmd_move(args):
         if args.sprint is not None:
             t = sprints.set_sprint(s, t, args.sprint, actor=args.as_)
         if to:
-            t = ops.move_any(s, t, to, actor=args.as_, reason=args.reason, waiting_on=args.waiting_on)  # DESK-0324: the words are kept on the ticket
+            try:
+                t = ops.move_any(s, t, to, actor=args.as_, reason=args.reason, waiting_on=args.waiting_on)  # DESK-0324: the words are kept on the ticket
+            except RuleError as e:
+                hint = _waiting_hint(s, t, to, args)
+                if hint and str(e).startswith("Blocked needs a name"):
+                    raise RuleError(f"{e}{hint}") from e
+                raise
         return t
 
     try:

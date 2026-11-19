@@ -442,11 +442,12 @@ def unblock(store: Store, t: Ticket, actor: str | None = None, to: str | None = 
     if t.status != "blocked":
         raise RuleError(f"{t.id} is not blocked")
     target = to or str(t.meta.get("blocked_from") or "ready")
-    keep_words(t, words, f"unblocked → {target}", by=by or actor)
+    kept = keep_words(t, words, f"unblocked → {target}", by=by or actor)
     t.meta["status"] = target
     t.meta["blocked_on"] = ""
     t.meta.pop("blocked_from", None)
-    t.append_line("Comments", _stamp(actor or "desk", f"unblocked → {target}"))
+    if not kept:  # the typed words already say where it went; Desk's own line is only for an empty box (one line, not two)
+        t.append_line("Comments", _stamp(actor or "desk", f"unblocked → {target}"))
     store.save(t)
     _acted(store, t, actor)
     return t
