@@ -116,13 +116,17 @@ def test_browser_the_two_named_cases_fit_at_320_375_and_390(store, stress):
 
 @pytest.mark.skipif(browser() is None or not os.environ.get("DESK_SWEEP_STORE"), reason="opt-in: set DESK_SWEEP_STORE to a store folder to sweep a copy of it")
 def test_browser_sweep_every_ticket_of_a_store_copy_at_320(tmp_path):
-    """Method 2, the sweep: every ticket page of a COPY of the store in DESK_SWEEP_STORE (limit with DESK_SWEEP_LIMIT) is at most 320 px
+    """Method 2, the sweep: every ticket page of a COPY of the store in DESK_SWEEP_STORE (limit with DESK_SWEEP_LIMIT; DESK_SWEEP_RISKY=1 keeps only tickets with a 60-character unbroken run) is at most 320 px
     wide. The copy is what the browser reads; the original is never opened by the app."""
     src = os.environ["DESK_SWEEP_STORE"]
     dst = tmp_path / "copy"
     shutil.copytree(src, dst, ignore=shutil.ignore_patterns(".git", "node_modules", "*.pyc"))
     s = Store(dst)
-    ids = sorted(t.id for t in s.all())
+    ids = sorted(t.id for t in s.tickets())
+    if os.environ.get("DESK_SWEEP_RISKY"):  # only the tickets whose text holds an unbroken run of 60 or more characters (a path, an address): the ones that can overflow
+        long_run = re.compile(r"\S{60,}")
+        ids = [t.id for t in s.tickets() if long_run.search(t.path.read_text(encoding="utf-8", errors="ignore"))]
+        ids.sort()
     if os.environ.get("DESK_SWEEP_LIMIT"):
         ids = ids[: int(os.environ["DESK_SWEEP_LIMIT"])]
     with live_app(create_app(dst)) as base:
