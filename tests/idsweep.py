@@ -11,7 +11,7 @@ from __future__ import annotations
 import re
 from html.parser import HTMLParser
 
-ID = re.compile(r"(?<![A-Za-z0-9-])[A-Z]{2,10}-\d{4}(?!\d)")
+ID = re.compile(r"(?<![A-Za-z0-9-])[A-Z]{2,10}-\d{4}(?!\d|-[A-Za-z0-9])")  # an id followed by a slug is a branch or file name (bsa/BSA-0091-group-formulas), not a mention
 SKIP_TAGS = {"code", "pre", "script", "style", "title", "textarea", "option", "select", "svg", "kbd", "button", "noscript"}
 VOID = {"br", "hr", "img", "input", "meta", "link", "source", "wbr", "area", "base", "col", "embed", "param", "track"}
 
