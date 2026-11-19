@@ -1,5 +1,6 @@
 /* DESK-0325 (standards: anything that will cause an error should have caused a warning beforehand).
-   1. The Move box on the ticket page (form.mv-form): Blocked shows "Waiting on"; Rejected and Parked need your words. Move stays grey, with the
+   1. The Move box on the ticket page (form.mv-form): a move the rules refuse (data-block, the server's own sentence) keeps Move grey with that sentence
+      beside it; Blocked shows "Waiting on"; Rejected and Parked need your words. Move stays grey, with the
       reason beside it, until the field is filled.
    2. A button marked data-needs="words" (or "option-or-words") stays grey, with the reason beside it, until the form's words box holds at least
       four characters (or, for "option-or-words", an option is picked).
@@ -12,9 +13,11 @@
     var sel = form.querySelector(".mv-to"), opt = sel.options[sel.selectedIndex];
     var wait = form.querySelector(".mv-wait"), words = form.querySelector(".mv-words");
     var need = (opt && opt.getAttribute("data-need")) || "";
-    wait.hidden = need !== "waiting_on";
+    var block = (opt && opt.getAttribute("data-block")) || "";  // the rule's own refusal for this move, drawn by the server
+    wait.hidden = need !== "waiting_on" || !!block;
     var why = "";
     if (!sel.value) why = opt.getAttribute("data-why") || "Choose where to move it.";
+    else if (block) why = block;
     else if (need === "waiting_on" && !wait.querySelector("input").value.trim()) why = opt.getAttribute("data-why");
     else if (need === "reason" && words.querySelector("input").value.trim().length < MIN_WORDS) why = opt.getAttribute("data-why");
     form.querySelector(".mv-go").disabled = !!why;

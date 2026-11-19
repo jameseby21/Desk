@@ -82,6 +82,7 @@ MOVE_NEEDS = {
     "rejected": ("reason", "Why let it go", "Letting a ticket go needs your reason: at least four characters."),
     "parked": ("reason", "Why park it", "Parking needs a one-line reason, for example: not this quarter."),
 }
+MOVE_FILLER = "Words typed in the box."  # what the Move box assumes will be typed when it asks the rule about the move itself
 MOVE_CHOICES = ("unblock", "parked")  # moves the Move box and `drew move` offer beside the statuses
 
 

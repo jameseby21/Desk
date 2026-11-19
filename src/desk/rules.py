@@ -280,6 +280,18 @@ def ui_design_warning(t: Ticket, by_id: dict, pe) -> str | None:
             "depends_on or related, or write `design: none - <reason>` in Context")
 
 
+def _say(status: str) -> str:
+    return status.replace("_", " ")
+
+
+def _not_allowed(t: Ticket, cur: str, new: str, allowed: set[str]) -> str:
+    """A move the lifecycle does not have, in plain words: where the ticket is, where it was sent, and where it can go from here."""
+    nxt = sorted(_say(x) for x in allowed)
+    where = " or ".join(nxt) if nxt else "nowhere else"
+    extra = " Only a decision ticket is approved before it is built." if new in ("approved", "changes_requested") and cur == "ready" else ""
+    return f"{t.id} is {_say(cur)}, and a ticket cannot go from {_say(cur)} straight to {_say(new)}. From {_say(cur)} it can go to {where}.{extra}"
+
+
 def _words(reason: str | None) -> str:
     reason = (reason or "").strip()
     if len(reason) < MIN_WORDS:
@@ -303,20 +315,20 @@ def check_transition(t: Ticket, new: str, store: "Store", *, actor: str | None =
             _words(reason)
         return
     if cur == "blocked":
-        raise RuleError(f"{t.id} is blocked; use `desk unblock` first")
+        raise RuleError(f"{t.id} is blocked, so it cannot move on yet. Unblock it first with: drew unblock {t.id}")
     allowed = ALLOWED.get(cur, set())
     if canon_type(t.meta.get("type")) == "decision" and cur == "ready":
         allowed = allowed | {"approved", "changes_requested"}  # a decision ticket is answered where it stands; nothing is built, so no review step
     if new not in allowed:
-        raise RuleError(f"{t.id}: {cur} → {new} is not an allowed move")
+        raise RuleError(_not_allowed(t, cur, new, allowed))
     if new == "ready" and str(t.meta.get("owner")) not in OWNER_ROLES and (actor or "") not in OWNER_ROLES:
-        raise RuleError("Only main or the owner throws a ticket into `ready`.")
+        raise RuleError("Only main or the owner can set a ticket to ready.")
     if new == "claimed":
         who = actor or str(t.meta.get("owner"))
         if who in OWNER_ROLES:
-            raise RuleError("A project session claims a ticket, not main or the owner. Pass --owner <project or name>.")
+            raise RuleError(f"Only the project session that will build {t.id} can claim it. It runs: drew claim {t.id} --owner followed by the project name.")
     if new == "review" and not t.section("Report"):
-        raise RuleError("`review` needs a non-empty Report. Use `desk report`.")
+        raise RuleError(f"Moving to review needs a Report on the ticket. Write it with: drew report {t.id} --file report.md")
     if new == "review" and not t.validate_steps():
         raise RuleError("Write How to validate first: the steps that confirm the Outcome, before the work is handed over.")
     if new in ("approved", "changes_requested"):

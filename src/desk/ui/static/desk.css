@@ -127,7 +127,7 @@ button:disabled{opacity:.55;cursor:wait}
 .gloss .pop{display:none;position:absolute;left:0;top:1.6em;z-index:5;width:max-content;max-width:320px;padding:8px 10px;border:1px solid var(--ink);border-radius:10px;background:var(--card);color:var(--ink);font-size:13.5px;line-height:1.4;box-shadow:4px 4px 0 var(--ball)}
 .gloss:hover .pop,.gloss:focus .pop,.gloss:focus-within .pop{display:block}
 a.docref{font-family:var(--font-mono);font-size:.92em}a.gloss-link{border-bottom:1.5px dotted var(--ink);text-decoration:none}
-.mentions{margin:6px 0 0;padding-left:18px}.docmeta{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:2px 14px;font-size:14px;margin:0 0 14px}.docmeta dt{color:var(--muted)}.docmeta dd{margin:0;min-width:0;overflow-wrap:break-word}
+.mentions{margin:6px 0 0;padding-left:18px;min-width:0}.mentions li{overflow-wrap:anywhere;min-width:0}  /* DESK-0303: a plain-text Commands line holding a long unbroken path wraps, it never widens the page at 320 px */.docmeta{display:grid;grid-template-columns:max-content minmax(0,1fr);gap:2px 14px;font-size:14px;margin:0 0 14px}.docmeta dt{color:var(--muted)}.docmeta dd{margin:0;min-width:0;overflow-wrap:break-word}
 a.vsc{font:12px var(--font-mono);color:var(--muted);margin-left:4px;text-decoration:none;border:1px solid var(--line);border-radius:999px;padding:1px 6px}a.vsc:hover{color:var(--ink);border-color:var(--ink)}
 .chip.ty{color:#141414;border-color:transparent;font-weight:500}
 .ty-feature{background:#C8F03C}.ty-upgrade{background:#7FD6C2}.ty-bug{background:#F4A3A6}.ty-task{background:#F2D98B}
@@ -324,7 +324,7 @@ details.refine-split>summary{cursor:pointer;font-weight:600}
 .tr-id{font:12.5px var(--font-mono);color:var(--muted);white-space:nowrap}
 .ask{display:inline-block;background:var(--ink);color:var(--on-ink);border-radius:6px;padding:4px 12px;font-weight:700;font-size:13px}.ask-do{background:var(--card);color:var(--ink);border:1.5px solid var(--ink)}
 .badge{display:inline-block;margin-right:8px;padding:2px 7px;border-radius:6px;font:700 12px var(--font-body);vertical-align:1px}.badge.bug{background:var(--red);color:var(--on-red)}.badge.urgent{background:var(--ball);color:#141414}
-.fold{margin:10px 0}.fold>summary{cursor:pointer;color:var(--muted);padding:6px 0}.fold>summary b{color:var(--ink)}
+.fold{margin:10px 0;min-width:0}.fold>summary{cursor:pointer;color:var(--muted);padding:6px 0;min-width:0;overflow-wrap:break-word}.rd-goal{overflow-wrap:anywhere;min-width:0}  /* DESK-0303: the folded Context line holds the goal sentence; a long web address in it wraps at 320 px */.fold>summary b{color:var(--ink)}
 .t-sec .asked{margin-top:12px}
 /* Immediate Action Required (DESK-0193): the top row of Today; red while any hard deadline is missed */
 .imm{margin-top:18px}.imm-empty{margin:0;font-size:14px}.imm .rows{border-color:var(--ink)}.imm-when{font-weight:700;color:var(--ink)}

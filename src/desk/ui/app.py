@@ -269,6 +269,10 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
     def store() -> Store:
         return Store(home or find_home())
 
+    # DESK-0325: what the Move box on a ticket page says beside a grey Move. It is the rule's own sentence (`ops.move_refusal`, the one `drew move
+    # --dry-run` prints and the server answers with), asked as if the person had filled in the fields, so only the move itself is judged.
+    templates.env.globals["move_block"] = lambda t, to: ops.move_refusal(store(), t, to, actor=store().owner, reason=ops.MOVE_FILLER, waiting_on=ops.MOVE_FILLER)
+
     app.include_router(routes_preview.make_router(store))  # DESK-0291: file preview panel and read-only local file links
 
     def censor_for(st: Store):

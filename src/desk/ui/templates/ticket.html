@@ -280,9 +280,10 @@
         <label>Move to
           <select name="to" class="mv-to">
             <option value="" data-why="Choose where to move it.">Choose where to move it</option>
-            {% if t.status == 'blocked' %}<option value="unblock">unblock (back to {{ t.meta.get('blocked_from') or 'ready' }})</option>{% endif %}
-            {% for st in statuses %}{% if st != t.status %}{% set need = move_needs.get(st) %}<option value="{{ st }}"{% if need %} data-need="{{ need[0] }}" data-why="{{ need[2] }}"{% endif %}>{{ screen(st) }}{% if st == 'rejected' %} (let go){% endif %}</option>{% endif %}{% endfor %}
-            {% if lane_info(t).lane != 'parked' %}<option value="parked" data-need="reason" data-why="{{ move_needs['parked'][2] }}">Parked (set aside, the record stays)</option>{% endif %}
+            {# data-block: the rule's own refusal for that move (the sentence the server would answer with); the script greys Move and shows it. #}
+            {% if t.status == 'blocked' %}{% set blk = move_block(t, 'unblock') %}<option value="unblock"{% if blk %} data-block="{{ blk }}"{% endif %}>unblock (back to {{ t.meta.get('blocked_from') or 'ready' }})</option>{% endif %}
+            {% for st in statuses %}{% if st != t.status %}{% set need = move_needs.get(st) %}{% set blk = move_block(t, st) %}<option value="{{ st }}"{% if need %} data-need="{{ need[0] }}" data-why="{{ need[2] }}"{% endif %}{% if blk %} data-block="{{ blk }}"{% endif %}>{{ screen(st) }}{% if st == 'rejected' %} (let go){% endif %}</option>{% endif %}{% endfor %}
+            {% if lane_info(t).lane != 'parked' %}{% set blk = move_block(t, 'parked') %}<option value="parked" data-need="reason" data-why="{{ move_needs['parked'][2] }}"{% if blk %} data-block="{{ blk }}"{% endif %}>Parked (set aside, the record stays)</option>{% endif %}
           </select></label>
         <label class="mv-wait">Waiting on (the ticket or person it waits on)<input type="text" name="waiting_on" maxlength="200" value="{{ kept_waiting or t.meta.get('blocked_on') or '' }}" placeholder="for example DESK-0100 or james"></label>
         <label class="mv-words">Your words (kept on the ticket as a comment; Rejected and Parked need them)<input type="text" name="reason" value="{{ kept_reason or '' }}"></label>
