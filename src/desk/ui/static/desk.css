@@ -18,7 +18,7 @@ header .mark i{width:22px;height:22px;border-radius:50%;background:var(--ball);b
 header nav a{margin-right:14px;text-decoration:none;font-weight:600}
 header .home{margin-left:auto;font:12px var(--font-mono);color:var(--muted)}
 main{max-width:1200px;margin:0 auto;padding:24px 16px 48px}
-h1{font-size:34px;line-height:1.05;letter-spacing:-.02em;margin:0 0 6px}
+h1{font-size:34px;line-height:1.05;letter-spacing:-.02em;margin:0 0 6px;overflow-wrap:break-word;min-width:0}  /* DESK-0303: an over-long token in a title breaks; a word that fits stays whole */
 h2{font-size:20px;margin:28px 0 10px}
 h2 small{font-weight:400;color:var(--muted);font-size:14px;margin-left:10px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:16px 18px}

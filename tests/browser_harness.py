@@ -191,3 +191,124 @@ def inline_assets(html: str, static_dir: Path) -> str:
     html = re.sub(r'<link rel="stylesheet" href="/static/desk.css[^"]*">', lambda m: f"<style>{css}</style>", html)
     html = re.sub(r'<link rel="stylesheet" href="https://fonts[^>]*>|<link rel="preconnect"[^>]*>', "", html)
     return re.sub(r'<script src="[^"]*"[^>]*></script>', "", html).replace("</body>", f"<script>{js}</script></body>", 1)
+
+
+class _CDP:
+    """A minimal Chrome DevTools Protocol client over a stdlib WebSocket (no websocket package is installed)."""
+
+    def __init__(self, ws_url: str):
+        import base64
+        import os
+        import socket
+        from urllib.parse import urlparse
+
+        u = urlparse(ws_url)
+        self.sock = socket.create_connection((u.hostname, u.port), timeout=300)
+        key = base64.b64encode(os.urandom(16)).decode()
+        self.sock.sendall((f"GET {u.path} HTTP/1.1\r\nHost: {u.hostname}:{u.port}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
+                           f"Sec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\n\r\n").encode())
+        buf = b""
+        while b"\r\n\r\n" not in buf:
+            buf += self.sock.recv(1)
+        assert b" 101 " in buf.split(b"\r\n", 1)[0], buf
+        self.n = 0
+
+    def _read(self, k: int) -> bytes:
+        out = b""
+        while len(out) < k:
+            chunk = self.sock.recv(k - len(out))
+            if not chunk:
+                raise ConnectionError("the browser closed the DevTools connection")
+            out += chunk
+        return out
+
+    def _recv(self) -> dict:
+        import struct
+
+        data = b""
+        while True:
+            b0, b1 = self._read(2)
+            ln = b1 & 0x7F
+            if ln == 126:
+                ln = struct.unpack(">H", self._read(2))[0]
+            elif ln == 127:
+                ln = struct.unpack(">Q", self._read(8))[0]
+            data += self._read(ln)
+            if b0 & 0x80:
+                return json.loads(data.decode("utf-8"))
+
+    def call(self, method: str, **params) -> dict:
+        import os
+        import struct
+
+        self.n += 1
+        raw = json.dumps({"id": self.n, "method": method, "params": params}).encode()
+        mask = os.urandom(4)
+        n = len(raw)
+        head = bytes([0x81]) + (bytes([0x80 | n]) if n < 126 else bytes([0x80 | 126]) + struct.pack(">H", n) if n < 65536 else bytes([0x80 | 127]) + struct.pack(">Q", n))
+        self.sock.sendall(head + mask + bytes(b ^ mask[i % 4] for i, b in enumerate(raw)))
+        while True:
+            msg = self._recv()
+            if msg.get("id") == self.n:
+                if "error" in msg:
+                    raise RuntimeError(f"{method}: {msg['error']}")
+                return msg.get("result", {})
+
+    def close(self) -> None:
+        self.sock.close()
+
+
+def cdp_measure(base: str, paths: list[str], widths: list[int], expression: str, settle: float = 0.8) -> dict:
+    """Open each of `paths` on the server at `base` in a headless browser whose window is set to exactly `width` px by Chrome DevTools
+    Protocol device metrics (a headless --window-size below 500 px is not a phone), run `expression` in the page and return
+    {"path@width": its JSON-able value}. The browser (by the PID this call started) and its throw-away profile are gone on return."""
+    import socket
+    import urllib.request
+
+    s = socket.socket()
+    s.bind(("127.0.0.1", 0))
+    port = s.getsockname()[1]
+    s.close()
+    tmp = Path(tempfile.mkdtemp(prefix="desk-cdp-"))
+    proc = None
+    try:
+        proc = subprocess.Popen([browser(), "--headless=new", "--disable-gpu", "--no-first-run", "--disable-extensions", f"--user-data-dir={tmp / 'profile'}",
+                                 f"--remote-debugging-port={port}", "about:blank"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        ws = None
+        for _ in range(80):
+            try:
+                tabs = json.loads(urllib.request.urlopen(f"http://127.0.0.1:{port}/json", timeout=2).read())
+                ws = next((t["webSocketDebuggerUrl"] for t in tabs if t.get("type") == "page"), None)
+                if ws:
+                    break
+            except OSError:
+                pass
+            time.sleep(0.25)
+        assert ws, "the browser did not open its DevTools port"
+        cdp = _CDP(ws)
+        out = {}
+        try:
+            cdp.call("Page.enable")
+            for w in widths:
+                cdp.call("Emulation.setDeviceMetricsOverride", width=w, height=900, deviceScaleFactor=1, mobile=False)
+                for p in paths:
+                    cdp.call("Page.navigate", url=base + p)
+                    time.sleep(settle)
+                    for _ in range(40):  # wait for the page to finish loading
+                        if cdp.call("Runtime.evaluate", expression="document.readyState", returnByValue=True)["result"].get("value") == "complete":
+                            break
+                        time.sleep(0.25)
+                    time.sleep(settle)
+                    res = cdp.call("Runtime.evaluate", expression=expression, returnByValue=True, awaitPromise=True)
+                    out[f"{p}@{w}"] = res["result"].get("value")
+        finally:
+            cdp.close()
+        return out
+    finally:
+        if proc is not None:
+            stop_browser(proc, tmp)
+        for _ in range(20):
+            shutil.rmtree(tmp, ignore_errors=True)
+            if not tmp.exists():
+                break
+            time.sleep(0.25)
