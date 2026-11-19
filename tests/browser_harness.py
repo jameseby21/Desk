@@ -258,10 +258,10 @@ class _CDP:
         self.sock.close()
 
 
-def cdp_measure(base: str, paths: list[str], widths: list[int], expression: str, settle: float = 0.8) -> dict:
+def cdp_measure(base: str, paths: list[str], widths: list[int], expression: str, settle: float = 0.8, dark: bool = False) -> dict:
     """Open each of `paths` on the server at `base` in a headless browser whose window is set to exactly `width` px by Chrome DevTools
     Protocol device metrics (a headless --window-size below 500 px is not a phone), run `expression` in the page and return
-    {"path@width": its JSON-able value}. The browser (by the PID this call started) and its throw-away profile are gone on return."""
+    {"path@width": its JSON-able value}. `dark` asks the page for prefers-color-scheme: dark. The browser (by the PID this call started) and its throw-away profile are gone on return."""
     import socket
     import urllib.request
 
@@ -289,6 +289,8 @@ def cdp_measure(base: str, paths: list[str], widths: list[int], expression: str,
         out = {}
         try:
             cdp.call("Page.enable")
+            if dark:
+                cdp.call("Emulation.setEmulatedMedia", features=[{"name": "prefers-color-scheme", "value": "dark"}])
             for w in widths:
                 cdp.call("Emulation.setDeviceMetricsOverride", width=w, height=900, deviceScaleFactor=1, mobile=False)
                 for p in paths:

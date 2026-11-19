@@ -15,6 +15,9 @@
 .undo-bar i{display:block;height:100%;background:var(--ball);transform-origin:left;animation:undo-time linear forwards}
 .undo-toast.held .undo-bar i{animation-play-state:paused}
 .undo-bar.busy i{animation:undo-busy 1s ease-in-out infinite alternate}
+/* A phone: the toast sits over the bottom of the page, so a tap on its text reaches the button beneath it; Undo, Log and close still take taps.
+   undo.js closes it on the next press or send (DESK-0305 polish). */
+@media (max-width:600px){.undo-toast{pointer-events:none}.undo-toast .undo-actions{pointer-events:auto}}
 @keyframes undo-time{from{transform:scaleX(1)}to{transform:scaleX(0)}}
 @keyframes undo-busy{from{transform:scaleX(.15)}to{transform:scaleX(.85)}}
 @media (prefers-reduced-motion:reduce){.undo-bar i{animation:none}}
@@ -50,3 +53,4 @@
 /* A phone shows the row as one line (Changed by, N fields, Undo log): one chip per row pushed the status strip and the first
    status change past 1.5 phone screens (DESK-0282, the DESK-0305 phone rule). The chips are on wider screens and in the Undo log. */
 @media (max-width:600px){.who-chips{flex-wrap:nowrap}.who-chips .who-chip{display:none}.who-n,.who-log{display:inline;white-space:nowrap}}
+.nowrap{white-space:nowrap}  /* a date on the Undo log never breaks at its hyphens (DESK-0305 polish) */

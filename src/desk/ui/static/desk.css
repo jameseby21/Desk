@@ -407,7 +407,7 @@ header .search-open kbd{position:absolute;right:10px;top:50%;transform:translate
 
 /* Ticket timeline (DESK-0171 latest change, DESK-0305 the visual timeline). Text never below 12 px; labels never split a word
    (no overflow-wrap:anywhere or hyphens on a label: DESK-0302); only the free text of an event may break inside a long token. */
-:root{--st-inbox:var(--line);--st-triage:#EDC948;--st-ready:#76B7B2;--st-claimed:#A0CBE8;--st-progress:#4E79A7;--st-changes:#F28E2B;--st-approved:#59A14F;--st-rejected:#7A5A48;
+:root{--st-inbox:var(--line);--st-triage:#EDC948;--st-ready:#A7ADB5;--st-claimed:#A0CBE8;--st-progress:#4E79A7;--st-changes:#6E747D;--st-approved:#59A14F;--st-rejected:#7A5A48;
   --ek-comment:#4E79A7;--ek-git:#B07AA1;--ek-attach:#F28E2B}
 .tl{margin:6px 0 16px;min-width:0}
 .tl-latest{display:flex;align-items:center;gap:8px;margin:0;padding:8px 12px;background:var(--card);border:1px solid var(--line);border-radius:10px;font-size:14px;white-space:nowrap;overflow:hidden;min-width:0}
@@ -443,7 +443,7 @@ header .search-open kbd{position:absolute;right:10px;top:50%;transform:translate
 .st-claimed{background:var(--st-claimed);color:#141414}
 .st-in_progress{background:var(--st-progress);color:#FFFFFF}
 .st-review{background:var(--ball);color:#141414}
-.st-changes_requested{background:var(--st-changes);color:#141414}
+.st-changes_requested{background:var(--st-changes);color:#FFFFFF}
 .st-approved{background:var(--st-approved);color:#141414}
 .st-done{background:var(--ink);color:var(--on-ink)}
 .st-blocked{background:var(--red);color:var(--on-red)}

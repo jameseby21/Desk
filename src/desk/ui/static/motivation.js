@@ -71,6 +71,8 @@
     var a = (e.target && e.target.getAttribute && e.target.getAttribute("action")) || "";
     if (/\/(decide|move|check)$/.test(a)) { setTimeout(refresh, 1500); setTimeout(refresh, 4000); }
   }, true);
+  /* An Undo or Redo (undo.js announces it once it is saved) takes a decision back or puts it again: read the count at once. */
+  document.addEventListener("desk:undone", refresh);
 
   /* -- the focus timer -- */
   var tick = null;

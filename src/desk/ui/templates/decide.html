@@ -39,7 +39,7 @@
       </fieldset>
       {% endif %}
       <label class="dm-words"><span data-dm-label>{% if ask.kind in ('answer', 'provide') and not rec %}Your answer (needed){% elif ask.kind == 'approve' and not rec %}Why you approve (needed to approve){% elif rec and rec.action == 'changes' %}Your words, if you want to add any. Type why to approve anyway.{% else %}Your words, if you want to add any{% endif %}</span>
-        <input type="text" name="words" maxlength="1000" autocomplete="off"{% if not can %} disabled{% endif %} placeholder="{% if ask.kind == 'provide' %}What you are providing (never a password or key){% elif rec %}Empty means: {{ agree }}{% else %}Your words{% endif %}"></label>
+        <input type="text" name="words" maxlength="1000" autocomplete="off"{% if not can %} disabled{% endif %} placeholder="{% if ask.kind == 'provide' %}Never a password or key{% elif rec %}Leave empty to agree{% else %}Your words{% endif %}"></label>
       <span class="muted dm-why" data-why role="status" aria-live="polite"></span>
       <div class="dm-actions">
         <div class="dm-act">{% if ask.kind == 'approve' and rec and rec.action == 'changes' %}<button class="btn ball" type="submit" name="action" value="changes" data-dm-key="y"{% if not can %} disabled{% endif %}><kbd>Y</kbd> Agree: send back</button><small>{{ v.steps.no }}</small></div>
