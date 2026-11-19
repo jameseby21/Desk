@@ -430,11 +430,14 @@ def test_browser_on_a_phone_the_latest_line_keeps_who_and_what_and_the_first_sta
     """Protects the phone (finding 6): at 320 and 390 px the Latest change shows who and at least 20 characters of what changed, the
     first status change or decision is among the first 6 rows of the rail (the 11th unfolded) and within 1.5 phone screens (844 px) of the timeline's top
     (the page's own header above the title is not the timeline's), and the fold opens its 6 saves in place. undo.css is inlined with
-    desk.css because the real page loads it (through undo.js) and it styles the Changed by row inside the timeline (DESK-0282)."""
+    desk.css because the real page loads it (through undo.js) and it styles the Changed by row inside the timeline (DESK-0282).
+    DESK-0329 put the activity chart between the strip and the list, open by default (the owner's fifth ask), so on a phone the list's
+    first status change moved down; the 1.5 screen budget now holds for the first status or decision the page shows, which is the
+    chart's mark (a tap on it opens that row in the list). activity.css and activity.js are inlined because the real page loads them."""
     t, _ = _burst(store)
     html = _page(store, t)
-    css = (STATIC / "desk.css").read_text(encoding="utf-8") + (STATIC / "undo.css").read_text(encoding="utf-8")
-    js = (STATIC / "timeline.js").read_text(encoding="utf-8")
+    css = "".join((STATIC / f).read_text(encoding="utf-8") for f in ("desk.css", "undo.css", "activity.css"))
+    js = (STATIC / "timeline.js").read_text(encoding="utf-8") + ";\n" + (STATIC / "activity.js").read_text(encoding="utf-8")
     measure = """<script>addEventListener('load',function(){setTimeout(function(){
 var lat=document.getElementById('tl-latest'),box=lat.getBoundingClientRect(),who=lat.querySelector('.tl-who'),what=lat.querySelector('.tl-what');
 function inside(el,n){var tn=el.firstChild;if(!tn)return false;var g=document.createRange();g.setStart(tn,0);g.setEnd(tn,Math.min(n,tn.textContent.length));
@@ -443,7 +446,8 @@ function vis(){return Array.prototype.filter.call(document.querySelectorAll('.tl
 var rows=Array.prototype.filter.call(document.querySelectorAll('.tl-ev,.tl-foldh'),function(li){return li.offsetHeight>0;});
 var first=rows.filter(function(li){return /ek-(status|decision)/.test(li.className);})[0],top0=document.getElementById('timeline').getBoundingClientRect().top;
 var out={whoShown:!!who&&who.offsetWidth>0&&inside(who,who.textContent.length),what20:!!what&&inside(what,20),whatLen:what?what.textContent.length:0,
- firstTop:first?first.getBoundingClientRect().top-top0:-1,firstRow:rows.indexOf(first),before:vis(),w:document.documentElement.clientWidth,over:[]};
+ firstTop:first?first.getBoundingClientRect().top-top0:-1,firstRow:rows.indexOf(first),
+ markTop:(function(){var m=document.querySelector('#activity .ac-lane[data-group=decisions] .ac-spot,#activity .ac-lane[data-group=status] .ac-spot');return m?m.getBoundingClientRect().top-top0:-1;})(),before:vis(),w:document.documentElement.clientWidth,over:[]};
 document.querySelectorAll('#timeline *').forEach(function(e){var r=e.getBoundingClientRect();if(r.width&&r.right>out.w+1&&!e.closest('[hidden]'))out.over.push(e.className+' '+Math.round(r.right));});
 var b=document.querySelector('.tl-foldb');out.after=out.back=-1;if(b){b.click();out.after=vis();out.exp=b.getAttribute('aria-expanded');b.click();out.back=vis();}
 fetch('/m',{method:'POST',body:JSON.stringify(out)});},300);});</script>"""
@@ -452,7 +456,7 @@ fetch('/m',{method:'POST',body:JSON.stringify(out)});},300);});</script>"""
     html = re.sub(r'<script src="[^"]*"[^>]*></script>', "", html).replace("</body>", f"<script>{js}</script>" + measure + "</body>")
     d = run_in_browser(html, width)
     assert d["whoShown"] and d["what20"] and d["whatLen"] >= 20, d
-    assert 0 <= d["firstRow"] < 6 and 0 < d["firstTop"] < 1.5 * 844, d
+    assert 0 <= d["firstRow"] < 6 and 0 < d["markTop"] < 1.5 * 844 and d["markTop"] < d["firstTop"], d  # DESK-0329: the chart's mark
     assert d["after"] == d["before"] + 6 and d["exp"] == "true" and d["back"] == d["before"], d
     assert d["over"] == [], d  # nothing in the timeline past the right edge (the page-wide 320 px scroll is DESK-0303)
 
