@@ -23,7 +23,7 @@
   <li class="card ul-group{% if g.all_undone %} ul-done{% endif %}">
     <div class="ul-ghead">
       <span class="ul-who"><i class="tl-dot" style="background:{{ kind_colour(g.kind) }}"></i><b>{{ name(g.actor) }}</b> <span class="tl-kind">{{ kind_label(g.kind) }}</span></span>
-      <span class="muted">{{ when(g.ts) }} · {{ g.events|length }} change{{ 's' if g.events|length != 1 }}{% if g.tickets|length > 1 %} on {{ g.tickets|length }} tickets{% endif %}</span>
+      <span class="muted">{% set w = when(g.ts) %}<span class="nowrap">{{ w[:10] }}</span>{{ w[10:] }} · {{ g.events|length }} change{{ 's' if g.events|length != 1 }}{% if g.tickets|length > 1 %} on {{ g.tickets|length }} tickets{% endif %}</span>
       {% if g.batch and g.events|length > 1 and not g.all_undone %}<form method="post" action="/undo/batch/{{ g.batch }}" data-progress="Sending,Undoing,Done" class="undo-form ul-all"><input type="hidden" name="token" value="{{ token() }}"><input type="hidden" name="next" value="{{ here }}"><button type="submit" class="btn small">Undo all {{ g.events|length }}</button></form>{% endif %}
     </div>
     <ul class="ul-rows">

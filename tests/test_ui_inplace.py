@@ -113,7 +113,7 @@ async function until(f,n){for(var i=0;i<(n||100)&&!f();i++){await sleep(100);}re
  out.checked=await until(function(){return /1 of \\d+ done/.test((document.getElementById('chk-summary')||{}).textContent||'');});
  out.afterCheck=y();
  /* 3. the move form (the ticket changes status, the page is swapped in place) */
- var mv=document.querySelector('form[action$="/move"]');mv.querySelector('select[name=to]').value='triage';
+ var mv=document.querySelector('form[action$="/move"]');var sel=mv.querySelector('select[name=to]');sel.value='triage';sel.dispatchEvent(new Event('change',{bubbles:true}));  /* a person chooses it, so the page sees the change and turns Move on (DESK-0325) */
  mv.querySelector('button[type=submit]').click();
  out.moved=await until(function(){return /Moved to triage/.test(document.body.textContent);});
  out.afterMove=y();out.sameDocument=!!document.getElementById('composer')&&window.__alive===1;

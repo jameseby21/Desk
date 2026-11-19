@@ -41,6 +41,7 @@
 <script src="{{ asset('lanes.js') }}" defer></script>
 <script src="{{ asset('undo.js') }}" defer></script>
 <script src="{{ asset('decide.js') }}" defer></script>
+<script src="{{ asset('warnfirst.js') }}" defer></script>
 <script src="{{ asset('capture.js') }}" defer></script>
 <script>
 /* A page that saves in place (check boxes, comments) tells the auto-refresh the file stamp of its own write, so it does not reload itself. */
@@ -60,6 +61,7 @@ document.addEventListener("submit", function (e) {
 });
 window.addEventListener("pageshow", function () {
   document.querySelectorAll("form.post-once").forEach(function (f) {
+    if (!f.getAttribute("data-sending")) return;  // never switch on a button this script did not switch off (warnfirst.js greys Move until it is filled)
     f.removeAttribute("data-sending"); f.classList.remove("sending");
     f.querySelectorAll("button[type=submit]").forEach(function (b) { b.disabled = false; if (b.hasAttribute("data-label")) { b.textContent = b.getAttribute("data-label"); } });
   });

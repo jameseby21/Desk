@@ -110,9 +110,10 @@ def parse_when(text: str, today: dt.date | None = None) -> dt.date:
 
 # -- writes ------------------------------------------------------------------------------
 
-def set_lane(store, t, lane: str, reason: str = ""):
+def set_lane(store, t, lane: str, reason: str = "", by: str | None = None):
     """Put a ticket in a lane ('' clears the field, so the derived lane shows). Parked needs a one-line reason; leaving parked
-    clears the reason from the file (the activity log keeps it)."""
+    clears `park_reason` from the file, so the words are also kept as a dated comment (DESK-0324) in the name `by` (default: whoever
+    is acting)."""
     lane = str(lane or "").strip().lower()
     if lane and lane not in LANES:
         raise ValueError(f"'{lane}' is not a lane. Pick one of: {', '.join(LANES)}.")
@@ -120,6 +121,9 @@ def set_lane(store, t, lane: str, reason: str = ""):
     if lane == "parked":
         if not reason:
             raise ValueError(f'Parking needs a one-line reason, for example: drew park {t.id} "not this quarter".')
+        from . import ops  # local: ops reads lanes
+
+        ops.keep_words(t, reason, "parked", by=by)
         t.meta["park_reason"] = reason[:200]
     else:
         t.meta.pop("park_reason", None)
@@ -131,9 +135,9 @@ def set_lane(store, t, lane: str, reason: str = ""):
     return t
 
 
-def park(store, t, reason: str):
+def park(store, t, reason: str, by: str | None = None):
     """Park a ticket with a reason. Its file and history stay; it leaves the lanes a person works from."""
-    return set_lane(store, t, "parked", reason)
+    return set_lane(store, t, "parked", reason, by=by)
 
 
 def set_snooze(store, t, until: dt.date | None):

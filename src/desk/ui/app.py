@@ -23,6 +23,7 @@ from .. import timing
 from .. import merge as mergemod, deadlines, newform, notify, asks, boardfilter as bf, boardview as bv, commands, companies as compmod, identity as idmod, ladder, priority, readability, sprints as sprintmod, todayview as tv, people as peoplemod, projectfilter as pf, search as srch, nav as navmod, needs_me as nmod, buildstamp as bs, comments as cm, docs as docsmod, ops, profanity, review as rv, style as styles, subtickets as subt, tracks as trk, version as ver
 from ..config import find_home
 from ..rules import RuleError
+from ..secretscan import looks_secret
 from ..store import Store, id_parts, split_profile
 from ..ticket import SECTIONS, STATUSES, check_states, parse_checks
 from .. import words
@@ -246,6 +247,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
     templates.TemplateResponse = timing.timed_render(templates.TemplateResponse)
     build_id = quote(ver.build_commit(), safe="")  # DESK-0257: the build id on every /static address, so an upgrade is a new address
     mermaid_src = f"/static/mermaid.min.js?v={build_id}" if (STATIC / "mermaid.min.js").exists() else MERMAID_CDN
+    templates.env.globals["move_needs"] = ops.MOVE_NEEDS  # DESK-0325
     templates.env.globals.update(deadline_of=lambda t: (lambda d, k: (k, d.isoformat(), deadlines.words(deadlines.days_left(t)), deadlines.days_left(t) < 0) if d else None)(*deadlines.of(t)), ladder=ladder.shape, readflag=readability.flag_text, cmds=commands.parse, screen=lambda st: words.screen(st, shown["style"]), heading=lambda key: words.heading(key, shown["style"]), md=md_html, has_mermaid=has_mermaid, statuses=STATUSES,
                                  sections=SECTIONS, mermaid_src=mermaid_src, by_project=by_project, token=tokens.issue, check_summary=lambda text: Markup(summary_html(text)), track_slug=trk.track_slug, track_of=trk.track_of,
                                  build=ver.describe(), asset=lambda path: f"/static/{path}?v={build_id}", who=who_html, person=person_name, sprint_slug=lambda n: sprintmod.slugify(str(n), 60), ask_badge=lambda t: ((asks.ask_of(t) or {}).get("kind") or "").capitalize(),
@@ -266,6 +268,10 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
 
     def store() -> Store:
         return Store(home or find_home())
+
+    # DESK-0325: what the Move box on a ticket page says beside a grey Move. It is the rule's own sentence (`ops.move_refusal`, the one `drew move
+    # --dry-run` prints and the server answers with), asked as if the person had filled in the fields, so only the move itself is judged.
+    templates.env.globals["move_block"] = lambda t, to: ops.move_refusal(store(), t, to, actor=store().owner, reason=ops.MOVE_FILLER, waiting_on=ops.MOVE_FILLER)
 
     app.include_router(routes_preview.make_router(store))  # DESK-0291: file preview panel and read-only local file links
 
@@ -820,7 +826,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         return HTMLResponse(card_doc(s, target))
 
     @app.get("/ticket/{ticket_id}", response_class=HTMLResponse)
-    def ticket(request: Request, ticket_id: str, error: str | None = None):
+    def ticket(request: Request, ticket_id: str, error: str | None = None, reason: str | None = None, waiting_on: str | None = None):
         s = store()
         try:
             t = s.get(ticket_id)
@@ -842,7 +848,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
             rx = getattr(censor_for(s), "rx", None)
             flagged = bool(rx and rx.search(re.sub(r"`[^`]*`", "", t.section("Comments"))))
         empty_head, empty_body = flag_empty(styles.load(s.home)["name"])
-        return templates.TemplateResponse(request, "ticket.html", ctx(request, s, t=t, deps=deps, rejected=rejected, merged=merged, flag_empty=None if flagged else (empty_head, empty_body), stale=s.is_stale(t), error=error, s=s,
+        return templates.TemplateResponse(request, "ticket.html", ctx(request, s, t=t, deps=deps, rejected=rejected, merged=merged, flag_empty=None if flagged else (empty_head, empty_body), stale=s.is_stale(t), error=error, kept_reason=(reason or "")[:2000] if error else "", kept_waiting=(waiting_on or "")[:300] if error else "", s=s,
                                                              formerly=s.formerly(t), mermaid=mermaid, mentions=docsmod.mentioned_in(list(by_id.values()), ticket_id=t.id),
                                                              owning=docsmod.owning_docs(s, t), source_doc=source_doc(s, t), acc_lines=[(i + 1, c.text) for i, c in enumerate(parse_checks(t.section("Acceptance")))], dod=dod_view(s, t), reply_ask=reply_ask(s, t), doc_links=doc_links(s, t), **assign_view(s, t), **nav_view(s, t), events_url=f"/events/{t.id}", events_since=ev.ticket_stamp(s, t.id),
                                                              tl=tlmod.view(s, t), **rdmod.ticket_view(s, t, acting(request), write=rdmod.is_visit(request)), **family_view))
@@ -999,7 +1005,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
             return HTMLResponse("<p>No such asset</p>", status_code=404)
         return FileResponse(str(target))
 
-    def _back(t_id: str, error: str | None = None, next_: str = "", ok: str = "", dup: int = 0, anchor: str = "") -> RedirectResponse:
+    def _back(t_id: str, error: str | None = None, next_: str = "", ok: str = "", dup: int = 0, anchor: str = "", keep: str = "", keep_waiting: str = "") -> RedirectResponse:
         """The no-JavaScript fallback of every form: redirect back to the ticket at the part of the page the form sits in (#comments,
         #acceptance, ...), so the browser lands where the person was and not at the top (DESK-0141)."""
         frag = f"#{anchor}" if anchor else ""
@@ -1010,6 +1016,11 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         url = f"/ticket/{t_id}"
         if error:
             url += f"?error={quote(error)}"
+            # Rule 80 item 2: a value that looks like a secret is never put in an address (browser history, access logs); it is not saved either
+            if keep.strip() and not looks_secret(keep):  # DESK-0324: a refused form gives the typed words back, so the page can fill the box again
+                url += f"&reason={quote(keep.strip()[:2000])}"
+            if keep_waiting.strip() and not looks_secret(keep_waiting):  # DESK-0325: the name typed in Waiting on comes back too
+                url += f"&waiting_on={quote(keep_waiting.strip()[:300])}"
         elif dup:
             url += f"?dup={int(dup)}"
         elif ok:
@@ -1382,7 +1393,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         return JSONResponse({"ok": True, "token": tokens.issue()})
 
     @app.post("/ticket/{ticket_id}/move")
-    def post_move(request: Request, ticket_id: str, to: str = Form(...), reason: str = Form(""), token: str = Form("")):
+    def post_move(request: Request, ticket_id: str, to: str = Form(...), reason: str = Form(""), waiting_on: str = Form(""), token: str = Form("")):
         js = wants_json(request)
         if not tokens.use(token):
             return refused("That form was already sent; reload the page.", 409) if js else _spent(ticket_id)
@@ -1390,17 +1401,11 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         try:
             t = s.get(ticket_id)
             s.sync_before()
-            if to == "unblock":
-                ops.unblock(s, t, actor=s.owner)
-            elif to == "rejected":
-                ops.reject(s, t, reason, actor=s.owner)
-            elif to == "done":
-                ops.done(s, t)
-            else:
-                ops.move(s, t, to, actor=s.owner, reason=reason)
+            by = acting(request).display()  # DESK-0324: the words typed in the box are written under the viewer's own name, in this one save
+            ops.move_any(s, t, to, actor=s.owner, reason=reason, waiting_on=waiting_on, by=by)  # DESK-0325: one door for the page and the command line
             s.sync_after(f"desk: move {t.id}")
         except (KeyError, RuleError, ValueError) as e:
-            return refused(e) if js else _back(ticket_id, str(e), anchor="decision")
+            return refused(e) if js else _back(ticket_id, str(e), anchor="decision", keep=reason, keep_waiting=waiting_on)
         if js:
             return JSONResponse({"ok": True, "message": f"Moved to {s.get(ticket_id).status}.", "stamp": str(ev.ticket_stamp(s, t.id))})
         return _back(ticket_id, ok="move", anchor="decision")

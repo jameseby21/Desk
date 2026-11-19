@@ -35,6 +35,8 @@ PALETTE = ["#4E79A7", "#F28E2B", "#E15759", "#76B7B2", "#59A14F", "#EDC948", "#B
 KIND_COLOURS = {"owner": "#C8F03C", "main": "#4E79A7", "coworker": "#F28E2B", "code": "#76B7B2", "subagent": "#B07AA1", "person": "#9C755F",
                 "rule": "#E15759"}
 NONE = "(none)"
+# The key a Claude Code session or Desk itself is recorded under when no person in people.yaml owns it. A person reads "Code session", not the key.
+RAW_SESSION_KEYS = identity.RAW_SESSION_KEYS
 def clock() -> dt.datetime:
     """The timeline's only reading of the computer clock: the page, the strip and the dates all ask here, so a test can pin one
     moment for the whole render (DESK-0282: a route test drew today's strip against dates fixed on 15 Nov)."""
@@ -87,6 +89,17 @@ class Row:
     @property
     def ekind_label(self) -> str:
         return EVENT_KINDS.get(self.ekind, "Change")
+
+    @property
+    def who(self) -> str:
+        """`Chaz (Coworker)`; a name that already says its kind (`Code session`) is written once, never `Code session (Code session)`."""
+        return self.actor_name if self.actor_name == self.kind_label else f"{self.actor_name} ({self.kind_label})"
+
+    @property
+    def who_html(self) -> str:
+        """The rail's name and kind tag, escaped; the tag is left out when the name already says it."""
+        tag = "" if self.actor_name == self.kind_label else f" <small>{_esc(self.kind_label)}</small>"
+        return f"{_esc(self.actor_name)}{tag}"
 
     @property
     def strong(self) -> bool:
@@ -521,8 +534,8 @@ def rows(store, t, pe=None, events=None) -> list[Row]:
         kind = activity.kind_for(actor, "", store.owner, pe) if p and e.kind == "person" else e.kind
         dims = {"actor": actor, "kind": kind, "source": e.source, "project": proj or NONE, "company": company_of[proj] or NONE,
                 "track": state["track"] or NONE, "sprint": state["sprint"] or NONE, "field": e.field or e.change}
-        name = p.name if p else e.actor
         klabel = kind_label(kind)
+        name = p.name if p else (klabel if kind == "code" and e.actor.lower() in RAW_SESSION_KEYS else e.actor)
         labels = {"actor": name, "kind": klabel, "source": SOURCE_LABELS.get(e.source, e.source), "field": _field_label(dims["field"])}
         for d in ("project", "company", "track", "sprint"):
             labels[d] = dims[d]
@@ -635,13 +648,13 @@ def rail_html(v: View, mask=None) -> str:
                     f'<li class="tl-foldh ek-git" data-run="{r.run}" data-group="git"{" hidden" if r.unit >= v.first else ""}{dims}>'
                     f'<time class="tl-time" datetime="{_e(r.event.ts)}" title="{_e(r.when)}">{r.time}</time><i class="tl-mark" aria-hidden="true"></i>'
                     f'<div class="tl-body"><button type="button" class="tl-foldb" aria-expanded="false"><span class="tl-fn">{_e(f.text)}</span></button>'
-                    f'<span class="tl-actor" title="{_e(r.source_label)}"><i class="tl-dot" style="background:{_e(r.colours.get("kind", ""))}"></i>{_e(r.actor_name)} <small>{_e(r.kind_label)}</small></span></div></li>')
+                    f'<span class="tl-actor" title="{_e(r.source_label)}"><i class="tl-dot" style="background:{_e(r.colours.get("kind", ""))}"></i>{r.who_html}</span></div></li>')
             out.append(
                 f'<li class="tl-ev ek-{r.ekind}{" tl-strong" if r.strong else ""}" data-group="{r.group}" data-i="{r.index}"'
                 f'{run_attr}{" hidden" if r.run or r.unit >= v.first else ""}{dims}>'
                 f'<time class="tl-time" datetime="{_e(r.event.ts)}" title="{_e(r.when)}">{r.time}</time><i class="tl-mark" aria-hidden="true"></i>'
                 f'<div class="tl-body"><div class="tl-head"><span class="tl-ekind">{_e(r.ekind_label)}</span><span class="tl-actor" title="{_e(r.source_label)}">'
-                f'<i class="tl-dot" style="background:{_e(r.colours.get("kind", ""))}"></i>{_e(r.actor_name)} <small>{_e(r.kind_label)}</small></span></div>'
+                f'<i class="tl-dot" style="background:{_e(r.colours.get("kind", ""))}"></i>{r.who_html}</span></div>'
                 f'<div class="tl-what">{_e(r.shown_what)}</div></div></li>')
         out.append("</ol></li>")
     return "\n".join(out)
@@ -651,7 +664,7 @@ def latest_line(r: Row | None, git_after: int = 0) -> str:
     if r is None:
         return "No changes recorded yet."
     more = f" (+{git_after} git save{'s' if git_after != 1 else ''} since)" if git_after else ""
-    return f"{r.actor_name} ({r.kind_label}) · {r.what} · {r.when}{more}"
+    return f"{r.who} · {r.what} · {r.when}{more}"
 
 
 def _dot(colour: str, on: bool) -> str:
@@ -666,7 +679,7 @@ def _dot(colour: str, on: bool) -> str:
 
 
 def _line(r: Row, by: str | None, colour: bool) -> str:
-    return f"  {_dot(r.colours.get(by or 'kind', ''), colour)} {r.when:<16}  {r.actor_name} ({r.kind_label}) · {r.source_label} · {r.what}"
+    return f"  {_dot(r.colours.get(by or 'kind', ''), colour)} {r.when:<16}  {r.who} · {r.source_label} · {r.what}"
 
 
 def text(v: View, by: str | None = None, colour: bool = False) -> str:

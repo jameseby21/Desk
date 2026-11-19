@@ -5,6 +5,7 @@
    Where the toast comes from: a redirect's `undo` and `msg` query parameters (read on load, then taken out of the address), or the
    X-Desk-Undo headers of an in-place post (every XMLHttpRequest and fetch answer is looked at). Undo posts /undo/batch/<id> with the
    X-Desk-Undo-Request header; its answer brings a toast of its own whose button is Redo (an undo of the undo).
+   After an Undo or Redo is saved the page gets a document event, desk:undone (motivation.js reads the decided-today count again on it).
    Forms with class undo-form (the /undo page) post in place the same way; a change that was changed since asks "Undo anyway". */
 (function () {
   "use strict";
@@ -45,6 +46,11 @@
     return Promise.resolve();
   }
 
+  /* Tell the rest of the page that an undo or a redo was saved (DESK-0305: the header's decided-today count listens, so it is never stale). */
+  function announce(batch) {
+    try { document.dispatchEvent(new CustomEvent("desk:undone", { detail: { batch: batch || "" } })); } catch (e) { /* an old browser: the count catches up on the next page */ }
+  }
+
   function close() {
     if (!current) return;
     clearTimeout(current.timer); current.el.remove(); current = null; keep(null);
@@ -57,6 +63,7 @@
     var fd = new FormData(); if (force) fd.set("force", "1");
     post("/undo/batch/" + encodeURIComponent(batch), fd).then(function (x) {
       if (x.ok) {
+        announce(batch);
         keep({ text: x.j.message || "Undone.", batch: x.j.batch || "", redo: !redo, ms: SHOW_MS });  // if the refresh is a full reload, the Redo comes back
         refresh().then(function () { show({ text: x.j.message || "Undone.", batch: x.j.batch || "", redo: !redo }); });
         return;
@@ -107,6 +114,17 @@
     else if (e.key === "Escape") close();
   });
 
+  /* On a phone the toast sits over the bottom of the page, where the buttons are (DESK-0305 polish, 375 px). Its text lets a tap through
+     (undo.css), and the next thing you press or send closes it: a new save would replace it anyway, and the change stays in the Undo log. */
+  function narrow() { return !!(window.matchMedia && window.matchMedia("(max-width: 600px)").matches); }
+  function nextAction(e) {
+    if (!current || current.busy || !narrow()) return;
+    if (e.target && e.target.closest && e.target.closest(".undo-toast")) return;
+    close();
+  }
+  document.addEventListener("pointerdown", nextAction, true);
+  document.addEventListener("submit", nextAction, true);
+
   /* An in-place post that wrote something says so in its headers. */
   function fromHeaders(get) {
     var b = get("X-Desk-Undo"); if (!b) return;
@@ -145,14 +163,14 @@
     var DP = window.DeskProgress, p = DP ? DP.start(DP.slotFor(b), { steps: DP.stepsOf(form) || ["Sending", "Undoing", "Done"] }) : null;  // the bar where you clicked
     if (p) p.step(1);
     post(form.getAttribute("action"), new FormData(form)).then(function (x) {
-      if (x.ok) { if (p) p.done(x.j.message || "Undone."); keep({ text: x.j.message || "Undone.", batch: x.j.batch || "", redo: true, ms: SHOW_MS }); refresh().then(function () { show({ text: x.j.message || "Undone.", batch: x.j.batch || "", redo: true }); }); return; }
+      if (x.ok) { announce(form.getAttribute("action")); if (p) p.done(x.j.message || "Undone."); keep({ text: x.j.message || "Undone.", batch: x.j.batch || "", redo: true, ms: SHOW_MS }); refresh().then(function () { show({ text: x.j.message || "Undone.", batch: x.j.batch || "", redo: true }); }); return; }
       if (p) p.fail(x.j.error || "Could not undo. Nothing was changed.");
       b.disabled = false; b.textContent = label;
       var t = form.querySelector("[name=token]"); if (t && x.j.token) t.value = x.j.token;
       fail(x.j.error || ("Could not undo (HTTP " + x.status + "). Nothing was changed."), x.j.conflict ? function () {
         var fd = new FormData(form); fd.set("force", "1");
         post(form.getAttribute("action"), fd).then(function (y) {
-          if (y.ok) refresh().then(function () { show({ text: y.j.message || "Undone.", batch: y.j.batch || "", redo: true }); });
+          if (y.ok) announce(form.getAttribute("action")), refresh().then(function () { show({ text: y.j.message || "Undone.", batch: y.j.batch || "", redo: true }); });
           else fail(y.j.error || "Could not undo. Nothing was changed.", null);
         });
       } : null);

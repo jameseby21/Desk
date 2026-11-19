@@ -290,7 +290,7 @@ def cmd_comments(args):
         for r in rows:
             mark = "" if r.answered else "  [open]"
             kind = f" {r.kind}" if r.kind else ""
-            print(f"{r.ticket_id}  {r.when.strftime('%Y-%m-%d %H:%M')}  {r.author} [{identity.describe(r.ident or {})}]{kind}{mark}\n    {r.text}")
+            print(f"{r.ticket_id}  {r.stamp}  {r.author} [{identity.describe(r.ident or {})}]{kind}{mark}\n    {r.text}")
         print(f"{len(rows)} comment(s)")
     if args.mark_sweep:
         cm.mark_sweep(s.home)
@@ -341,17 +341,45 @@ def cmd_reject(args):
     _write_cmd(args, lambda s, t: ops.reject(s, t, args.reason, actor=args.as_), "reject")
 
 
+def _waiting_hint(s, t, to, args) -> str:
+    """The command-line way out of a Blocked move that has no name: the option that supplies it (the page says 'the Waiting on box')."""
+    return " Add --waiting-on NAME (a ticket id or a person)." if ops.move_missing(t, to, reason=args.reason, waiting_on=args.waiting_on) == "waiting_on" else ""
+
+
 def cmd_move(args):
     from . import sprints
 
-    if not args.to and args.sprint is None:
-        _die("Say where: --to <status>, --sprint <name> (or --sprint '' to take it out of its sprint), or both.")
+    to = args.status or args.to
+    if args.status and args.to and args.status != args.to:
+        _die(f"Two places were named ({args.status} and --to {args.to}). Name one.")
+    if args.dry_run:  # DESK-0325: the warning before the move; nothing is written, not even a sync
+        if not to:
+            _die("Say where: drew move ID STATUS --dry-run.")
+        s = _store(args)
+        try:
+            t = s.get(args.id)
+        except KeyError as e:
+            _die(str(e.args[0]) if e.args else str(e))
+        why = ops.move_refusal(s, t, to, actor=args.as_, reason=args.reason, waiting_on=args.waiting_on)
+        if why:
+            print(f"Refused: {why}{_waiting_hint(s, t, to, args)}")
+            raise SystemExit(1)
+        print(f"{t.id}: would move {t.status} -> {to}. Nothing was written.")
+        return
+    if not to and args.sprint is None:
+        _die("Say where: a status (drew move ID STATUS), --sprint <name> (or --sprint '' to take it out of its sprint), or both.")
 
     def run(s, t):
         if args.sprint is not None:
             t = sprints.set_sprint(s, t, args.sprint, actor=args.as_)
-        if args.to:
-            t = ops.move(s, t, args.to, actor=args.as_, reason=args.reason)
+        if to:
+            try:
+                t = ops.move_any(s, t, to, actor=args.as_, reason=args.reason, waiting_on=args.waiting_on)  # DESK-0324: the words are kept on the ticket
+            except RuleError as e:
+                hint = _waiting_hint(s, t, to, args)
+                if hint and str(e).startswith("Blocked needs a name"):
+                    raise RuleError(f"{e}{hint}") from e
+                raise
         return t
 
     try:
@@ -1448,9 +1476,12 @@ def build_parser() -> argparse.ArgumentParser:
 
     sp = sub.add_parser("move", help="a guarded status move (inbox → triage → ready, and the rest)")
     sp.add_argument("id")
-    sp.add_argument("--to", choices=STATUSES)
+    sp.add_argument("status", nargs="?", choices=[*STATUSES, *ops.MOVE_CHOICES], metavar="STATUS", help="where to: a status, unblock or parked")
+    sp.add_argument("--to", choices=[*STATUSES, *ops.MOVE_CHOICES], metavar="STATUS", help="the same as the STATUS word")
     sp.add_argument("--sprint", help="put the ticket in this sprint (it must exist in sprints.yaml); an empty name takes it out")
-    sp.add_argument("--reason")
+    sp.add_argument("--reason", help="your words: kept on the ticket; Parked and Rejected need them")
+    sp.add_argument("--waiting-on", dest="waiting_on", help="Blocked: the ticket or person it waits on (needed unless the ticket already names one)")
+    sp.add_argument("--dry-run", action="store_true", help="print what the move would refuse, or 'would move', and write nothing")
     actor(sp)
     sp.set_defaults(fn=cmd_move)
 

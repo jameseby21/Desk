@@ -49,7 +49,7 @@ def test_a_decision_ticket_can_be_decided_from_ready_but_a_feature_cannot(store)
     f = ops.new(store, "Build it", "jre", "feature")
     f.meta["status"] = "ready"
     store.save(f)
-    with pytest.raises(RuleError, match="not an allowed move"):
+    with pytest.raises(RuleError, match="cannot go from ready straight to approved"):
         ops.decide(store, store.get(f.id), True, "Ship it, please.", actor="james")
 
 

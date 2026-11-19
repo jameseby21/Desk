@@ -35,7 +35,7 @@ def test_cli_refusal_exits_one(store, capsys):
     with pytest.raises(SystemExit) as ex:
         run(store, "claim", "JRE-0001")  # not ready yet
     assert ex.value.code == 1
-    assert "not an allowed move" in capsys.readouterr().err
+    assert "straight to claimed" in capsys.readouterr().err
 
 
 def test_ui_pages_and_decide(store):

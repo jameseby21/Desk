@@ -22,7 +22,7 @@ def queue(store: Store) -> list[Ticket]:
     return sorted(ts, key=lambda t: (_PRIORITY.get(str(t.meta.get("priority")), 9), str(t.meta.get("created") or ""), t.id))
 
 
-def place(store: Store, t: Ticket, lane: str, actor: str, reason: str = "") -> Ticket:
+def place(store: Store, t: Ticket, lane: str, actor: str, reason: str = "", by: str | None = None) -> Ticket:
     """Set the lane and move the ticket out of the inbox (to triage) in one save."""
     lane = (lane or "").strip().lower()
     if lane not in lanes.LANES:
@@ -31,6 +31,7 @@ def place(store: Store, t: Ticket, lane: str, actor: str, reason: str = "") -> T
         raise ValueError(f"{t.id} has already left the inbox (it is {t.status}).")
     t.meta["lane"] = lane
     if lane == "parked":
+        ops.keep_words(t, reason, "parked", by=by or actor)  # DESK-0324: words a person typed are kept; Desk's own default sentence is not
         t.meta["park_reason"] = " ".join((reason or "").split()) or PARK_REASON
     else:
         t.meta.pop("park_reason", None)

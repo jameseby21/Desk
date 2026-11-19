@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import datetime as dt
 import platform
 import re
@@ -12,7 +13,7 @@ import zipfile
 from pathlib import Path
 
 from . import identity, review
-from .rules import RuleError, check_transition
+from .rules import MIN_WORDS, RuleError, check_transition
 from .secretscan import looks_secret, refusal as secret_refusal
 from .store import Store, join_profile, split_profile
 from .ticket import CLONED_SECTIONS, DEFAULT_SEVERITY, MIN_REASON, SEVERITIES, Ticket, parse_checks, reason_ok, render_check, slugify, today
@@ -40,11 +41,118 @@ def _norm(text: str) -> str:
     return " ".join(text.split()).casefold()
 
 
-def move(store: Store, t: Ticket, new: str, *, actor: str | None = None, reason: str | None = None, note: str | None = None) -> Ticket:
+def clean_words(text: str | None) -> str:
+    """What a person typed in a Move, Park or reason box, as one line: line breaks become spaces, and a typed `<!--` or `-->` is made
+    harmless so it can not pass for the kind marker Desk writes at the end of a comment line (DESK-0324)."""
+    return " ".join(str(text or "").replace("<!--", "<! --").replace("-->", "-- >").split())
+
+
+def keep_words(t: Ticket, words: str | None, what: str, *, by: str | None = None, decision: bool = False, now: dt.datetime | None = None) -> str:
+    """Write the words typed beside an action onto the ticket, dated and in the mover's name, and return them ('' when the box was
+    empty). They go into the Comments (or the Decision line for a decision) of the ticket the caller is about to save, so the words and
+    the change are one save and one event batch. Nothing is skipped as a repeat: what a person typed is kept every time (DESK-0324).
+    A value that looks like a secret is refused in plain words (rule 80) before anything is written."""
+    text = clean_words(words)
+    if not text:
+        return ""
+    if (found := looks_secret(text)):
+        raise RuleError(secret_refusal(found))
+    who = by or _mover()
+    if decision:
+        t.append_line("Decision", f'{_stamp(who, what)} · "{text}"')
+    else:
+        ident = identity.CURRENT.get()
+        tag = f" {ident.tag()}" if ident is not None else ""
+        t.append_line("Comments", _stamp(who, f"{what}: {text}{tag} <!-- kind: FYI -->", at_time=True, now=now))
+    return text
+
+
+def _mover() -> str:
+    ident = identity.CURRENT.get()
+    return ident.display() if ident is not None else "desk"
+
+
+_DECISION_MOVES = ("approved", "changes_requested", "rejected")
+
+
+# DESK-0325: what a chosen move asks for before the click: {move: (field, label, why Move waits)}. The Move box on the ticket page reads this,
+# so the field it reveals and the sentence beside the grey button are the rule's own words (the same ones a refusal would say).
+MOVE_NEEDS = {
+    "blocked": ("waiting_on", "Waiting on", "Blocked needs a name: say which ticket or person it waits on."),
+    "rejected": ("reason", "Why let it go", "Letting a ticket go needs your reason: at least four characters."),
+    "parked": ("reason", "Why park it", "Parking needs a one-line reason, for example: not this quarter."),
+}
+MOVE_FILLER = "Words typed in the box."  # what the Move box assumes will be typed when it asks the rule about the move itself
+MOVE_CHOICES = ("unblock", "parked")  # moves the Move box and `drew move` offer beside the statuses
+
+
+def move_missing(t: Ticket, new: str, *, reason: str | None = None, waiting_on: str | None = None) -> str | None:
+    """The field a move still lacks (`waiting_on` or `reason`), or None when the typed values satisfy it. Blocked is satisfied by a
+    `blocked_on` the ticket already carries."""
+    need = MOVE_NEEDS.get(new)
+    if need is None:
+        return None
+    if need[0] == "waiting_on":
+        return None if (clean_words(waiting_on) or str(t.meta.get("blocked_on") or "").strip()) else "waiting_on"
+    return None if len(clean_words(reason)) >= MIN_WORDS else "reason"
+
+
+def move_refusal(store: Store, t: Ticket, new: str, *, actor: str | None = None, reason: str | None = None, waiting_on: str | None = None) -> str | None:
+    """What `move_any` would refuse, in the refusal's own words, or None for 'would move'. Runs the same checks on a copy and writes
+    nothing: this is the warning before the click (DESK-0325; standards: anything that will cause an error warns first)."""
+    t = copy.deepcopy(t)
+    try:
+        if new == "unblock":
+            if t.status != "blocked":
+                raise RuleError(f"{t.id} is not blocked")
+            keep_words(t, reason, "unblocked")
+        elif new == "parked":
+            if move_missing(t, new, reason=reason):
+                raise RuleError(f"Parking needs a one-line reason, for example: drew park {t.id} \"not this quarter\".")
+            keep_words(t, reason, "parked")
+        else:
+            _take_waiting_on(t, new, waiting_on)
+            check_transition(t, new, store, actor=actor, reason=reason)
+            keep_words(t, reason, f"moved to {new}")
+    except (RuleError, ValueError) as e:
+        return str(e)
+    return None
+
+
+def _take_waiting_on(t: Ticket, new: str, waiting_on: str | None) -> None:
+    """Blocked: the name typed in the Waiting on box becomes `blocked_on` (in memory; the caller saves only when the move passes)."""
+    name = clean_words(waiting_on)
+    if new == "blocked" and name:
+        if (found := looks_secret(name)):
+            raise RuleError(secret_refusal(found))
+        t.meta["blocked_on"] = name
+
+
+def move_any(store: Store, t: Ticket, to: str, *, actor: str | None = None, reason: str | None = None, waiting_on: str | None = None,
+             by: str | None = None) -> Ticket:
+    """The one door for a Move box or `drew move`: a status, `unblock` or `parked`, with the words typed beside it."""
+    if to == "unblock":
+        return unblock(store, t, actor=actor, words=reason, by=by)
+    if to == "done":
+        return done(store, t, words=reason, by=by)
+    if to == "parked":
+        from . import lanes
+
+        return lanes.park(store, t, reason or "", by=by)
+    return move(store, t, to, actor=actor, reason=reason, words=reason, by=by, waiting_on=waiting_on)
+
+
+def move(store: Store, t: Ticket, new: str, *, actor: str | None = None, reason: str | None = None, note: str | None = None,
+         words: str | None = None, by: str | None = None, waiting_on: str | None = None) -> Ticket:
+    """`reason` only has to satisfy the rules; `words` is what the person typed in the box, and is kept on the ticket in the same save:
+    the Decision line for approved, changes requested and rejected, a dated comment for every other move (DESK-0324). `by` is the name
+    to write it under (the viewer's own name on the web); it defaults to the actor, then to the current identity."""
+    _take_waiting_on(t, new, waiting_on)
     check_transition(t, new, store, actor=actor, reason=reason)
     old = t.status
     if new == "blocked":
         t.meta["blocked_from"] = old
+    keep_words(t, words, new if new in _DECISION_MOVES else f"moved to {new}", by=by or actor, decision=new in _DECISION_MOVES)  # a Decision line reads `· approved · "words"`, as `decide` writes it
     t.meta["status"] = new
     if note:
         t.append_line("Comments", _stamp(actor or "desk", note))
@@ -313,8 +421,9 @@ def assignee_of(t: Ticket) -> str:
     return " ".join(str(t.meta.get("assignee") or "").split())
 
 
-def done(store: Store, t: Ticket, commit: str | None = None) -> Ticket:
+def done(store: Store, t: Ticket, commit: str | None = None, words: str | None = None, by: str | None = None) -> Ticket:
     check_transition(t, "done", store)
+    keep_words(t, words, "moved to done", by=by)
     if commit:
         t.append_line("Decision", _stamp("desk", f"merged · {commit}"))
     t.meta["done_at"] = dt.datetime.now().replace(microsecond=0).isoformat()  # local time, for combos
@@ -330,14 +439,16 @@ def block(store: Store, t: Ticket, on: str, reason: str, actor: str | None = Non
     return move(store, t, "blocked", actor=actor, note=f"blocked on {on.strip()}: {reason.strip()}")
 
 
-def unblock(store: Store, t: Ticket, actor: str | None = None, to: str | None = None) -> Ticket:
+def unblock(store: Store, t: Ticket, actor: str | None = None, to: str | None = None, words: str | None = None, by: str | None = None) -> Ticket:
     if t.status != "blocked":
         raise RuleError(f"{t.id} is not blocked")
     target = to or str(t.meta.get("blocked_from") or "ready")
+    kept = keep_words(t, words, f"unblocked → {target}", by=by or actor)
     t.meta["status"] = target
     t.meta["blocked_on"] = ""
     t.meta.pop("blocked_from", None)
-    t.append_line("Comments", _stamp(actor or "desk", f"unblocked → {target}"))
+    if not kept:  # the typed words already say where it went; Desk's own line is only for an empty box (one line, not two)
+        t.append_line("Comments", _stamp(actor or "desk", f"unblocked → {target}"))
     store.save(t)
     _acted(store, t, actor)
     return t

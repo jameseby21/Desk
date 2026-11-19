@@ -47,9 +47,9 @@
 {% if tl is defined and tl %}{# DESK-0171 the latest change; DESK-0305 the visual timeline, open by default: the status strip, then the event rail #}
 <section class="tl" id="timeline" aria-label="Timeline of this ticket">
   {% set L = tl.latest %}
-  <p class="tl-latest" id="tl-latest"{% if L %} title="{{ L.actor_name }} ({{ L.kind_label }}) · {{ L.shown_what }} · {{ L.when }}{% if tl.git_after %} · +{{ tl.git_after }} git saves since{% endif %}"{% endif %}>
+  <p class="tl-latest" id="tl-latest"{% if L %} title="{{ L.who }} · {{ L.shown_what }} · {{ L.when }}{% if tl.git_after %} · +{{ tl.git_after }} git saves since{% endif %}"{% endif %}>
     <span class="tl-cap">Latest change</span>
-    {% if L %}<i class="tl-dot" style="background:{{ L.colours.kind }}"></i><b class="tl-who">{{ L.actor_name }}</b><span class="tl-kind">{{ L.kind_label }}</span><span class="tl-what">{{ L.shown_what }}</span><span class="tl-when">{{ L.when }}</span>{% if tl.git_after %}<span class="tl-plus">+{{ tl.git_after }} git save{{ 's' if tl.git_after != 1 else '' }} since</span>{% endif %}{% else %}<span class="tl-what muted">No changes recorded yet.</span>{% endif %}
+    {% if L %}<i class="tl-dot" style="background:{{ L.colours.kind }}"></i><b class="tl-who">{{ L.actor_name }}</b>{% if L.actor_name != L.kind_label %}<span class="tl-kind">{{ L.kind_label }}</span>{% endif %}<span class="tl-what">{{ L.shown_what }}</span><span class="tl-when">{{ L.when }}</span>{% if tl.git_after %}<span class="tl-plus">+{{ tl.git_after }} git save{{ 's' if tl.git_after != 1 else '' }} since</span>{% endif %}{% else %}<span class="tl-what muted">No changes recorded yet.</span>{% endif %}
   </p>
   {% include "_undo_who.html" %}
   <div class="tl-strip-wrap" id="tl-strip">
@@ -274,16 +274,21 @@
       </form>
       {% else %}
       <p class="muted" style="font-size:14px">Approve and Send back appear when the ticket is <b>{{ screen('review') }}</b>. It is {{ screen(t.status) }} now.</p>
-      <form class="post-once" method="post" action="/ticket/{{ t.id }}/move" data-inplace="refresh" data-progress="Sending,Saving,Done" style="display:flex;flex-direction:column;gap:8px">
+      {# DESK-0325: the box asks for what the chosen move needs before the click. warnfirst.js reveals the field and greys Move with the reason; without script the server refuses in the same words and gives every typed value back. #}
+      <form class="post-once mv-form" method="post" action="/ticket/{{ t.id }}/move" data-inplace="refresh" data-progress="Sending,Saving,Done" style="display:flex;flex-direction:column;gap:8px">
         <input type="hidden" name="token" value="{{ token() }}">
         <label>Move to
-          <select name="to">
-            {% if t.status == 'blocked' %}<option value="unblock">unblock (back to {{ t.meta.get('blocked_from') or 'ready' }})</option>{% endif %}
-            {% for st in statuses %}{% if st != t.status %}<option value="{{ st }}">{{ screen(st) }}</option>{% endif %}{% endfor %}
+          <select name="to" class="mv-to">
+            <option value="" data-why="Choose where to move it.">Choose where to move it</option>
+            {# data-block: the rule's own refusal for that move (the sentence the server would answer with); the script greys Move and shows it. #}
+            {% if t.status == 'blocked' %}{% set blk = move_block(t, 'unblock') %}<option value="unblock"{% if blk %} data-block="{{ blk }}"{% endif %}>unblock (back to {{ t.meta.get('blocked_from') or 'ready' }})</option>{% endif %}
+            {% for st in statuses %}{% if st != t.status %}{% set need = move_needs.get(st) %}{% set blk = move_block(t, st) %}<option value="{{ st }}"{% if need %} data-need="{{ need[0] }}" data-why="{{ need[2] }}"{% endif %}{% if blk %} data-block="{{ blk }}"{% endif %}>{{ screen(st) }}{% if st == 'rejected' %} (let go){% endif %}</option>{% endif %}{% endfor %}
+            {% if lane_info(t).lane != 'parked' %}{% set blk = move_block(t, 'parked') %}<option value="parked" data-need="reason" data-why="{{ move_needs['parked'][2] }}"{% if blk %} data-block="{{ blk }}"{% endif %}>Parked (set aside, the record stays)</option>{% endif %}
           </select></label>
-        <label>Reason (needed to reject a ticket)<input type="text" name="reason"></label>
-        <button class="btn" type="submit">Move</button>
-        <span class="muted" style="font-size:12.5px">The same rules as the CLI apply; a refused move says why.</span>
+        <label class="mv-wait">Waiting on (the ticket or person it waits on)<input type="text" name="waiting_on" maxlength="200" value="{{ kept_waiting or t.meta.get('blocked_on') or '' }}" placeholder="for example DESK-0100 or james"></label>
+        <label class="mv-words">Your words (kept on the ticket as a comment; Rejected and Parked need them)<input type="text" name="reason" value="{{ kept_reason or '' }}"></label>
+        <button class="btn mv-go" type="submit">Move</button>
+        <span class="muted mv-why" role="status" aria-live="polite" style="font-size:12.5px">The same rules as the CLI apply; a refused move says why and keeps what you typed.</span>
       </form>
       {% endif %}
     </div>
