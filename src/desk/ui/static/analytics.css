@@ -1,0 +1,73 @@
+/* DESK-0336: /analytics. Colours come from desk.css tokens for text and surfaces; the two chart series use the validated pair from the
+   dataviz reference palette (blue and orange, checked for colour-blind separation in both themes). Every bar has its number in the
+   table beside or under it, and the second series is hatched, so colour is never the only cue. No animation, so reduce-motion has
+   nothing to switch off. */
+.an{--s1:#2a78d6;--s2:#eb6834;--bar-bg:var(--line);max-width:1100px;margin:0 auto}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .an{--s1:#3987e5;--s2:#d95926}}
+:root[data-theme="dark"] .an{--s1:#3987e5;--s2:#d95926}
+.an-head h1{margin:4px 0 6px;font-size:clamp(24px,5vw,34px);line-height:1.15}
+.an-jump{display:flex;flex-wrap:wrap;gap:8px 16px;margin:10px 0 0;font:500 14px var(--font-mono)}
+.an-jump a{display:inline-flex;align-items:center;min-height:44px}
+.an-sec{margin:28px 0 0;padding:16px 18px;background:var(--card);border:1px solid var(--line);border-radius:14px;min-width:0}
+.an-sec h2{margin:0 0 10px;font-size:22px}
+.an-sec h3{margin:18px 0 8px;font-size:16px}
+.an-sec h3 small,.an-sec h2 small{font:400 13px var(--font-mono);color:var(--muted);margin-left:8px}
+.an-note{margin:8px 0 0;font-size:13.5px}
+.an-quiet{margin:0 0 8px;font-weight:600}
+.an-events{list-style:none;margin:0 0 8px;padding:0;max-height:260px;overflow-y:auto;border:1px solid var(--line);border-radius:10px}
+.an-events:empty{display:none}
+.an-events li{padding:7px 12px;border-bottom:1px solid var(--line);font-size:14px;overflow-wrap:anywhere}
+.an-events li:last-child{border-bottom:0}
+.an-events time{font:12px var(--font-mono);color:var(--muted);margin-right:4px}
+.an-facts{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px;margin:12px 0}
+.an-facts div{min-width:0}
+.an-facts dt{font:500 12px/1.3 var(--font-mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.an-facts dd{margin:2px 0 0;overflow-wrap:anywhere}
+.an-commits{list-style:none;margin:8px 0 0;padding:0;font-size:14px}
+.an-commits li{padding:4px 0;overflow-wrap:anywhere}
+.an-more>summary{cursor:pointer;min-height:44px;display:flex;align-items:center;font-weight:600}
+.an-fig{margin:0}
+.an-fig figcaption{margin:0 0 6px}
+.an-legend{list-style:none;display:flex;flex-wrap:wrap;gap:6px 18px;margin:0 0 10px;padding:0;font-size:14px}
+.an-legend .sw{display:inline-block;width:14px;height:14px;border-radius:3px;margin-right:6px;vertical-align:-2px}
+.sw.s1,.bar.b1{background:var(--s1)}
+.sw.s2,.bar.b2{background:var(--s2);background-image:repeating-linear-gradient(45deg,rgba(0,0,0,.38) 0 2px,transparent 2px 5px)}
+.an-days{display:flex;align-items:flex-end;gap:2px;height:134px;border-bottom:1.5px solid var(--ink);padding:0}
+.an-day{flex:1 1 0;min-width:0;display:flex;align-items:flex-end;justify-content:center;gap:1px;height:100%}
+.an-day .bar{flex:1 1 0;min-width:2px;max-width:12px;display:block;border-radius:3px 3px 0 0}
+.an-axis{display:flex;justify-content:space-between;font:12px var(--font-mono);color:var(--muted);margin-top:4px}
+.an-two{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 28px}
+@media (max-width:760px){.an-two{grid-template-columns:minmax(0,1fr)}.an-sec{padding:14px 12px}}
+.an-rows{list-style:none;margin:0;padding:0}
+.an-row{display:grid;grid-template-columns:minmax(70px,9.5em) minmax(0,1fr) 3em;align-items:center;gap:8px;padding:4px 0;font-size:14px}
+.an-lab{overflow-wrap:anywhere}
+.an-track{display:block;height:12px;background:var(--bar-bg);border-radius:0 6px 6px 0;overflow:hidden}
+.an-fill{display:block;height:100%;background:var(--s1);border-radius:0 6px 6px 0}
+.an-num{text-align:right;font-family:var(--font-mono)}
+.an-scroll{overflow-x:auto;max-width:100%}
+.an-table{font-size:14px}
+.an-table th[scope=row]{font:600 14px var(--font-body);letter-spacing:0;text-transform:none;color:var(--ink)}
+.an-idle{margin:0 0 10px;padding:8px 12px;border:1px solid var(--line);border-radius:10px}
+.an-idle.warn{border:1.5px solid var(--red)}
+.an-idle b{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:var(--red);color:var(--on-red);font-size:13px}
+.an-flag{font:500 12px var(--font-mono);color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:2px 8px;white-space:nowrap}
+.an-wk{display:inline-flex;align-items:flex-end;gap:10px;height:46px}
+.an-w{display:flex;flex-direction:column;align-items:center;justify-content:flex-end;width:28px;height:100%}
+.an-w i{display:block;width:14px;background:var(--s1);border-radius:3px 3px 0 0}
+.an-w b{font:500 12px var(--font-mono)}
+.an-old{margin:0;padding-left:1.4em;font-size:14px}
+.an-old li{padding:3px 0;overflow-wrap:anywhere}
+.an-days-n{font:500 12px var(--font-mono);border:1px solid var(--line);border-radius:999px;padding:1px 7px;margin:0 4px}
+.an-tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+.an-tile{border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+.an-tile p{margin:0}
+.an-big{font:800 clamp(24px,5vw,32px)/1.2 var(--font-head);margin:4px 0 2px!important}
+.an a.tid{font-family:var(--font-mono);font-size:13px;white-space:nowrap}
+@media (max-width:600px){
+  .an-people thead{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)}
+  .an-people,.an-people tbody,.an-people tr,.an-people th,.an-people td{display:block;width:100%}
+  .an-people tr{padding:8px 0;border-bottom:1px solid var(--line)}
+  .an-people th,.an-people td{border:0;padding:2px 4px}
+  .an-flag{white-space:normal}
+}
+@media print{.an-sec{break-inside:avoid;border-color:#000}.an{--s1:#000;--s2:#555}}

@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% block title %}Desk · Analytics{% endblock %}
+{% macro tid(i) -%}<a class="tid" href="/ticket/{{ i }}">{{ i }}</a>{%- endmacro %}
+{% macro rows(items, label_key, link=none) -%}
+{% set mx = (items|map(attribute='n')|max) if items else 0 %}
+<ul class="an-rows">{% for r in items %}<li class="an-row"><span class="an-lab">{% if link %}<a href="{{ link }}{{ r[label_key]|urlencode }}">{{ r[label_key] }}</a>{% else %}{{ r[label_key] }}{% endif %}</span><span class="an-track" aria-hidden="true"><span class="an-fill" style="width:{{ (r.n * 100 / mx)|round(1) if mx else 0 }}%"></span></span><b class="an-num">{{ r.n }}</b></li>{% endfor %}</ul>
+{%- endmacro %}
+{% macro daychart(series, key, label, other=none) -%}
+{% set mx = [1] %}{% for d in series %}{% if d[key] > mx[0] %}{% set _ = mx.__setitem__(0, d[key]) %}{% endif %}{% if other and d[other] > mx[0] %}{% set _ = mx.__setitem__(0, d[other]) %}{% endif %}{% endfor %}
+<div class="an-days" role="img" aria-label="{{ label }}. Highest day: {{ mx[0] }}. The table below lists every day.">
+{% for d in series %}<div class="an-day" title="{{ d.date }}: {{ d[key] }} {{ key if key != 'n' else 'waiting on you' }}{% if other %}, {{ d[other] }} {{ other }}{% endif %}"><span class="bar b1" style="height:{{ [(d[key] * 130 / mx[0])|round|int, 2 if d[key] else 0]|max }}px"></span>{% if other %}<span class="bar b2" style="height:{{ [(d[other] * 130 / mx[0])|round|int, 2 if d[other] else 0]|max }}px"></span>{% endif %}</div>{% endfor %}
+</div>
+<div class="an-axis"><span>{{ series[0].date[5:] }}</span><span>highest day {{ mx[0] }}</span><span>{{ series[-1].date[5:] }}</span></div>
+{%- endmacro %}
+{% block body %}
+<link rel="stylesheet" href="{{ asset('analytics.css') }}">
+{% set L = a.live %}{% set F = a.flow %}{% set P = a.people %}{% set W = a.waiting %}{% set S = a.speed %}{% set M = a.meta %}
+<div class="an">
+<div class="an-head">
+  <p class="label">Analytics</p>
+  <h1>What is going on, and whether the system is working</h1>
+  <p class="muted">Counted from {{ a.n_tickets }} tickets and {{ a.n_events }} logged events, as of {{ a.now[:16]|replace('T', ' ') }}. Reload the page to recount; the live block refreshes itself every {{ refresh_s }} seconds. Commits copied from git history are not counted as ticket activity.</p>
+  <p class="an-jump"><a href="#live">Live</a> <a href="#flow">Flow</a> <a href="#people">People</a> <a href="#waiting">Waiting</a> <a href="#speed">Speed</a> <a href="#meta">Checks</a></p>
+</div>
+
+<section class="an-sec" id="live" aria-labelledby="live-h" data-live-url="{{ live_url }}" data-every="{{ refresh_s }}">
+  <h2 id="live-h">Live: the last hour</h2>
+  <p id="an-quiet" class="an-quiet" role="status">{{ L.quiet }}</p>
+  <ul id="an-events" class="an-events">{% for e in L.events %}<li><time>{{ e.time }}</time> <b>{{ e.who }}</b> on {{ tid(e.ticket) }}: <span>{% for x in e.parts %}{% if x.id %}{{ tid(x.t) }}{% else %}{{ x.t }}{% endif %}{% endfor %}</span></li>{% endfor %}</ul>
+  <p id="an-more" class="muted" {% if not L.more %}hidden{% endif %}>and {{ L.more }} more in the last hour.</p>
+  <dl class="an-facts">
+    <div><dt>Desk running</dt><dd id="an-desk">{{ L.desk }}</dd></div>
+    <div><dt>Store's latest commit</dt><dd id="an-commit">{% if L.store_commit %}<code>{{ L.store_commit.sha }}</code> {{ L.store_commit.when }} · {{ L.store_commit.subject }}{% else %}This store has no git history.{% endif %}</dd></div>
+    <div><dt>drew validate</dt><dd id="an-validate">{{ L.validate_text }}</dd></div>
+    <div><dt>Last refresh</dt><dd id="an-upd">{{ L.now[11:19] }} (page load)</dd></div>
+  </dl>
+  <details class="an-more"><summary>Newest store commits</summary><ul id="an-commits" class="an-commits">{% for c in L.commits %}<li><code>{{ c.sha }}</code> {{ c.when }} · {% for x in c.parts %}{% if x.id %}{{ tid(x.t) }}{% else %}{{ x.t }}{% endif %}{% endfor %}</li>{% endfor %}</ul></details>
+</section>
+
+<section class="an-sec" id="flow" aria-labelledby="flow-h">
+  <h2 id="flow-h">Flow</h2>
+  <figure class="an-fig">
+    <figcaption><b>Tickets created and closed per day, last 30 days</b> (closed means done or rejected)</figcaption>
+    <ul class="an-legend"><li><i class="sw s1"></i>Created, left bar: {{ F.created_total }} in 30 days</li><li><i class="sw s2"></i>Closed, right hatched bar: {{ F.closed_total }} in 30 days</li></ul>
+    {{ daychart(F.days, 'created', 'Tickets created and closed per day', 'closed') }}
+    <details class="an-more"><summary>Show every day as a table</summary><div class="an-scroll"><table><thead><tr><th>Day</th><th>Created</th><th>Closed</th></tr></thead><tbody>{% for d in F.days|reverse %}<tr><td>{{ d.date }}</td><td>{{ d.created }}</td><td>{{ d.closed }}</td></tr>{% endfor %}</tbody></table></div></details>
+    {% if F.closed_from_file_dates %}<p class="muted an-note">{{ F.closed_from_file_dates }} of the {{ F.closed_total }} closes are dated from the ticket's own done date or last update, because the log has no status change for them.</p>{% endif %}
+  </figure>
+  <div class="an-two">
+    <div><h3>Open tickets by status <small>{{ F.open_total }} open</small></h3>
+      {% if F.by_status %}{% set st = [] %}{% for k, v in F.by_status.items() %}{% set _ = st.append({'s': k|replace('_', ' '), 'n': v}) %}{% endfor %}{{ rows(st, 's') }}{% else %}<p class="muted">No open tickets.</p>{% endif %}</div>
+    <div><h3>Open tickets by project <small>top {{ F.by_project|length }}</small></h3>
+      {% if F.by_project %}{{ rows(F.by_project, 'project', '/board?project=') }}{% if F.other_projects %}<p class="muted an-note">{{ F.other_n }} more open tickets sit in {{ F.other_projects }} other projects.</p>{% endif %}{% else %}<p class="muted">No open tickets.</p>{% endif %}</div>
+  </div>
+</section>
+
+<section class="an-sec" id="people" aria-labelledby="people-h">
+  <h2 id="people-h">People</h2>
+  <p class="an-idle {{ 'warn' if P.idle else '' }}">{% if P.idle %}<b aria-hidden="true">!</b> {% endif %}{{ an_idle(P.idle, P.idle_days) }}</p>
+  <div class="an-scroll"><table class="an-table an-people">
+    <thead><tr><th>Who</th><th>Last activity</th><th>Events per week, oldest to newest (4 weeks)</th></tr></thead>
+    <tbody>{% for r in P.rows %}{% set mx = [r.weeks|max, 1]|max %}
+    <tr><th scope="row">{{ r.label }}</th>
+      <td>{% if r.last %}{{ r.last_text }} on {{ tid(r.last_ticket) }}{% else %}<span class="an-flag">never seen in the log</span>{% endif %}{% if r.idle and r.last %} <span class="an-flag">idle {{ P.idle_days }}+ days</span>{% endif %}</td>
+      <td><span class="an-wk" role="img" aria-label="{{ r.weeks|join(', ') }} events">{% for w in r.weeks %}<span class="an-w"><i style="height:{{ [(w * 28 / mx)|round|int, 2 if w else 0]|max }}px"></i><b>{{ w }}</b></span>{% endfor %}</span></td></tr>{% endfor %}</tbody>
+  </table></div>
+  <p class="muted an-note">Patch is the main session and the code sessions. Agents are subagents and the independent checker.</p>
+</section>
+
+<section class="an-sec" id="waiting" aria-labelledby="waiting-h">
+  <h2 id="waiting-h">Waiting</h2>
+  <h3>Open tickets assigned to {{ owner|capitalize }}, per day <small>{{ W.queue_now }} today</small></h3>
+  {{ daychart(W.queue_series, 'n', 'Open tickets assigned to the owner, per day') }}
+  <p class="muted an-note">{% if W.first_logged %}Assignment changes are in the log from {{ W.first_logged }}; days before that use today's assignee for every ticket.{% else %}No assignment change is logged yet, so every day shows today's assignment.{% endif %}</p>
+  <details class="an-more"><summary>Show every day as a table</summary><div class="an-scroll"><table><thead><tr><th>Day</th><th>Waiting on {{ owner|capitalize }}</th></tr></thead><tbody>{% for d in W.queue_series|reverse %}<tr><td>{{ d.date }}</td><td>{{ d.n }}</td></tr>{% endfor %}</tbody></table></div></details>
+  <div class="an-two">
+    <div><h3>The {{ W.oldest|length }} oldest waiting on {{ owner|capitalize }}</h3>
+      {% if W.oldest %}<ol class="an-old">{% for r in W.oldest %}<li>{{ tid(r.id) }} <span class="an-days-n">{{ r.days }} d</span> <span class="muted">{{ r.title }}</span></li>{% endfor %}</ol>{% else %}<p class="muted">Nothing is assigned to {{ owner|capitalize }}.</p>{% endif %}</div>
+    <div><h3>Stuck in one status over {{ W.stuck_days }} days <small>{{ W.stuck_total }} tickets</small></h3>
+      {% if W.stuck %}<div class="an-scroll"><table class="an-table"><thead><tr><th>Status</th><th>Tickets</th><th>Longest</th></tr></thead><tbody>{% for r in W.stuck %}<tr><th scope="row">{{ r.status|replace('_', ' ') }}</th><td>{{ r.n }}</td><td>{% for o in r.oldest %}{{ tid(o.id) }} ({{ o.days }} d){{ ', ' if not loop.last }}{% endfor %}</td></tr>{% endfor %}</tbody></table></div>
+      <p class="muted an-note">Counted from the last status change in the log; a ticket with none counts from its last update, so these are the least that are stuck.</p>{% else %}<p class="muted">No open ticket has sat in one status for more than {{ W.stuck_days }} days.</p>{% endif %}</div>
+  </div>
+</section>
+
+<section class="an-sec" id="speed" aria-labelledby="speed-h">
+  <h2 id="speed-h">Speed, last 30 days</h2>
+  <div class="an-tiles">
+    <div class="an-tile"><p class="label">Ready to review</p><p class="an-big">{% if S.ready_to_review is not none %}{{ S.ready_to_review }} days{% else %}No data{% endif %}</p><p class="muted">median of {{ S.ready_to_review_n }} ticket{{ 's' if S.ready_to_review_n != 1 }}</p></div>
+    <div class="an-tile"><p class="label">Review to done</p><p class="an-big">{% if S.review_to_done is not none %}{{ S.review_to_done }} days{% else %}No data{% endif %}</p><p class="muted">median of {{ S.review_to_done_n }} ticket{{ 's' if S.review_to_done_n != 1 }}</p></div>
+  </div>
+  <p class="muted an-note">From status changes in the log only. A ticket that moved before the log began, or skipped a step, is not counted.</p>
+</section>
+
+<section class="an-sec" id="meta" aria-labelledby="meta-h">
+  <h2 id="meta-h">Checks: what the checkers and audits found</h2>
+  <p><b>{{ M.repetition_open }}</b> open ticket{{ 's' if M.repetition_open != 1 }} tagged repetition{% if M.repetition_open %}: {% for i in M.repetition_ids %}{{ tid(i) }}{{ ', ' if not loop.last }}{% endfor %}{% if M.repetition_open > M.repetition_ids|length %} and more{% endif %}{% endif %}. <a href="/board?tag=repetition">Open them on the board</a>.</p>
+  {% if M.reports %}<div class="an-scroll"><table class="an-table"><thead><tr><th>Date</th><th>Report</th><th>What it states</th></tr></thead><tbody>
+  {% for r in M.reports %}<tr><td>{{ r.date }}</td><td><a href="/doc/{{ r.rel }}">{{ r.file }}</a><br><span class="muted">{{ r.title }}</span></td>
+    <td>{% if r.verdict %}<b>Verdict:</b> {{ an_link(r.verdict, ids) }}{% endif %}{% if r.verdict and r.rate %}<br>{% endif %}{% if r.rate %}<b>False-claim rate:</b> {{ an_link(r.rate, ids) }}{% endif %}{% if not r.verdict and not r.rate %}<span class="an-flag">states no verdict or rate</span>{% endif %}</td></tr>{% endfor %}</tbody></table></div>
+  {% else %}<p class="muted">No checker or audit report in intake/ yet (names that contain qc, claims-audit or triage).</p>{% endif %}
+</section>
+</div>
+<script src="{{ asset('analytics.js') }}" defer></script>
+{% endblock %}
