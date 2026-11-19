@@ -221,7 +221,7 @@ def build(*, templates, ctx, store, tokens, acting) -> APIRouter:
                     tri.merge(s, t, into, actor=s.owner)
                     msg = f"{t.id} merged into {into.strip().upper()}."
                 else:
-                    tri.place(s, t, lane, actor=s.owner, reason=reason)
+                    tri.place(s, t, lane, actor=s.owner, reason=reason, by=acting(request).display())
                     msg = f"{t.id} is in {tri.LABEL[lane]}."
             s.sync_after(f"desk: triage {t.id}")
         except (KeyError, RuleError, ValueError) as e:

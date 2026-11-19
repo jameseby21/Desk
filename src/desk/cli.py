@@ -351,7 +351,7 @@ def cmd_move(args):
         if args.sprint is not None:
             t = sprints.set_sprint(s, t, args.sprint, actor=args.as_)
         if args.to:
-            t = ops.move(s, t, args.to, actor=args.as_, reason=args.reason)
+            t = ops.move(s, t, args.to, actor=args.as_, reason=args.reason, words=args.reason)  # DESK-0324: the words are kept on the ticket
         return t
 
     try:

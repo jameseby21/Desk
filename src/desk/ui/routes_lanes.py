@@ -164,6 +164,12 @@ def info(t) -> dict:
             "back": lanes.back_from_snooze(t)}
 
 
+def _by(request) -> str | None:
+    """The name the viewer's words are written under (DESK-0324): the identity the middleware resolved for this request, if any."""
+    a = request.scope.get("state", {}).get("actor")
+    return a.display() if a is not None else None
+
+
 def install(app, templates, store, tokens) -> None:
     """Register the routes and the template helpers (one line in create_app)."""
     templates.env.globals.update(lane_chip=chip, lane_marks=marks, lane_info=info, lane_names=lanes.LABELS, snooze_choices=SNOOZE_CHOICES,
@@ -216,7 +222,7 @@ def router(store, tokens) -> APIRouter:
             s.sync_before()
             with activity.batch(bid):
                 if lane:
-                    t = lanes.set_lane(s, t, "" if lane == "auto" else lane, reason)
+                    t = lanes.set_lane(s, t, "" if lane == "auto" else lane, reason, by=_by(request))
                 if snooze:
                     t = lanes.set_snooze(s, s.get(t.id), until)
             s.sync_after(f"desk: lane {t.id}")

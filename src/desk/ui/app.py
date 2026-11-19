@@ -820,7 +820,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         return HTMLResponse(card_doc(s, target))
 
     @app.get("/ticket/{ticket_id}", response_class=HTMLResponse)
-    def ticket(request: Request, ticket_id: str, error: str | None = None):
+    def ticket(request: Request, ticket_id: str, error: str | None = None, reason: str | None = None):
         s = store()
         try:
             t = s.get(ticket_id)
@@ -842,7 +842,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
             rx = getattr(censor_for(s), "rx", None)
             flagged = bool(rx and rx.search(re.sub(r"`[^`]*`", "", t.section("Comments"))))
         empty_head, empty_body = flag_empty(styles.load(s.home)["name"])
-        return templates.TemplateResponse(request, "ticket.html", ctx(request, s, t=t, deps=deps, rejected=rejected, merged=merged, flag_empty=None if flagged else (empty_head, empty_body), stale=s.is_stale(t), error=error, s=s,
+        return templates.TemplateResponse(request, "ticket.html", ctx(request, s, t=t, deps=deps, rejected=rejected, merged=merged, flag_empty=None if flagged else (empty_head, empty_body), stale=s.is_stale(t), error=error, kept_reason=(reason or "")[:2000] if error else "", s=s,
                                                              formerly=s.formerly(t), mermaid=mermaid, mentions=docsmod.mentioned_in(list(by_id.values()), ticket_id=t.id),
                                                              owning=docsmod.owning_docs(s, t), source_doc=source_doc(s, t), acc_lines=[(i + 1, c.text) for i, c in enumerate(parse_checks(t.section("Acceptance")))], dod=dod_view(s, t), reply_ask=reply_ask(s, t), doc_links=doc_links(s, t), **assign_view(s, t), **nav_view(s, t), events_url=f"/events/{t.id}", events_since=ev.ticket_stamp(s, t.id),
                                                              tl=tlmod.view(s, t), **rdmod.ticket_view(s, t, acting(request), write=rdmod.is_visit(request)), **family_view))
@@ -999,7 +999,7 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
             return HTMLResponse("<p>No such asset</p>", status_code=404)
         return FileResponse(str(target))
 
-    def _back(t_id: str, error: str | None = None, next_: str = "", ok: str = "", dup: int = 0, anchor: str = "") -> RedirectResponse:
+    def _back(t_id: str, error: str | None = None, next_: str = "", ok: str = "", dup: int = 0, anchor: str = "", keep: str = "") -> RedirectResponse:
         """The no-JavaScript fallback of every form: redirect back to the ticket at the part of the page the form sits in (#comments,
         #acceptance, ...), so the browser lands where the person was and not at the top (DESK-0141)."""
         frag = f"#{anchor}" if anchor else ""
@@ -1010,6 +1010,8 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         url = f"/ticket/{t_id}"
         if error:
             url += f"?error={quote(error)}"
+            if keep.strip():  # DESK-0324: a refused form gives the typed words back, so the page can fill the box again
+                url += f"&reason={quote(keep.strip()[:2000])}"
         elif dup:
             url += f"?dup={int(dup)}"
         elif ok:
@@ -1390,17 +1392,18 @@ def create_app(home: Path | None = None, poll: float = ev.POLL_SECONDS) -> FastA
         try:
             t = s.get(ticket_id)
             s.sync_before()
+            by = acting(request).display()  # DESK-0324: the words typed in the box are written under the viewer's own name, in this one save
             if to == "unblock":
-                ops.unblock(s, t, actor=s.owner)
+                ops.unblock(s, t, actor=s.owner, words=reason, by=by)
             elif to == "rejected":
                 ops.reject(s, t, reason, actor=s.owner)
             elif to == "done":
-                ops.done(s, t)
+                ops.done(s, t, words=reason, by=by)
             else:
-                ops.move(s, t, to, actor=s.owner, reason=reason)
+                ops.move(s, t, to, actor=s.owner, reason=reason, words=reason, by=by)
             s.sync_after(f"desk: move {t.id}")
         except (KeyError, RuleError, ValueError) as e:
-            return refused(e) if js else _back(ticket_id, str(e), anchor="decision")
+            return refused(e) if js else _back(ticket_id, str(e), anchor="decision", keep=reason)
         if js:
             return JSONResponse({"ok": True, "message": f"Moved to {s.get(ticket_id).status}.", "stamp": str(ev.ticket_stamp(s, t.id))})
         return _back(ticket_id, ok="move", anchor="decision")

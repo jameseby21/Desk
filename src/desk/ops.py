@@ -40,11 +40,50 @@ def _norm(text: str) -> str:
     return " ".join(text.split()).casefold()
 
 
-def move(store: Store, t: Ticket, new: str, *, actor: str | None = None, reason: str | None = None, note: str | None = None) -> Ticket:
+def clean_words(text: str | None) -> str:
+    """What a person typed in a Move, Park or reason box, as one line: line breaks become spaces, and a typed `<!--` or `-->` is made
+    harmless so it can not pass for the kind marker Desk writes at the end of a comment line (DESK-0324)."""
+    return " ".join(str(text or "").replace("<!--", "<! --").replace("-->", "-- >").split())
+
+
+def keep_words(t: Ticket, words: str | None, what: str, *, by: str | None = None, decision: bool = False, now: dt.datetime | None = None) -> str:
+    """Write the words typed beside an action onto the ticket, dated and in the mover's name, and return them ('' when the box was
+    empty). They go into the Comments (or the Decision line for a decision) of the ticket the caller is about to save, so the words and
+    the change are one save and one event batch. Nothing is skipped as a repeat: what a person typed is kept every time (DESK-0324).
+    A value that looks like a secret is refused in plain words (rule 80) before anything is written."""
+    text = clean_words(words)
+    if not text:
+        return ""
+    if (found := looks_secret(text)):
+        raise RuleError(secret_refusal(found))
+    who = by or _mover()
+    if decision:
+        t.append_line("Decision", f'{_stamp(who, what)} · "{text}"')
+    else:
+        ident = identity.CURRENT.get()
+        tag = f" {ident.tag()}" if ident is not None else ""
+        t.append_line("Comments", _stamp(who, f"{what}: {text}{tag} <!-- kind: FYI -->", at_time=True, now=now))
+    return text
+
+
+def _mover() -> str:
+    ident = identity.CURRENT.get()
+    return ident.display() if ident is not None else "desk"
+
+
+_DECISION_MOVES = ("approved", "changes_requested", "rejected")
+
+
+def move(store: Store, t: Ticket, new: str, *, actor: str | None = None, reason: str | None = None, note: str | None = None,
+         words: str | None = None, by: str | None = None) -> Ticket:
+    """`reason` only has to satisfy the rules; `words` is what the person typed in the box, and is kept on the ticket in the same save:
+    the Decision line for approved, changes requested and rejected, a dated comment for every other move (DESK-0324). `by` is the name
+    to write it under (the viewer's own name on the web); it defaults to the actor, then to the current identity."""
     check_transition(t, new, store, actor=actor, reason=reason)
     old = t.status
     if new == "blocked":
         t.meta["blocked_from"] = old
+    keep_words(t, words, new if new in _DECISION_MOVES else f"moved to {new}", by=by or actor, decision=new in _DECISION_MOVES)  # a Decision line reads `· approved · "words"`, as `decide` writes it
     t.meta["status"] = new
     if note:
         t.append_line("Comments", _stamp(actor or "desk", note))
@@ -313,8 +352,9 @@ def assignee_of(t: Ticket) -> str:
     return " ".join(str(t.meta.get("assignee") or "").split())
 
 
-def done(store: Store, t: Ticket, commit: str | None = None) -> Ticket:
+def done(store: Store, t: Ticket, commit: str | None = None, words: str | None = None, by: str | None = None) -> Ticket:
     check_transition(t, "done", store)
+    keep_words(t, words, "moved to done", by=by)
     if commit:
         t.append_line("Decision", _stamp("desk", f"merged · {commit}"))
     t.meta["done_at"] = dt.datetime.now().replace(microsecond=0).isoformat()  # local time, for combos
@@ -330,10 +370,11 @@ def block(store: Store, t: Ticket, on: str, reason: str, actor: str | None = Non
     return move(store, t, "blocked", actor=actor, note=f"blocked on {on.strip()}: {reason.strip()}")
 
 
-def unblock(store: Store, t: Ticket, actor: str | None = None, to: str | None = None) -> Ticket:
+def unblock(store: Store, t: Ticket, actor: str | None = None, to: str | None = None, words: str | None = None, by: str | None = None) -> Ticket:
     if t.status != "blocked":
         raise RuleError(f"{t.id} is not blocked")
     target = to or str(t.meta.get("blocked_from") or "ready")
+    keep_words(t, words, f"unblocked → {target}", by=by or actor)
     t.meta["status"] = target
     t.meta["blocked_on"] = ""
     t.meta.pop("blocked_from", None)
