@@ -201,7 +201,7 @@ return {w:w,scrollW:document.documentElement.scrollWidth,over:over,split:split,t
  chartTop:box.getBoundingClientRect().top,stripBottom:strip.bottom,listTop:list?list.getBoundingClientRect().top:null,
  trackL:tr.left,trackR:tr.right,stripL:strip.left+6,stripR:strip.right-6,visible:box.offsetHeight>0&&getComputedStyle(box).display!=='none',
  lanes:Array.prototype.map.call(document.querySelectorAll('#activity .ac-lane'),function(l){return [l.getAttribute('data-group'),l.querySelector('.ac-name').textContent,l.querySelector('.ac-n').textContent];}),
- legend:Array.prototype.map.call(document.querySelectorAll('#activity .ac-legend li'),function(l){return l.textContent;}),
+ legend:Array.prototype.filter.call(document.querySelectorAll('#activity .ac-legend li'),function(l){return !l.hidden;}).map(function(l){return l.textContent;}),
  bg:getComputedStyle(document.querySelector('.tl-strip-wrap')).backgroundColor,ink:getComputedStyle(document.querySelector('#activity .ac-lab')).color};})()"""
 
 
@@ -285,7 +285,8 @@ def test_unit_every_event_lands_in_exactly_one_spot_and_the_counts_add_up():
 
 def test_route_the_frame_counts_every_event_of_the_log_and_the_rows_carry_what_the_chart_reads(store):
     """Protects acceptance 2 by the server's HTML: data-total is the number of events in the log (plus nothing), each row the chart
-    reads has a unique data-i, a row, a kind and a time, and each row's count is the rail's chip count."""
+    reads has a unique data-i, a row, a kind and a time, each kind with events has a row whose count is the rail's chip count, and
+    each kind with none is named in the head line instead."""
     t = mixed(store, n=40)
     n_log = len(activity.read(store.home, t.id))
     html = page(store, t)
@@ -297,20 +298,23 @@ def test_route_the_frame_counts_every_event_of_the_log_and_the_rows_carry_what_t
     assert all('data-group="' in a and 'data-kind="' in a for a, _, _ in rows)
     lanes = re.findall(r'class="ac-lane[^"]*" data-group="(\w+)"><span class="ac-lab"><span class="ac-name">([^<]+)</span> <span class="ac-n">([^<]+)</span>', html)
     chips = dict(re.findall(r'data-filter="(\w+)"[^>]*>[^<]*<span class="tl-n">(\d+)</span>', html))
-    assert [k for k, _, _ in lanes] == LANES
-    assert sum(int(n) for _, _, n in lanes if n != "none") == total
-    assert all((n if n != "none" else "0") == chips[k] for k, _, n in lanes)
+    assert [k for k, _, _ in lanes] == [k for k in LANES if chips[k] != "0"]
+    assert sum(int(n) for _, _, n in lanes) == total and all(n == chips[k] for k, _, n in lanes)
+    idle = re.search(r'id="ac-none">None yet: ([^<]+)<', html)
+    names = dict(re.findall(r'data-filter="(\w+)"[^>]*>([^<]+?) <span class="tl-n">', html))
+    assert (idle.group(1).split(", ") if idle else []) == [names[k] for k in LANES if chips[k] == "0"]
 
 
 @NEEDS_BROWSER
 @pytest.mark.parametrize("width", [1280, 390, 320])
 def test_browser_the_marks_add_up_to_the_events_in_the_list(store, width):
     """Protects acceptance 2 in a real page, on a 230 event ticket: the spots' counts add up to the events in the list, a spot with
-    more than three events prints its count, and every smaller spot draws one mark per event."""
+    more than two events prints its count (and the legend explains the number), and every smaller spot draws one mark per event."""
     t = busy(store)
     d = run(store, t, width, [STATE])[0]
     assert d["total"] == d["events"] == d["marks"] == 230, d
     assert d["many"] > 0 and d["manySum"] + d["glyphs"] == 230, d
+    assert any("a number: that many events in one spot" in x for x in d["legend"]), d["legend"]
 
 
 # ============================================================ 3. rows in words; who by colour, shape and a legend in words
@@ -335,16 +339,17 @@ def test_static_who_has_a_shape_as_well_as_a_colour_and_no_colour_is_a_status_co
     assert min(dist(a, b) for i, a in enumerate(hues) for b in hues[i + 1:]) >= 15
 
 
-def test_route_the_rows_are_named_in_words_with_their_counts_and_an_empty_row_says_none(store):
-    """Protects acceptance 3 by the server's HTML: the five rows are named Decisions, Status, Comments, Changes and Git, each with its
-    count, and a row with no events says none instead of a bare zero."""
+def test_route_the_rows_are_named_in_words_with_their_counts_and_an_empty_kind_says_none_yet(store):
+    """Protects acceptance 3 by the server's HTML: each kind with events is a row named in the chips' words (Decisions, Status,
+    Comments, Changes, Git) with its count, in that order; the kinds with none are named in the head line ("None yet: ..."), so every
+    kind is named and a short life takes one row, not five (DESK-0305's 700 px timeline budget)."""
     base = dt.datetime.now().replace(microsecond=0) - dt.timedelta(days=2)
     t = make(store, "Only comments", lambda t: [E(t, base, "owner-a", "owner", "created", "created"),
                                                  E(t, base + dt.timedelta(hours=3), "chaz", "coworker", "comment", "comment", what="Looks right")], base)
     html = page(store, t)
     lanes = re.findall(r'data-group="(\w+)"><span class="ac-lab"><span class="ac-name">([^<]+)</span> <span class="ac-n">([^<]+)</span>', html)
-    assert lanes == [("decisions", "Decisions", "none"), ("status", "Status", "none"), ("comments", "Comments", "1"), ("changes", "Changes", "1"),
-                     ("git", "Git", "none")]
+    assert lanes == [("comments", "Comments", "1"), ("changes", "Changes", "1")]
+    assert '<span class="ac-none" id="ac-none">None yet: Decisions, Status, Git</span>' in html
 
 
 @NEEDS_BROWSER
@@ -359,8 +364,9 @@ def test_browser_the_legend_names_who_in_words_and_each_mark_has_its_shape_and_n
       return {shapes:g,names:names};})()"""], dark=dark)
     s, m = d
     legend = " / ".join(s["legend"])
-    for words in ("(owner)", "code sessions", "Coworkers", "Agents", "Rules", "Other people", "a number: that many events in one spot"):
+    for words in ("(owner)", "code sessions", "Coworkers", "Agents", "Rules", "Other people"):
         assert words in legend, (words, legend)
+    assert ("a number: that many events in one spot" in legend) is (s["many"] > 0), (legend, s["many"])  # explained only when drawn
     assert len(m["shapes"]) == 6 and len(set(m["shapes"].values())) == 6, m["shapes"]
     assert all(re.search(r" by .+, \w{3} \d+ \w{3}", n) or re.search(r"\d+ events, ", n) for n in m["names"]), m["names"][:5]
 

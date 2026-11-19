@@ -1,6 +1,7 @@
 /* DESK-0329: the activity chart on the ticket page. Every event of the ticket is a mark at its time, on the status strip's own time
    axis (created on the left, now on the right), in one row per kind (Decisions, Status, Comments, Changes, Git: the rail's chips),
-   coloured and shaped by who did it (the owner, Patch and code sessions, coworkers, agents, rules, other people), with a legend in words.
+   coloured and shaped by who did it (the owner, Patch and code sessions, coworkers, agents, rules, other people), with a legend in words;
+   a kind with no events has no row and is named in the head line instead ("None yet: Decisions, Git").
    A spot holds every event that falls in its slice of time: up to two marks stack; a busier spot prints how many, over a thin bar
    split by who. The marks always add up to the events in the list below.
    Hover, keyboard focus or a tap names the events of a spot (time, who, what); a click or Enter shows the newest of them in the list
@@ -208,8 +209,9 @@
           tr.appendChild(b);
           all.push(b);
         });
-        li.classList.toggle("ac-empty", !lane.spots.length);
       });
+      var key = legend && legend.querySelector(".ac-key-many");
+      if (key) key.hidden = !all.some(function (b) { return b._spot.count > CAP; });  // the legend explains a number only when one is drawn
       var keep = focusKey && lanesBox.querySelector('.ac-spot[data-lane="' + focusKey.split(":")[0] + '"][data-bin="' + focusKey.split(":")[1] + '"]');
       var first = keep || newest(all);
       if (first) first.tabIndex = 0;
